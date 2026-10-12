@@ -6,6 +6,7 @@ import {
 import { getCategories, createCategory } from '../api/categories'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
@@ -254,18 +255,12 @@ export default function Inventory() {
 
   // Cierra con ESC el modal que esté abierto, descartando lo capturado — mismo
   // comportamiento que el botón "Cancelar" de cada uno.
-  useEffect(() => {
-    if (!showModal && !adjustModal && !choiceModal && !bulkImportModal) return
-    function onKeyDown(e) {
-      if (e.key !== 'Escape') return
-      if (showModal) setShowModal(false)
-      else if (adjustModal) setAdjustModal(null)
-      else if (choiceModal) setChoiceModal(null)
-      else if (bulkImportModal) setBulkImportModal(false)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [showModal, adjustModal, choiceModal, bulkImportModal])
+  useEscapeKey(() => {
+    if (showModal) setShowModal(false)
+    else if (adjustModal) setAdjustModal(null)
+    else if (choiceModal) setChoiceModal(null)
+    else if (bulkImportModal) setBulkImportModal(false)
+  }, !!(showModal || adjustModal || choiceModal || bulkImportModal))
 
   /**
    * Valida el formulario de producto del lado del cliente, replicando los límites que ya
@@ -869,6 +864,7 @@ export default function Inventory() {
  * regresa una página vacía en vez de un error — se muestra igual que "sin resultados".
  */
 function SiblingStockModal({ onClose }) {
+  useEscapeKey(onClose)
   const [q, setQ] = useState('')
   const [results, setResults] = useState([])
   const [searched, setSearched] = useState(false)

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const NotifyContext = createContext(null)
 
@@ -86,14 +87,9 @@ export function NotifyProvider({ children }) {
   // resolver `false`) — mismo comportamiento que `window.confirm` nativo al presionar
   // Escape, y consistente con el resto de los modales de la app (ver PrivateRoute-adjacent
   // pages), que también cierran con ESC.
-  useEffect(() => {
-    if (!confirmState) return
-    function onKeyDown(e) {
-      if (e.key === 'Escape') handleConfirm(false)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [confirmState])
+  useEscapeKey(() => {
+    handleConfirm(false)
+  }, !!confirmState)
 
   return (
     <NotifyContext.Provider value={{ notify, confirmDialog }}>

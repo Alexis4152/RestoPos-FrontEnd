@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getRoles, createRole, updateRole, deleteRole } from '../api/roles'
 import { SECTIONS } from '../config/sections'
 import { useNotify } from '../context/NotifyContext'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const emptyForm = { name: '', description: '', sections: [] }
 
@@ -40,14 +41,9 @@ export default function Roles() {
   useEffect(() => { load() }, [])
 
   // Cierra con ESC el modal de rol (mismo efecto que "Cancelar"), descartando lo capturado.
-  useEffect(() => {
-    if (!showModal) return
-    function onKeyDown(e) {
-      if (e.key === 'Escape') setShowModal(false)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [showModal])
+  useEscapeKey(() => {
+    setShowModal(false)
+  }, !!showModal)
 
   // Abre el modal en blanco para crear un rol nuevo.
   function openNew() {

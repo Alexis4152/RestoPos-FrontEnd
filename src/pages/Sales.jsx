@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getSales } from '../api/sales'
 import { printAccountTicket } from '../utils/printer'
 import { useNotify } from '../context/NotifyContext'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—'
@@ -52,14 +53,9 @@ export default function Sales() {
   useEffect(() => { load() }, [page, size, appliedFilters])
 
   // Cierra con ESC el modal de detalle de venta — mismo efecto que "Cerrar".
-  useEffect(() => {
-    if (!detail) return
-    function onKeyDown(e) {
-      if (e.key === 'Escape') setDetail(null)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [detail])
+  useEscapeKey(() => {
+    setDetail(null)
+  }, !!detail)
 
   function handleApplyFilters(e) {
     e.preventDefault()

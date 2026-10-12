@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import { playChime } from '../utils/sound'
 import { useLiveRefresh } from '../utils/liveEvents'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 const fmtTime = (d) => (d ? new Date(d).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '—')
@@ -48,6 +49,7 @@ export default function Deliveries() {
   const [busyId, setBusyId] = useState(null)
   const [cobro, setCobro] = useState(null) // orden que se está entregando
   const [cierre, setCierre] = useState(null) // resumen del turno al cerrarlo
+  useEscapeKey(() => { if (cierre) setCierre(null); else setCobro(null) }, !!(cobro || cierre))
   const seenRef = useRef(null)
 
   function load() {

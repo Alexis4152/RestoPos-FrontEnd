@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { applyDefaultBrand } from '../utils/theme'
 import { landingPath, esSoloRepartidor } from '../config/sections'
@@ -16,7 +16,7 @@ import logo from '../assets/logo.png'
  * el usuario y su tienda.
  */
 export default function Login() {
-  const { login } = useAuth()
+  const { login, user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [form, setForm] = useState({ email: '', password: '' })
   const [error, setError] = useState('')
@@ -24,8 +24,9 @@ export default function Login() {
 
   // El login siempre es azul Nexora fijo, sin importar el color que haya quedado
   // aplicado de una sesión anterior con una tienda con color propio.
+  // (Si ya hay sesión no se toca: se va a redirigir a su pantalla, con el color de su tienda.)
   useEffect(() => {
-    applyDefaultBrand()
+    if (!user) applyDefaultBrand()
   }, [])
 
   /**
@@ -41,13 +42,21 @@ export default function Login() {
       const u = await login(form.email, form.password)
       // El repartidor no usa el punto de venta: se va directo a la página web de su tienda
       // (su sesión ya sirve ahí); si la tienda no la tiene activa, PrivateRoute le avisa.
-      if (esSoloRepartidor(u) && u.webSlug && !u.mustChangePassword) { window.location.href = `/sitio/${u.webSlug}`; return }
-      navigate(landingPath(u))
+      // replace: el login NO queda en el historial, así que "atrás" no regresa a él.
+      if (esSoloRepartidor(u) && u.webSlug && !u.mustChangePassword) { window.location.replace(`/sitio/${u.webSlug}`); return }
+      navigate(landingPath(u), { replace: true })
     } catch (err) {
       setError(err.response?.data?.message || 'Error al iniciar sesión')
     } finally {
       setLoading(false)
     }
+  }
+
+  // Con sesión ya iniciada no tiene caso mostrar el login (ej. llegaste con "atrás", un
+  // marcador o escribiendo /login): se manda directo a su pantalla de inicio.
+  if (!authLoading && user) {
+    if (esSoloRepartidor(user) && user.webSlug) { window.location.replace(`/sitio/${user.webSlug}`); return null }
+    return <Navigate to={user.mustChangePassword ? '/change-password' : landingPath(user)} replace />
   }
 
   return (

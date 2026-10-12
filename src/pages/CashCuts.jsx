@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getCashCuts, getOpenCashCut, getMyTodayCashCut, openCashCut, closeCashCut, getCashCutSummary, createCashMovement } from '../api/cashCuts'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—'
@@ -159,18 +160,12 @@ export default function CashCuts() {
 
   // Cierra con ESC el modal que esté abierto (abrir, cerrar, movimiento o detalle),
   // descartando lo capturado — mismo efecto que "Cancelar"/la ✕ de cada uno.
-  useEffect(() => {
-    if (!showOpen && !showClose && !showMovement && !detail) return
-    function onKeyDown(e) {
-      if (e.key !== 'Escape') return
-      if (showOpen) setShowOpen(false)
-      else if (showClose) setShowClose(false)
-      else if (showMovement) setShowMovement(false)
-      else if (detail) setDetail(null)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [showOpen, showClose, showMovement, detail])
+  useEscapeKey(() => {
+    if (showOpen) setShowOpen(false)
+    else if (showClose) setShowClose(false)
+    else if (showMovement) setShowMovement(false)
+    else if (detail) setDetail(null)
+  }, !!(showOpen || showClose || showMovement || detail))
 
   /**
    * Abre un nuevo corte de caja para el usuario actual con el fondo inicial (`openAmount`)

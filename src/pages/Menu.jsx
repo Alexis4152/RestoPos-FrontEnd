@@ -5,6 +5,7 @@ import { getModificadorGrupos, getModificadorGruposCopiables, createModificadorG
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import { resolveMediaUrl } from '../utils/media'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
@@ -75,19 +76,13 @@ export default function Menu() {
   // Cierra con ESC el modal que esté abierto (platillo, ajuste de stock, o modificadores),
   // descartando lo capturado — mismo efecto que "Cancelar"/"Cerrar". El formulario de grupo
   // (modGrupoForm) va primero: está apilado encima de la lista de grupos (modModal).
-  useEffect(() => {
-    if (!showModal && !adjustModal && !modModal && !modGrupoForm && !modCopyModal) return
-    function onKeyDown(e) {
-      if (e.key !== 'Escape') return
-      if (modGrupoForm) setModGrupoForm(null)
-      else if (modCopyModal) { if (modCopyProduct) setModCopyProduct(null); else closeCopyModal() }
-      else if (modModal) closeModModal()
-      else if (showModal) closeProductModal()
-      else if (adjustModal) setAdjustModal(null)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [showModal, adjustModal, modModal, modGrupoForm, modCopyModal, modCopyProduct])
+  useEscapeKey(() => {
+    if (modGrupoForm) setModGrupoForm(null)
+    else if (modCopyModal) { if (modCopyProduct) setModCopyProduct(null); else closeCopyModal() }
+    else if (modModal) closeModModal()
+    else if (showModal) closeProductModal()
+    else if (adjustModal) setAdjustModal(null)
+  }, !!(showModal || adjustModal || modModal || modGrupoForm || modCopyModal))
 
   const filtered = products.filter((p) => {
     const q = search.toLowerCase()

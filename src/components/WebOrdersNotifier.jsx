@@ -4,6 +4,7 @@ import { getWebPendingOrders, acceptWebOrder, cancelOrder } from '../api/ordenes
 import { useNotify } from '../context/NotifyContext'
 import { playChime } from '../utils/sound'
 import { useLiveRefresh } from '../utils/liveEvents'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 const PAGO_LABEL = { EFECTIVO: 'Efectivo', TARJETA: 'Tarjeta', TRANSFERENCIA: 'Transferencia' }
@@ -23,6 +24,7 @@ export default function WebOrdersNotifier() {
   // Pedido que se está rechazando (modal con el motivo, que el cliente ve en su página).
   const [rejecting, setRejecting] = useState(null)
   const [motivo, setMotivo] = useState('')
+  useEscapeKey(() => setRejecting(null), !!rejecting)
   const seenRef = useRef(new Set())
 
   function load() {

@@ -12,6 +12,7 @@ import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
 import { getModificadorGrupos } from '../api/modificadores'
 import { resolveMediaUrl } from '../utils/media'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
@@ -164,20 +165,14 @@ export default function OrderDetail() {
   // Cierra con ESC el modal abierto en este momento (agregar producto, generar cuenta o
   // cobrar) — mismo efecto que su botón "Cancelar". modPicker va primero: está apilado encima
   // de showAddItem (se abre al personalizar un producto con modificadores).
-  useEffect(() => {
-    if (!showAddItem && !showAccount && !payModal && !modPicker && !categoryModeTarget && !editItem) return
-    function onKeyDown(e) {
-      if (e.key !== 'Escape') return
-      if (editItem) setEditItem(null)
-      else if (categoryModeTarget) setCategoryModeTarget(null)
-      else if (modPicker) setModPicker(null)
-      else if (showAddItem) setShowAddItem(false)
-      else if (showAccount) setShowAccount(false)
-      else if (payModal) { setPayModal(null); setPaySuccess(null) }
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [showAddItem, showAccount, payModal, modPicker, categoryModeTarget, editItem])
+  useEscapeKey(() => {
+    if (editItem) setEditItem(null)
+    else if (categoryModeTarget) setCategoryModeTarget(null)
+    else if (modPicker) setModPicker(null)
+    else if (showAddItem) setShowAddItem(false)
+    else if (showAccount) setShowAccount(false)
+    else if (payModal) { setPayModal(null); setPaySuccess(null) }
+  }, !!(showAddItem || showAccount || payModal || modPicker || categoryModeTarget || editItem))
 
   const holdTimeoutRef = useRef(null)
   const holdIntervalRef = useRef(null)

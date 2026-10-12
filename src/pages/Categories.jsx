@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getCategories, createCategory, updateCategory, deleteCategory, updateCategoryAvailabilityMode } from '../api/categories'
 import { useNotify } from '../context/NotifyContext'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const emptyForm = { name: '', description: '', scheduleStart: '', scheduleEnd: '' }
 
@@ -37,14 +38,9 @@ export default function Categories() {
   useEffect(() => { load() }, [])
 
   // Cierra con ESC el modal de categoría (mismo efecto que "Cancelar"), descartando lo capturado.
-  useEffect(() => {
-    if (!showModal) return
-    function onKeyDown(e) {
-      if (e.key === 'Escape') setShowModal(false)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [showModal])
+  useEscapeKey(() => {
+    setShowModal(false)
+  }, !!showModal)
 
   /** Abre el modal en blanco para crear una categoría nueva. */
   function openNew() {

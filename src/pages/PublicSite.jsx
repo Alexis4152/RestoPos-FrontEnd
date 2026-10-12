@@ -8,6 +8,7 @@ import { usePublicLiveRefresh, publicStreamBase } from '../utils/liveEvents'
 import { applyTiendaBrand } from '../utils/theme'
 import defaultLogo from '../assets/logo.png'
 import { resolveMediaUrl } from '../utils/media'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 
@@ -561,6 +562,7 @@ export default function PublicSite() {
 
 /** Modal para elegir modificadores (término, extras...), cantidad y nota de un producto. */
 function CustomizeModal({ producto, onClose, onAdd }) {
+  useEscapeKey(onClose)
   const [sel, setSel] = useState(() => Object.fromEntries(producto.grupos.map((g) => [g.id, []])))
   const [nota, setNota] = useState('')
   const [cantidad, setCantidad] = useState(1)
@@ -633,6 +635,7 @@ function CustomizeModal({ producto, onClose, onAdd }) {
 
 /** Panel lateral del carrito; en su segundo paso, el formulario para enviar el pedido. */
 function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, onClose, onPedidoCreado, cliente, clienteToken, onSesionVencida }) {
+  useEscapeKey(onClose)
   const pagos = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA'].filter((k) =>
     (k === 'EFECTIVO' && tienda.pagoEfectivo) || (k === 'TARJETA' && tienda.pagoTarjeta) || (k === 'TRANSFERENCIA' && tienda.pagoTransferencia))
   const [form, setForm] = useState(() => ({

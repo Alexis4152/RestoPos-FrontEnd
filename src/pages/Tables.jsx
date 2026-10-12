@@ -6,6 +6,7 @@ import { openOrder } from '../api/ordenes'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const ESTADO_STYLE = {
   DISPONIBLE: 'bg-green-50 border-green-200 text-green-700',
@@ -87,17 +88,11 @@ export default function Tables() {
 
   // Cierra con ESC el modal abierto (abrir orden, alta/edición de mesa, o de zona) — mismo
   // efecto que su botón "Cancelar".
-  useEffect(() => {
-    if (!openModal && !showModal && !showZonaModal) return
-    function onKeyDown(e) {
-      if (e.key !== 'Escape') return
-      if (openModal) setOpenModal(null)
-      else if (showModal) setShowModal(false)
-      else if (showZonaModal) setShowZonaModal(false)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [openModal, showModal, showZonaModal])
+  useEscapeKey(() => {
+    if (openModal) setOpenModal(null)
+    else if (showModal) setShowModal(false)
+    else if (showZonaModal) setShowZonaModal(false)
+  }, !!(openModal || showModal || showZonaModal))
 
   function handleCardClick(mesa) {
     if (mesa.ordenActiva) {

@@ -6,6 +6,7 @@ import defaultLogo from '../assets/logo.png'
 import PickupNotifier from './PickupNotifier'
 import WebOrdersNotifier from './WebOrdersNotifier'
 import { resolveMediaUrl } from '../utils/media'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 /**
  * Fábrica de la función `className` que consume `NavLink` de react-router para
@@ -55,14 +56,9 @@ export default function Layout({ children }) {
 
   // Cierra con ESC el drawer del sidebar en mobile/tablet — mismo efecto que el clic
   // fuera del panel (el backdrop).
-  useEffect(() => {
-    if (!mobileOpen) return
-    function onKeyDown(e) {
-      if (e.key === 'Escape') setMobileOpen(false)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [mobileOpen])
+  useEscapeKey(() => {
+    setMobileOpen(false)
+  }, !!mobileOpen)
 
   /** Cierra la sesión del usuario actual y lo redirige a la pantalla de login. */
   function handleLogout() {

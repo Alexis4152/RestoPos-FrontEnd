@@ -5,6 +5,7 @@ import { getTiendas } from '../api/tiendas'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import PasswordInput from '../components/PasswordInput'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—'
 
@@ -89,14 +90,9 @@ export default function Users() {
   useEffect(() => { load() }, [appliedFilters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cierra con ESC el modal de usuario (mismo efecto que "Cancelar"), descartando lo capturado.
-  useEffect(() => {
-    if (!showModal) return
-    function onKeyDown(e) {
-      if (e.key === 'Escape') setShowModal(false)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [showModal])
+  useEscapeKey(() => {
+    setShowModal(false)
+  }, !!showModal)
 
   // Confirma los filtros en edición como los filtros activos, disparando la recarga.
   function handleApplyFilters(e) {

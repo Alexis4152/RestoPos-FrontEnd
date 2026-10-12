@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getTakeawayOrders, openOrder, getDeliveryFee } from '../api/ordenes'
 import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '—'
@@ -66,14 +67,9 @@ export default function Takeaway() {
   }
 
   // Cierra con ESC el modal de nueva orden, descartando lo capturado — mismo efecto que "Cancelar".
-  useEffect(() => {
-    if (!showNewModal) return
-    function onKeyDown(e) {
-      if (e.key === 'Escape') setShowNewModal(false)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [showNewModal])
+  useEscapeKey(() => {
+    setShowNewModal(false)
+  }, !!showNewModal)
 
   async function handleNewOrder(e) {
     e.preventDefault()

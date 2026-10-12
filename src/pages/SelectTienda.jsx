@@ -6,6 +6,7 @@ import { getTiendas, createTienda, updateTienda, deactivateTienda } from '../api
 import { getUsers } from '../api/users'
 import defaultLogo from '../assets/logo.png'
 import { resolveMediaUrl } from '../utils/media'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const emptyForm = { name: '', supervisorId: '' }
 
@@ -55,14 +56,9 @@ export default function SelectTienda() {
   useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cierra con ESC el modal de tienda, descartando lo capturado — mismo efecto que "Cancelar".
-  useEffect(() => {
-    if (!showModal) return
-    function onKeyDown(e) {
-      if (e.key === 'Escape') setShowModal(false)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [showModal])
+  useEscapeKey(() => {
+    setShowModal(false)
+  }, !!showModal)
 
   function handleSelect(tienda) {
     if (!tienda.isActive) return
