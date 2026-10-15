@@ -46,3 +46,12 @@ export const getWebPendingOrders = () => api.get('/orders/web-pending')
 
 /** Acepta un pedido web: queda a nombre de quien lo acepta y pasa a cocina. Rechazar = cancelOrder con motivo. */
 export const acceptWebOrder = (orderId) => api.post(`/orders/${orderId}/aceptar`)
+
+/** Liga la orden a un cliente registrado de la página web (por correo o teléfono). */
+export const linkOrderClient = (orderId, busqueda) => api.post(`/orders/${orderId}/cliente`, { busqueda })
+
+/** Quita el cliente registrado de la orden. */
+export const unlinkOrderClient = (orderId) => api.delete(`/orders/${orderId}/cliente`)
+
+/** Opiniones de las cuentas de la orden: { [cuentaId]: opinión }. */
+export const getOrderOpinions = (orderId) => api.get(`/orders/${orderId}/opiniones`)

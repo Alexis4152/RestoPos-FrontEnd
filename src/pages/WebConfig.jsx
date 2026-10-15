@@ -42,6 +42,13 @@ export default function WebConfig() {
         transferenciaTitular: i.transferenciaTitular || '',
         transferenciaClabe: i.transferenciaClabe || '',
         webMensaje: i.webMensaje || '',
+        webReservasEnabled: !!i.webReservasEnabled,
+        reservaMaxPersonas: i.reservaMaxPersonas ?? 12,
+        reservaAnticipacionHoras: i.reservaAnticipacionHoras ?? 2,
+        reservaDiasMax: i.reservaDiasMax ?? 30,
+        // El backend manda "13:00:00"; el input de hora usa "13:00".
+        reservaHoraInicio: i.reservaHoraInicio ? i.reservaHoraInicio.slice(0, 5) : '',
+        reservaHoraFin: i.reservaHoraFin ? i.reservaHoraFin.slice(0, 5) : '',
       })
     })
   }, [tiendaId])
@@ -55,7 +62,15 @@ export default function WebConfig() {
     e.preventDefault()
     setSaving(true)
     try {
-      await updateWebConfig(tiendaId, { ...form, publicSlug: form.publicSlug.trim().toLowerCase() })
+      await updateWebConfig(tiendaId, {
+        ...form,
+        publicSlug: form.publicSlug.trim().toLowerCase(),
+        reservaMaxPersonas: Number(form.reservaMaxPersonas) || 12,
+        reservaAnticipacionHoras: Number(form.reservaAnticipacionHoras) || 0,
+        reservaDiasMax: Number(form.reservaDiasMax) || 30,
+        reservaHoraInicio: form.reservaHoraInicio || null,
+        reservaHoraFin: form.reservaHoraFin || null,
+      })
       notify('Página web guardada', 'success')
     } catch (err) {
       const data = err.response?.data?.data
@@ -127,6 +142,37 @@ export default function WebConfig() {
         <p className="text-xs text-gray-400 mt-1">
           Apaga ambas para que la página solo muestre el menú (y las mesas), sin recibir pedidos. <Link to="/store-info" className="text-purple-600 hover:underline">Ir a Datos de la tienda</Link>
         </p>
+      </div>
+
+      <div className="card">
+        <p className="font-semibold text-gray-800 mb-1">Reservaciones de mesa</p>
+        <Toggle k="webReservasEnabled" label="📅 Recibir reservaciones en línea"
+          hint="Tus clientes eligen día, hora, personas y sus necesidades especiales (periqueras, mesa accesible, carriola). Te llegan a Mesas → Reservaciones para confirmarlas." />
+        {form.webReservasEnabled && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2 pl-7">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Primera hora para reservar</label>
+              <input type="time" step={1800} className="input" value={form.reservaHoraInicio} onChange={(e) => set('reservaHoraInicio', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Última hora para reservar</label>
+              <input type="time" step={1800} className="input" value={form.reservaHoraFin} onChange={(e) => set('reservaHoraFin', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Máximo de personas por reservación</label>
+              <input type="number" min={1} max={100} className="input" value={form.reservaMaxPersonas} onChange={(e) => set('reservaMaxPersonas', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Anticipación mínima (horas)</label>
+              <input type="number" min={0} max={168} className="input" value={form.reservaAnticipacionHoras} onChange={(e) => set('reservaAnticipacionHoras', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Se puede reservar hasta (días adelante)</label>
+              <input type="number" min={1} max={365} className="input" value={form.reservaDiasMax} onChange={(e) => set('reservaDiasMax', e.target.value)} />
+            </div>
+            <p className="text-xs text-gray-400 sm:col-span-2">Sin horario, se ofrecen de 8:00 a 22:00 cada media hora.</p>
+          </div>
+        )}
       </div>
 
       <div className="card">

@@ -4,6 +4,7 @@ import { getPublicTienda, getPublicMenu, getPublicMesas, createPublicPedido, get
 import { useAuth } from '../context/AuthContext'
 import { AuthScreen, MisPedidos, PerfilCliente, RestablecerScreen, esRepartidorDe } from './publicSite/Account'
 import Deliveries from './Deliveries'
+import Reservaciones, { leerCodigosReserva, guardarCodigosReserva } from './publicSite/Reservaciones'
 import { usePublicLiveRefresh, publicStreamBase } from '../utils/liveEvents'
 import { applyTiendaBrand } from '../utils/theme'
 import defaultLogo from '../assets/logo.png'
@@ -104,6 +105,15 @@ export default function PublicSite() {
       setAvisoCorreo({ ok: false, texto: err.response?.data?.message ?? 'No se pudo reenviar el correo' })
     } finally { setReenviando(false) }
   }
+  useEffect(() => {
+    const t = searchParams.get('reservacion')
+    if (!t) return
+    guardarCodigosReserva(slug, [...leerCodigosReserva(slug), t])
+    // Sin sesión entra como invitado para ver su reservación directo (sin pasar por el acceso).
+    if (!clienteSesion) setInvitado(true)
+    setTab('reservar')
+    searchParams.delete('reservacion'); setSearchParams(searchParams, { replace: true })
+  }, [])
   const [menuCuenta, setMenuCuenta] = useState(false)
 
   // Pedidos en seguimiento ([{ id, token }]): cada uno se queda hasta que se entrega o se
@@ -223,6 +233,7 @@ export default function PublicSite() {
   const esRepartidor = esRepartidorDe(staffUser, tienda.tiendaId)
   const cliente = clienteSesion?.cliente ?? null
   const puedePedir = (tienda.recoger || tienda.domicilio) && !esRepartidor
+  const puedeReservar = tienda.reservaciones && !esRepartidor
 
   function sesionVencida() {
     setClienteSesion(null)
@@ -269,6 +280,9 @@ export default function PublicSite() {
             {tienda.mostrarMesas && (
               <button onClick={() => setTab('mesas')} className={`px-3 py-2 rounded-lg ${tab === 'mesas' ? 'bg-purple-50 text-purple-700' : 'text-gray-600 hover:bg-gray-100'}`}>Mesas</button>
             )}
+            {puedeReservar && (
+              <button onClick={() => setTab('reservar')} className={`px-3 py-2 rounded-lg ${tab === 'reservar' ? 'bg-purple-50 text-purple-700' : 'text-gray-600 hover:bg-gray-100'}`}>📅 Reservar</button>
+            )}
             {esRepartidor && (
               <button onClick={() => setTab('entregas')} className={`px-3 py-2 rounded-lg ${tab === 'entregas' ? 'bg-purple-50 text-purple-700' : 'text-gray-600 hover:bg-gray-100'}`}>🛵 Entregas</button>
             )}
@@ -297,6 +311,9 @@ export default function PublicSite() {
                   {cliente && (
                     <>
                       <button onClick={() => { setTab('mispedidos'); setMenuCuenta(false) }} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50">📦 Mis pedidos</button>
+                      {puedeReservar && (
+                        <button onClick={() => { setTab('reservar'); setMenuCuenta(false) }} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50">📅 Mis reservaciones</button>
+                      )}
                       <button onClick={() => { setTab('perfil'); setMenuCuenta(false) }} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50">👤 Mis datos</button>
                     </>
                   )}
@@ -329,6 +346,9 @@ export default function PublicSite() {
           {tienda.mostrarMesas && (
             <button onClick={() => setTab('mesas')} className={`flex-1 py-2.5 ${tab === 'mesas' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Mesas</button>
           )}
+          {puedeReservar && (
+            <button onClick={() => setTab('reservar')} className={`flex-1 py-2.5 ${tab === 'reservar' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Reservar</button>
+          )}
           {esRepartidor && (
             <button onClick={() => setTab('entregas')} className={`flex-1 py-2.5 ${tab === 'entregas' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Entregas</button>
           )}
@@ -351,6 +371,9 @@ export default function PublicSite() {
                 <span className="px-3 py-1 rounded-full bg-white/20">
                   🛵 A domicilio{Number(tienda.costoEnvio) > 0 ? ` · envío ${fmt(tienda.costoEnvio)}` : ' · envío gratis'}
                 </span>
+              )}
+              {puedeReservar && (
+                <button type="button" onClick={() => setTab('reservar')} className="px-3 py-1 rounded-full bg-white text-purple-700 font-semibold hover:bg-white/90">📅 Reservar mesa</button>
               )}
               {tienda.direccion && <span className="px-3 py-1 rounded-full bg-white/20">📍 {tienda.direccion}</span>}
               {tienda.telefono && <a href={`tel:${tienda.telefono}`} className="px-3 py-1 rounded-full bg-white/20 hover:bg-white/30">📞 {tienda.telefono}</a>}
@@ -452,7 +475,12 @@ export default function PublicSite() {
         {tab === 'mesas' && tienda.mostrarMesas && (
           <>
             <h2 className="text-2xl font-bold">Disponibilidad de mesas</h2>
-            <p className="text-sm text-gray-500 mt-1">Se actualiza automáticamente. Para reservar, llámanos{tienda.telefono ? ` al ${tienda.telefono}` : ''}.</p>
+            <p className="text-sm text-gray-500 mt-1">
+              Se actualiza automáticamente.{' '}
+              {puedeReservar
+                ? <button type="button" onClick={() => setTab('reservar')} className="font-semibold text-purple-700 hover:underline">📅 Reserva tu mesa aquí</button>
+                : <>Para reservar, llámanos{tienda.telefono ? ` al ${tienda.telefono}` : ''}.</>}
+            </p>
             <div className="mt-3 flex gap-3 text-xs">
               {Object.entries(MESA_LABEL).map(([k, v]) => (
                 <span key={k} className={`px-2 py-1 rounded-md border font-semibold ${MESA_STYLE[k]}`}>{v}</span>
@@ -486,6 +514,10 @@ export default function PublicSite() {
         )}
 
         {tab === 'entregas' && esRepartidor && <Deliveries />}
+
+        {tab === 'reservar' && puedeReservar && (
+          <Reservaciones slug={slug} tienda={tienda} cliente={cliente} clienteToken={clienteSesion?.token} onSesionVencida={sesionVencida} />
+        )}
 
         {tab === 'mispedidos' && cliente && (
           <MisPedidos slug={slug} token={clienteSesion.token} onSesionVencida={sesionVencida} onPedir={() => setTab('menu')} />

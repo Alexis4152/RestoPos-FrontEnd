@@ -75,3 +75,38 @@ export const olvideContrasenaCliente = (slug, email) => publicApi.post(`${base(s
 
 /** Nueva contraseña con el código del enlace (?restablecer=...). */
 export const restablecerContrasenaCliente = (slug, token, password) => publicApi.post(`${base(slug)}/clientes/restablecer`, { token, password })
+
+// ── Opinión de una visita al restaurante ─────────────────────────────────────────────
+
+/** Cuenta del QR del ticket (sin login). */
+export const getOpinionCuenta = (slug, token) => publicApi.get(`${base(slug)}/opinion/${encodeURIComponent(token)}`)
+
+/** Opinar desde el QR: { estrellas, meseroEstrellas?, comentario?, platillos?: [{ ordenDetalleId, meGusta }] }. */
+export const enviarOpinionCuenta = (slug, token, data) => publicApi.post(`${base(slug)}/opinion/${encodeURIComponent(token)}`, data)
+
+/** Cuentas pagadas de una visita propia (cliente registrado), para opinar de cada una. */
+export const getCuentasParaOpinar = (slug, clienteToken, ordenId) =>
+  publicApi.get(`${base(slug)}/clientes/me/pedidos/${ordenId}/cuentas`, clienteHeaders(clienteToken))
+
+/** Opinar como cliente registrado de una cuenta suya. */
+export const opinarCuentaCliente = (slug, clienteToken, cuentaId, data) =>
+  publicApi.post(`${base(slug)}/clientes/me/cuentas/${cuentaId}/opinion`, data, clienteHeaders(clienteToken))
+
+// ── Reservaciones de mesa ───────────────────────────────────────────────────────────
+
+/** Reglas del formulario: { maxPersonas, anticipacionHoras, diasMax, horaInicio, horaFin, zonas }. */
+export const getReservaOpciones = (slug) => publicApi.get(`${base(slug)}/reservaciones/opciones`)
+
+/** Pide una reservación; con `clienteToken` queda en la cuenta del cliente. Responde { id, token }. */
+export const crearReservacion = (slug, data, clienteToken) =>
+  publicApi.post(`${base(slug)}/reservaciones`, data, clienteHeaders(clienteToken))
+
+/** Estado de una reservación por su código. */
+export const getReservacion = (slug, token) => publicApi.get(`${base(slug)}/reservaciones/${encodeURIComponent(token)}`)
+
+/** El cliente cancela su reservación (con su código). */
+export const cancelarReservacion = (slug, token) => publicApi.post(`${base(slug)}/reservaciones/${encodeURIComponent(token)}/cancelar`)
+
+/** Reservaciones del cliente registrado. */
+export const getMisReservaciones = (slug, clienteToken) =>
+  publicApi.get(`${base(slug)}/clientes/me/reservaciones`, clienteHeaders(clienteToken))

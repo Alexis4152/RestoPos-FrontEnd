@@ -26,3 +26,6 @@ export const emailTicket = (id, email) => api.post(`/accounts/${id}/ticket/email
  * a la impresora térmica vía QZ Tray (ver utils/printer.js).
  */
 export const getAccountTicketEscPos = (id) => api.get(`/accounts/${id}/ticket-escpos`)
+
+/** Enlace y QR "califica tu visita" de una cuenta de mesa: { url, qrDataUrl }. */
+export const getOpinionQr = (id) => api.get(`/accounts/${id}/opinion-qr`)

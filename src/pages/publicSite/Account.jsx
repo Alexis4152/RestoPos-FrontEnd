@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { loginCliente, registerCliente, getClientePedidos, reviewClientePedido, updateClienteMe, reportClientePedido, olvideContrasenaCliente, restablecerContrasenaCliente } from '../../api/publicSite'
+import { loginCliente, registerCliente, getClientePedidos, reviewClientePedido, updateClienteMe, reportClientePedido, olvideContrasenaCliente, restablecerContrasenaCliente, getCuentasParaOpinar, opinarCuentaCliente } from '../../api/publicSite'
+import OpinionForm from './OpinionForm'
 import { useAuth } from '../../context/AuthContext'
 import { usePublicLiveRefresh, publicStreamBase } from '../../utils/liveEvents'
 import defaultLogo from '../../assets/logo.png'
@@ -474,7 +475,7 @@ export function MisPedidos({ slug, token, onSesionVencida, onPedir }) {
 /** Fila compacta de un pedido terminado; al tocarla se despliega el detalle (y la calificación). */
 function PedidoTerminado({ slug, token, pedido, abierto, onToggle, onCambio, onSesionVencida }) {
   const info = ESTADO_INFO[pedido.estado] ?? { label: pedido.estado, cls: 'bg-gray-100 text-gray-700' }
-  const porCalificar = pedido.estado === 'ENTREGADO' && !pedido.resenaEstrellas
+  const porCalificar = pedido.tipoEntrega !== 'MESA' && pedido.estado === 'ENTREGADO' && !pedido.resenaEstrellas
   return (
     <div>
       <button type="button" onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50">
@@ -599,7 +600,9 @@ function PedidoHistorial({ slug, token, pedido, onCambio, onSesionVencida }) {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const info = ESTADO_INFO[pedido.estado] ?? { label: pedido.estado, cls: 'bg-gray-100 text-gray-700' }
-  const puedeCalificar = pedido.estado === 'ENTREGADO' && !pedido.resenaEstrellas
+  // Las visitas al restaurante (MESA) no usan esta reseña: se opinan por cuenta (OpinionesVisita).
+  const enMesa = pedido.tipoEntrega === 'MESA'
+  const puedeCalificar = !enMesa && pedido.estado === 'ENTREGADO' && !pedido.resenaEstrellas
 
   async function enviar(e) {
     e.preventDefault()
@@ -620,7 +623,7 @@ function PedidoHistorial({ slug, token, pedido, onCambio, onSesionVencida }) {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <p className="font-bold">Pedido #{pedido.id}</p>
-          <p className="text-xs text-gray-500">{fmtFecha(pedido.creadoEn)} · {pedido.tipoEntrega === 'DOMICILIO' ? '🛵 A domicilio' : '🛍️ Para recoger'}</p>
+          <p className="text-xs text-gray-500">{fmtFecha(pedido.creadoEn)} · {pedido.tipoEntrega === 'MESA' ? `🍽️ En el restaurante${pedido.mesa ? ` · Mesa ${pedido.mesa}` : ''}` : pedido.tipoEntrega === 'DOMICILIO' ? '🛵 A domicilio' : '🛍️ Para recoger'}</p>
         </div>
         <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${info.cls}`}>{info.label}</span>
       </div>
@@ -628,7 +631,7 @@ function PedidoHistorial({ slug, token, pedido, onCambio, onSesionVencida }) {
         <p className="mt-3 text-sm text-red-700 bg-red-50 rounded-lg px-3 py-2">
           El restaurante no pudo aceptar tu pedido{pedido.motivoRechazo ? `: ${pedido.motivoRechazo}` : '.'}
         </p>
-      ) : <Etapas pedido={pedido} />}
+      ) : !enMesa && <Etapas pedido={pedido} />}
       <ul className="mt-4 pt-3 border-t border-gray-100 text-sm space-y-1">
         {pedido.items.map((it, i) => (
           <li key={i} className="flex justify-between gap-3">
@@ -640,6 +643,9 @@ function PedidoHistorial({ slug, token, pedido, onCambio, onSesionVencida }) {
       <p className="text-right font-bold mt-2">Total {fmt(pedido.total)}</p>
 
       <ReporteEntrega slug={slug} token={token} pedido={pedido} onCambio={onCambio} onSesionVencida={onSesionVencida} />
+      {enMesa && pedido.estado === 'ENTREGADO' && (
+        <OpinionesVisita slug={slug} token={token} ordenId={pedido.id} onSesionVencida={onSesionVencida} />
+      )}
 
       {pedido.resenaEstrellas ? (
         <div className="mt-3 pt-3 border-t border-gray-100">
@@ -710,5 +716,33 @@ export function PerfilCliente({ slug, token, cliente, onActualizado, onSesionVen
         {saving ? 'Guardando...' : 'Guardar'}
       </button>
     </form>
+  )
+}
+
+/**
+ * Opinión de una visita al restaurante desde "Mis pedidos" (la orden la ligó el mesero a esta
+ * cuenta): un formulario por cada cuenta pagada (si la mesa pagó separado, cada cuenta aparte).
+ */
+function OpinionesVisita({ slug, token, ordenId, onSesionVencida }) {
+  const [cuentas, setCuentas] = useState(null)
+  useEffect(() => {
+    getCuentasParaOpinar(slug, token, ordenId)
+      .then((r) => setCuentas(r.data.data ?? []))
+      .catch((err) => { if (err.response?.status === 401) onSesionVencida(); else setCuentas([]) })
+  }, [slug, token, ordenId])
+  if (!cuentas || cuentas.length === 0) return null
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-100 space-y-4">
+      <p className="font-semibold">¿Qué tal estuvo tu visita?</p>
+      {cuentas.map((c) => (
+        <div key={c.cuentaId} className={cuentas.length > 1 ? 'rounded-xl border border-gray-200 p-3' : ''}>
+          <OpinionForm cuenta={c} compacto
+            onEnviar={async (data) => {
+              const r = await opinarCuentaCliente(slug, token, c.cuentaId, data)
+              setCuentas((list) => list.map((x) => (x.cuentaId === c.cuentaId ? r.data.data : x)))
+            }} />
+        </div>
+      ))}
+    </div>
   )
 }

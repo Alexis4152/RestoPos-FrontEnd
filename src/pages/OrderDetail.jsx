@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { getOrder, addDiner, deleteDiner, addOrderItem, cancelOrderItem, cancelOrder, updateOrderItemStatus, updateOrderItem, acceptWebOrder } from '../api/ordenes'
-import { createAccount, getAccountsByOrder, cancelAccount, getTicketPdf } from '../api/cuentas'
+import { getOrder, addDiner, deleteDiner, addOrderItem, cancelOrderItem, cancelOrder, updateOrderItemStatus, updateOrderItem, acceptWebOrder, linkOrderClient, unlinkOrderClient, getOrderOpinions } from '../api/ordenes'
+import { createAccount, getAccountsByOrder, cancelAccount, getTicketPdf, getOpinionQr } from '../api/cuentas'
 import { createPayment } from '../api/pagos'
 import { getCategories, updateCategoryAvailabilityMode } from '../api/categories'
 import { searchProducts, getTopSellingProducts } from '../api/products'
@@ -112,6 +112,13 @@ export default function OrderDetail() {
   // capturar el email (ver `digitalEmailMissing`).
   const [ticketType, setTicketType] = useState('physical')
   const [paySuccess, setPaySuccess] = useState(null)
+  // Opiniones de las cuentas ({ cuentaId: opinión }), QR "califica tu visita" en pantalla y
+  // el buscador para ligar la orden a un cliente registrado de la página web.
+  const [opiniones, setOpiniones] = useState({})
+  const [qrOpinion, setQrOpinion] = useState(null) // { cuentaId, url, qrDataUrl }
+  const [clienteBusqueda, setClienteBusqueda] = useState('')
+  const [ligando, setLigando] = useState(false)
+  useEscapeKey(() => setQrOpinion(null), !!qrOpinion)
   const [printing, setPrinting] = useState(false)
   // Corte de caja abierto del cajero actual — igual que el POS de DemoPV, NO bloquea la
   // pantalla ni la generación de cuentas, solo deshabilita el botón de cobro final dentro
@@ -121,6 +128,7 @@ export default function OrderDetail() {
   function load() {
     getOrder(id).then((r) => setOrder(r.data.data))
     getAccountsByOrder(id).then((r) => setAccounts(r.data.data ?? [])).catch(() => setAccounts([]))
+    getOrderOpinions(id).then((r) => setOpiniones(r.data.data ?? {})).catch(() => setOpiniones({}))
   }
   // Reinicia el filtro de la tabla (y el comensal del buscador) cada vez que `id` cambia, no
   // solo al montar: como la ruta es siempre `/orders/:id`, React reutiliza esta MISMA
@@ -546,6 +554,32 @@ export default function OrderDetail() {
     } catch (err) { notify(err.response?.data?.message ?? 'No se pudo rechazar el pedido', 'error') }
   }
 
+  /** Liga la orden a un cliente registrado (correo o teléfono) para que la vea y la califique en su cuenta. */
+  async function handleLinkClient(e) {
+    e.preventDefault()
+    if (!clienteBusqueda.trim()) return
+    setLigando(true)
+    try {
+      await linkOrderClient(id, clienteBusqueda.trim())
+      setClienteBusqueda('')
+      notify('Cliente ligado: podrá calificar su visita desde "Mis pedidos"', 'success')
+      load()
+    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo ligar el cliente', 'error') }
+    finally { setLigando(false) }
+  }
+
+  async function handleUnlinkClient() {
+    try { await unlinkOrderClient(id); load() } catch (err) { notify(err.response?.data?.message ?? 'No se pudo quitar el cliente', 'error') }
+  }
+
+  /** QR "califica tu visita" de una cuenta pagada, para que el cliente lo escanee en la mesa. */
+  async function handleShowOpinionQr(c) {
+    try {
+      const r = await getOpinionQr(c.id)
+      setQrOpinion({ cuentaId: c.id, ...r.data.data })
+    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo generar el QR', 'error') }
+  }
+
   async function handleCancelOrder() {
     if (!(await confirmDialog('¿Cancelar toda la orden?', { confirmText: 'Cancelar orden' }))) return
     try {
@@ -823,7 +857,24 @@ export default function OrderDetail() {
               </p>
             )}
             {order.notas && <p className="text-sm text-gray-600">📝 {order.notas}</p>}
-            {order.cliente && <p className="text-sm text-gray-600">⭐ Cliente registrado · {order.cliente.email}</p>}
+            {order.cliente ? (
+              <p className="text-sm text-gray-600">
+                ⭐ Cliente registrado · {order.cliente.nombre} ({order.cliente.email})
+                {order.origen !== 'WEB' && (
+                  <button type="button" onClick={handleUnlinkClient} className="ml-2 text-xs text-red-600 hover:underline">Quitar</button>
+                )}
+              </p>
+            ) : order.origen !== 'WEB' && order.estado !== 'CANCELADA' && (
+              // Ligar la visita a la cuenta del cliente en la página web: así la ve en "Mis
+              // pedidos" y puede calificarla desde ahí (además del QR del ticket).
+              <form onSubmit={handleLinkClient} className="mt-1 flex flex-wrap items-center gap-2">
+                <input className="input !w-64 !py-1 text-sm" placeholder="Correo o teléfono del cliente registrado"
+                  value={clienteBusqueda} onChange={(e) => setClienteBusqueda(e.target.value)} />
+                <button disabled={ligando || !clienteBusqueda.trim()} className="btn-secondary !py-1 text-sm disabled:opacity-40">
+                  {ligando ? '...' : 'Ligar cliente'}
+                </button>
+              </form>
+            )}
             {order.reporteTipo && (
               <div className={`mt-1 rounded-lg border px-3 py-1.5 ${order.reporteTipo === 'BIEN' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
                 <p className="text-sm font-semibold">
@@ -1024,7 +1075,25 @@ export default function OrderDetail() {
                     {c.estado === 'PAGADA' && (
                       <button className="btn-secondary w-full py-2 text-sm" onClick={() => handleViewTicket(c)}>Ver ticket</button>
                     )}
+                    {c.estado === 'PAGADA' && order.mesa && !opiniones[c.id] && (
+                      <button className="w-full py-2 text-sm font-medium rounded-lg border border-yellow-300 text-yellow-800 bg-yellow-50 hover:bg-yellow-100"
+                        onClick={() => handleShowOpinionQr(c)}>⭐ QR para que opine</button>
+                    )}
                   </div>
+                  {opiniones[c.id] && (
+                    <div className="mt-2 rounded-lg bg-yellow-50 border border-yellow-200 px-3 py-2 text-sm">
+                      <p>
+                        <span className="text-yellow-500">{'★'.repeat(opiniones[c.id].estrellas)}</span>
+                        <span className="text-gray-300">{'★'.repeat(5 - opiniones[c.id].estrellas)}</span>
+                        <span className="ml-1 font-semibold text-gray-700">Opinión del cliente</span>
+                      </p>
+                      {opiniones[c.id].meseroEstrellas && <p className="text-xs text-gray-600">Atención del mesero: {'★'.repeat(opiniones[c.id].meseroEstrellas)}</p>}
+                      {opiniones[c.id].platillos.length > 0 && (
+                        <p className="text-xs text-gray-600">{opiniones[c.id].platillos.map((p) => `${p.meGusta ? '👍' : '👎'} ${p.nombre}`).join(' · ')}</p>
+                      )}
+                      {opiniones[c.id].comentario && <p className="text-gray-700 italic">"{opiniones[c.id].comentario}"</p>}
+                    </div>
+                  )}
                 </div>
               ))}
               {accounts.length === 0 && <p className="text-gray-400 text-sm">Sin cuentas generadas</p>}
@@ -1032,6 +1101,19 @@ export default function OrderDetail() {
           </div>
         </div>
       </div>
+
+      {/* QR "califica tu visita" en pantalla */}
+      {qrOpinion && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => setQrOpinion(null)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 text-center" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold">¿Qué tal estuvo su visita?</h3>
+            <p className="text-sm text-gray-500 mt-1">Que el cliente escanee este código para calificar (también viene en su ticket).</p>
+            <img src={qrOpinion.qrDataUrl} alt="QR para opinar" className="mx-auto mt-4 w-60 h-60" />
+            <p className="text-xs text-gray-400 break-all mt-2">{qrOpinion.url}</p>
+            <button className="btn-secondary w-full mt-4" onClick={() => setQrOpinion(null)}>Cerrar</button>
+          </div>
+        </div>
+      )}
 
       {/* Add item modal */}
       {showAddItem && (

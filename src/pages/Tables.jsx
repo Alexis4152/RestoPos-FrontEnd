@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getTables, createTable, updateTable, deleteTable } from '../api/mesas'
 import { getZonas, createZona, updateZona, deleteZona } from '../api/zonas'
 import { openOrder } from '../api/ordenes'
+import { getReservaciones } from '../api/reservaciones'
+import { horaCorta, necesidades } from '../utils/reservaciones'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
@@ -68,8 +70,18 @@ export default function Tables() {
   const [zonaFieldError, setZonaFieldError] = useState('')
   const [zonaLoading, setZonaLoading] = useState(false)
 
+  // Reservaciones confirmadas de hoy que aún no llegan, por mesa (la más próxima primero).
+  const [reservasPorMesa, setReservasPorMesa] = useState({})
   function load() {
     getTables().then((r) => setTables(r.data.data ?? []))
+    getReservaciones().then((r) => {
+      const desde = Date.now() - 60 * 60 * 1000 // hasta 1 h de retraso sigue mostrándose
+      const map = {}
+      ;(r.data.data ?? [])
+        .filter((x) => x.estado === 'CONFIRMADA' && x.mesaId && new Date(x.fechaHora).getTime() >= desde)
+        .forEach((x) => { (map[x.mesaId] ??= []).push(x) })
+      setReservasPorMesa(map)
+    }).catch(() => {})
   }
   function loadZonas() {
     getZonas().then((r) => setZonas(r.data.data ?? []))
@@ -388,6 +400,13 @@ export default function Tables() {
                   <p className="text-sm mt-2 text-gray-800">Tomó la orden: <span className="font-bold">{mesa.ordenActiva.mesero.name}</span></p>
                 )}
                 {mesa.capacidad && <p className="text-xs opacity-70 mt-1">{mesa.capacidad} personas</p>}
+                {reservasPorMesa[mesa.id]?.map((rv) => (
+                  <p key={rv.id} className="mt-2 rounded-md bg-yellow-100 border border-yellow-300 px-2 py-1 text-xs font-semibold text-yellow-900"
+                    title={necesidades(rv).map((c) => c.texto).join(', ')}>
+                    📅 {horaCorta(rv.fechaHora)} · {rv.nombre} ({rv.personas})
+                    {necesidades(rv).length > 0 && <span className="ml-1">{necesidades(rv).map((c) => c.icono).join(' ')}</span>}
+                  </p>
+                ))}
                 {mesa.ordenActiva && <p className="text-xs opacity-70 mt-2">Total: ${Number(mesa.ordenActiva.total ?? 0).toFixed(2)}</p>}
                 {isAdmin && (
                   <div className="mt-3 text-xs" onClick={(e) => e.stopPropagation()}>

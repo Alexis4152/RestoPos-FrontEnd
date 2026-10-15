@@ -5,6 +5,7 @@ import { SECTIONS, WEB_ONLY_SECTIONS } from '../config/sections'
 import defaultLogo from '../assets/logo.png'
 import PickupNotifier from './PickupNotifier'
 import WebOrdersNotifier from './WebOrdersNotifier'
+import ReservasNotifier from './ReservasNotifier'
 import { resolveMediaUrl } from '../utils/media'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 
@@ -99,6 +100,12 @@ export default function Layout({ children }) {
 
   // Usuarios y Roles van dentro de "Configuración", no en el menú principal.
   const links = SECTIONS.filter((s) => hasSection(s.code) && !['USERS', 'ROLES'].includes(s.code) && !WEB_ONLY_SECTIONS.includes(s.code))
+  // "Opiniones" de clientes va junto a Reportes (misma sección de permisos).
+  // "Reservaciones" va junto a Mesas (misma sección de permisos).
+  const idxMesas = links.findIndex((s) => s.code === 'TABLES')
+  if (idxMesas >= 0) links.splice(idxMesas + 1, 0, { code: 'TABLES_RESERVAS', label: 'Reservaciones', icon: '📅', to: '/reservaciones' })
+  const idxReportes = links.findIndex((s) => s.code === 'REPORTS')
+  if (idxReportes >= 0) links.splice(idxReportes + 1, 0, { code: 'REPORTS_OPINIONES', label: 'Opiniones', icon: '⭐', to: '/opiniones' })
 
   const canSeeRoles = hasSection('ROLES')
   const configItems = [
@@ -255,6 +262,7 @@ export default function Layout({ children }) {
       {(hasSection('ORDERS') || hasSection('TAKEAWAY')) && <PickupNotifier />}
       {/* Pedidos de la página web por aceptar — para quien atiende "Para llevar". */}
       {(hasSection('TAKEAWAY') || hasSection('ORDERS')) && <WebOrdersNotifier />}
+      {hasSection('TABLES') && <ReservasNotifier />}
     </div>
   )
 }

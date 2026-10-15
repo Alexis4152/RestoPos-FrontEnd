@@ -26,6 +26,9 @@ import StoreInfo from './pages/StoreInfo'
 import CashCutSchedule from './pages/CashCutSchedule'
 import SelectTienda from './pages/SelectTienda'
 import PublicSite from './pages/PublicSite'
+import OpinionPage from './pages/publicSite/OpinionPage'
+import Opiniones from './pages/Opiniones'
+import Reservaciones from './pages/Reservaciones'
 import WebConfig from './pages/WebConfig'
 
 /**
@@ -46,6 +49,8 @@ function AppRoutes() {
       <Route path="/reset-password" element={<ResetPassword />} />
       {/* Página web pública de cada tienda (menú, mesas, pedidos): sin sesión ni Layout. */}
       <Route path="/sitio/:slug" element={<PublicSite />} />
+      {/* QR "califica tu visita" del ticket: sin sesión, el código identifica la cuenta. */}
+      <Route path="/sitio/:slug/opinion/:token" element={<OpinionPage />} />
       {/* Sesión requerida pero sin Layout (sidebar): un usuario con mustChangePassword cae
           forzosamente aquí (ver PrivateRoute) hasta que elige una contraseña propia. */}
       <Route path="/change-password" element={<PrivateRoute><ChangePasswordRequired /></PrivateRoute>} />
@@ -61,6 +66,7 @@ function AppRoutes() {
               <Routes>
                 <Route path="/" element={<PrivateRoute section="DASHBOARD"><Dashboard /></PrivateRoute>} />
                 <Route path="/tables" element={<PrivateRoute section="TABLES"><Tables /></PrivateRoute>} />
+                <Route path="/reservaciones" element={<PrivateRoute section="TABLES"><Reservaciones /></PrivateRoute>} />
                 <Route path="/takeaway" element={<PrivateRoute section="TAKEAWAY"><Takeaway /></PrivateRoute>} />
                 <Route path="/orders" element={<PrivateRoute section="ORDERS"><Orders /></PrivateRoute>} />
                 <Route path="/orders/:id" element={<PrivateRoute section={['ORDERS', 'TAKEAWAY']}><OrderDetail /></PrivateRoute>} />
@@ -70,6 +76,7 @@ function AppRoutes() {
                 <Route path="/cash-cuts" element={<PrivateRoute section="CASH_CUTS"><CashCuts /></PrivateRoute>} />
                 <Route path="/sales" element={<PrivateRoute section="SALES"><Sales /></PrivateRoute>} />
                 <Route path="/reports" element={<PrivateRoute section="REPORTS"><Reports /></PrivateRoute>} />
+                <Route path="/opiniones" element={<PrivateRoute section="REPORTS"><Opiniones /></PrivateRoute>} />
                 <Route path="/users" element={<PrivateRoute section="USERS"><Users /></PrivateRoute>} />
                 <Route path="/roles" element={<PrivateRoute section="ROLES"><Roles /></PrivateRoute>} />
                 <Route path="/categories" element={<PrivateRoute adminOnly><Categories /></PrivateRoute>} />
