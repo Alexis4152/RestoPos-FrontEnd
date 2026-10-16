@@ -6,10 +6,21 @@ import { useNotify } from '../context/NotifyContext'
 import { playChime } from '../utils/sound'
 import { useLiveRefresh } from '../utils/liveEvents'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import ComprobanteImagen from '../components/ComprobanteImagen'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 const fmtTime = (d) => (d ? new Date(d).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '—')
 const PAGO_PREF = { EFECTIVO: '💵 Efectivo', TARJETA: '💳 Tarjeta', TRANSFERENCIA: '🏦 Transferencia' }
+
+/** Costo de envío del pedido (cargos extra no cancelados). */
+const costoEnvio = (o) => (o.items ?? [])
+  .filter((i) => i.cargoExtra && i.estado !== 'CANCELADO')
+  .reduce((s, i) => s + Number(i.subtotal ?? 0), 0)
+
+// Pedido web por transferencia: el cliente sube la foto del comprobante desde su seguimiento.
+const esTransferWeb = (o) => o.origen === 'WEB' && o.metodoPago === 'TRANSFERENCIA'
+// Si el cliente dijo que su transferencia NO incluye el envío, el repartidor lo cobra en efectivo.
+const envioEnEfectivo = (o) => (o.comprobantePath && o.transferenciaIncluyeEnvio === false ? costoEnvio(o) : 0)
 
 /** ¿Ya salieron de cocina todos sus platillos? (para saber si el pedido está listo para llevarse). */
 // ¿El restaurante ya le entregó la bolsa al repartidor? ("Entregado para llevar" en el punto
@@ -187,6 +198,9 @@ export default function Deliveries() {
           const et = etapa(o)
           const entregado = entregadoAlRepartidor(o)
           const pagado = o.estado === 'PAGADA'
+          // Transferencia web con comprobante: para el repartidor ya está pagado (se registra al entregar).
+          const transferido = !pagado && esTransferWeb(o) && !!o.comprobantePath
+          const envioCash = transferido ? envioEnEfectivo(o) : 0
           const platillos = (o.items ?? []).filter((i) => !i.cargoExtra && i.estado !== 'CANCELADO')
           return (
             <div key={o.id} className="card border-2 border-gray-100">
@@ -197,9 +211,10 @@ export default function Deliveries() {
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-lg font-extrabold text-gray-900">{fmt(o.total)}</p>
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${pagado ? 'bg-green-600 text-white' : 'bg-orange-500 text-white'}`}>
-                    {pagado ? 'PAGADO' : 'POR COBRAR'}
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${pagado || transferido ? 'bg-green-600 text-white' : 'bg-orange-500 text-white'}`}>
+                    {pagado ? 'PAGADO' : transferido ? 'PAGADO · TRANSF.' : 'POR COBRAR'}
                   </span>
+                  {envioCash > 0 && <p className="text-xs font-semibold text-orange-700 mt-1">Cobra envío {fmt(envioCash)} en efectivo</p>}
                 </div>
               </div>
 
@@ -215,6 +230,9 @@ export default function Deliveries() {
                 <a className="block mt-1 text-sm text-blue-700 hover:underline" href={`tel:${o.clienteTelefono}`}>📞 {o.clienteTelefono}</a>
               )}
               {o.metodoPago && !pagado && <p className="text-sm text-gray-600 mt-1">El cliente dijo que paga con: <span className="font-semibold">{PAGO_PREF[o.metodoPago] ?? o.metodoPago}</span></p>}
+              {esTransferWeb(o) && !pagado && !o.comprobantePath && (
+                <p className="text-xs font-semibold text-orange-700 mt-1">⏳ El cliente aún no sube el comprobante de su transferencia</p>
+              )}
               {o.notas && <p className="text-sm text-gray-700 mt-1">📝 {o.notas}</p>}
 
               <ul className="mt-2 text-sm text-gray-700 border-t border-gray-100 pt-2">
@@ -295,7 +313,37 @@ export default function Deliveries() {
   )
 }
 
-/** Modal de entrega: si falta pagar, cobra en efectivo (con cambio) o transferencia (con datos de la tienda). */
+/** Captura del efectivo recibido con el cambio a entregar o lo que falta por cobrar. */
+function EfectivoRecibido({ label, recibido, setRecibido, recibidoExcede, cambio, falta }) {
+  return (
+    <>
+      <label className="text-xs font-medium text-gray-600">{label}</label>
+      <input className="input mt-1" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00"
+        value={recibido} onChange={(e) => setRecibido(e.target.value)} />
+      {recibidoExcede && (
+        <p className="text-red-600 text-xs mt-1">El número es excesivamente grande — el máximo permitido es 9,999,999,999.99</p>
+      )}
+      {!recibidoExcede && recibido !== '' && (
+        cambio != null && cambio >= 0 ? (
+          <div className="mt-2 rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-center overflow-hidden">
+            <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">Cambio a entregar</p>
+            <p className="font-bold text-green-700 text-2xl mt-0.5 break-words">{fmt(cambio)}</p>
+          </div>
+        ) : (
+          <div className="mt-2 rounded-xl border-2 border-red-200 bg-red-50 px-4 py-3 text-center overflow-hidden">
+            <p className="text-xs font-semibold text-red-700 uppercase tracking-wide">Falta por cobrar</p>
+            <p className="font-bold text-red-600 text-2xl mt-0.5 break-words">{fmt(falta)}</p>
+          </div>
+        )
+      )}
+    </>
+  )
+}
+
+/**
+ * Modal de entrega: si falta pagar, cobra en efectivo (con cambio) o transferencia. En pedidos
+ * web la transferencia se comprueba con la foto que sube el cliente; en los de caja, con folio.
+ */
 function CobroModal({ orden, turnoAbierto, onClose, onDone }) {
   const { notify } = useNotify()
   const pagado = orden.estado === 'PAGADA'
@@ -311,19 +359,27 @@ function CobroModal({ orden, turnoAbierto, onClose, onDone }) {
   // efectivo es obligatorio capturar con cuánto paga, el cambio no puede quedar negativo y
   // el monto no puede pasar del máximo de Pago.recibido (NUMERIC(12,2)).
   const total = Number(orden.total)
+  // Transferencia de pedido web: se comprueba con la foto que sube el cliente (no con folio).
+  // Si el cliente dijo que no incluye el envío, el envío se cobra aquí en efectivo.
+  const transferWeb = metodo === 'TRANSFER' && esTransferWeb(orden)
+  const sinComprobante = transferWeb && !orden.comprobantePath
+  const envioCash = transferWeb ? envioEnEfectivo(orden) : 0
+  // Lo que se cobra en efectivo: todo (efectivo) o solo el envío (transferencia sin envío).
+  const montoEfectivo = metodo === 'CASH' ? total : envioCash
+  const pideEfectivo = montoEfectivo > 0
   const recibidoNum = recibido === '' ? null : Number(recibido)
-  const cambio = metodo === 'CASH' && recibidoNum != null && !Number.isNaN(recibidoNum) ? recibidoNum - total : null
-  const recibidoExcede = metodo === 'CASH' && recibidoNum != null && recibidoNum > 9999999999.99
-  const faltaEfectivo = metodo === 'CASH' && (cambio === null || cambio < 0)
-  const bloqueado = saving || (!pagado && (!turnoAbierto || faltaEfectivo || recibidoExcede))
+  const cambio = pideEfectivo && recibidoNum != null && !Number.isNaN(recibidoNum) ? recibidoNum - montoEfectivo : null
+  const recibidoExcede = pideEfectivo && recibidoNum != null && recibidoNum > 9999999999.99
+  const faltaEfectivo = pideEfectivo && (cambio === null || cambio < 0)
+  const bloqueado = saving || (!pagado && (!turnoAbierto || faltaEfectivo || recibidoExcede || sinComprobante))
 
   async function confirmar() {
     setSaving(true)
     try {
       await deliverOrder(orden.id, pagado ? {} : {
         metodo,
-        recibido: metodo === 'CASH' ? recibidoNum : undefined,
-        referencia: metodo === 'TRANSFER' ? referencia.trim() || undefined : undefined,
+        recibido: pideEfectivo ? recibidoNum : undefined,
+        referencia: metodo === 'TRANSFER' && !transferWeb ? referencia.trim() || undefined : undefined,
       })
       notify(`Pedido #${orden.id} entregado${pagado ? '' : ' y cobrado'}`, 'success')
       onDone()
@@ -363,24 +419,31 @@ function CobroModal({ orden, turnoAbierto, onClose, onDone }) {
 
             {metodo === 'CASH' ? (
               <div className="mt-4">
-                <label className="text-xs font-medium text-gray-600">¿Con cuánto paga el cliente?</label>
-                <input className="input mt-1" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00"
-                  value={recibido} onChange={(e) => setRecibido(e.target.value)} />
-                {recibidoExcede && (
-                  <p className="text-red-600 text-xs mt-1">El número es excesivamente grande — el máximo permitido es 9,999,999,999.99</p>
-                )}
-                {!recibidoExcede && recibido !== '' && (
-                  cambio != null && cambio >= 0 ? (
-                    <div className="mt-2 rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-center overflow-hidden">
-                      <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">Cambio a entregar</p>
-                      <p className="font-bold text-green-700 text-2xl mt-0.5 break-words">{fmt(cambio)}</p>
-                    </div>
-                  ) : (
-                    <div className="mt-2 rounded-xl border-2 border-red-200 bg-red-50 px-4 py-3 text-center overflow-hidden">
-                      <p className="text-xs font-semibold text-red-700 uppercase tracking-wide">Falta por cobrar</p>
-                      <p className="font-bold text-red-600 text-2xl mt-0.5 break-words">{fmt(total - (recibidoNum ?? 0))}</p>
-                    </div>
-                  )
+                <EfectivoRecibido label="¿Con cuánto paga el cliente?" recibido={recibido} setRecibido={setRecibido}
+                  recibidoExcede={recibidoExcede} cambio={cambio} falta={montoEfectivo - (recibidoNum ?? 0)} />
+              </div>
+            ) : transferWeb ? (
+              <div className="mt-4">
+                {orden.comprobantePath ? (
+                  <>
+                    <p className="text-sm font-semibold text-green-800">✅ El cliente subió su comprobante</p>
+                    <div className="mt-2"><ComprobanteImagen ordenId={orden.id} version={orden.comprobanteAt} /></div>
+                    {envioCash > 0 ? (
+                      <div className="mt-3 rounded-xl bg-orange-50 border border-orange-200 p-3">
+                        <p className="text-sm text-orange-900">La transferencia cubre {fmt(total - envioCash)}. <b>Cobra el envío en efectivo: {fmt(envioCash)}</b></p>
+                        <div className="mt-2">
+                          <EfectivoRecibido label="¿Con cuánto paga el envío?" recibido={recibido} setRecibido={setRecibido}
+                            recibidoExcede={recibidoExcede} cambio={cambio} falta={envioCash - (recibidoNum ?? 0)} />
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-green-800 bg-green-50 rounded-lg px-3 py-2">La transferencia incluye el total, no cobres nada en efectivo.</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-orange-800 bg-orange-50 rounded-lg px-3 py-2">
+                    El cliente todavía no sube el comprobante de su transferencia. Pídele que lo suba en el seguimiento de su pedido, o cóbrale en efectivo.
+                  </p>
                 )}
               </div>
             ) : (
@@ -409,6 +472,7 @@ function CobroModal({ orden, turnoAbierto, onClose, onDone }) {
             className="btn-primary flex-1 disabled:opacity-40 disabled:cursor-not-allowed"
             title={pagado ? undefined
               : !turnoAbierto ? 'Inicia tu turno para poder cobrar'
+              : sinComprobante ? 'El cliente todavía no sube el comprobante de su transferencia'
               : recibidoExcede ? 'El monto capturado es excesivamente grande'
               : faltaEfectivo ? 'Captura cuánto pagó el cliente en efectivo' : undefined}>
             {saving ? 'Procesando...' : pagado ? 'Confirmar entrega' : 'Cobrar'}

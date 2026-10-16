@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { etiquetaEntrega, etiquetaCobro } from '../components/EntregaSeguimiento'
 import { useNavigate } from 'react-router-dom'
 import { getTakeawayOrders, openOrder, getDeliveryFee } from '../api/ordenes'
 import { useNotify } from '../context/NotifyContext'
@@ -125,7 +126,10 @@ export default function Takeaway() {
             {orden.clienteTelefono && <p className="text-xs opacity-80">📞 {orden.clienteTelefono}</p>}
             {orden.tipoEntrega && <p className="text-xs mt-1 font-semibold">{orden.tipoEntrega === 'DOMICILIO' ? '🛵 A domicilio' : '🛍️ Para recoger'}</p>}
             {orden.tipoEntrega === 'DOMICILIO' && (
-              <p className="text-xs mt-0.5">{orden.entregadaAt ? '✅ Entregado' : orden.repartidor ? `🛵 Lo lleva ${orden.repartidor.name}` : 'Sin repartidor aún'}</p>
+              <div className="flex flex-wrap gap-1 mt-1">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${etiquetaEntrega(orden).cls}`}>{etiquetaEntrega(orden).texto}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${etiquetaCobro(orden).cls}`}>{etiquetaCobro(orden).texto}</span>
+              </div>
             )}
             <p className="text-sm mt-2 text-gray-800">
               Tomó la orden: <span className="font-bold">{orden.mesero?.name ?? (orden.pendienteAceptar ? 'nadie aún' : '—')}</span>

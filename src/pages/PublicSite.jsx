@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { getPublicTienda, getPublicMenu, getPublicMesas, createPublicPedido, getPublicPedido, getClienteMe, logoutCliente, verificarCorreoCliente, reenviarVerificacionCliente } from '../api/publicSite'
+import { getPublicTienda, getPublicMenu, getPublicMesas, createPublicPedido, getPublicPedido, uploadComprobantePedido, getClienteMe, logoutCliente, verificarCorreoCliente, reenviarVerificacionCliente } from '../api/publicSite'
 import { useAuth } from '../context/AuthContext'
 import { AuthScreen, MisPedidos, PerfilCliente, RestablecerScreen, esRepartidorDe } from './publicSite/Account'
 import Deliveries from './Deliveries'
+import ComprobanteTransferencia, { puedeSubirComprobante } from './publicSite/ComprobanteTransferencia'
 import Reservaciones, { leerCodigosReserva, guardarCodigosReserva } from './publicSite/Reservaciones'
 import { usePublicLiveRefresh, publicStreamBase } from '../utils/liveEvents'
 import { applyTiendaBrand } from '../utils/theme'
@@ -17,7 +18,7 @@ const PAGO_LABEL = { EFECTIVO: '💵 Efectivo', TARJETA: '💳 Tarjeta', TRANSFE
 const PAGO_HINT = {
   EFECTIVO: 'Pagas al recibir o al recoger tu pedido.',
   TARJETA: 'Pagas con tarjeta al recibir o al recoger (terminal).',
-  TRANSFERENCIA: 'Transfiere el total a la cuenta de abajo y muestra tu comprobante.',
+  TRANSFERENCIA: 'Transfiere a la cuenta de abajo y sube la foto de tu comprobante en el seguimiento del pedido.',
 }
 const MESA_STYLE = {
   LIBRE: 'bg-green-50 border-green-300 text-green-800',
@@ -71,6 +72,7 @@ export default function PublicSite() {
   const [cartOpen, setCartOpen] = useState(false)
   const [checkout, setCheckout] = useState(false)
   const [customize, setCustomize] = useState(null) // producto en personalización
+  const [avisoCarrito, setAvisoCarrito] = useState(null) // lo que no se pudo agregar al "volver a pedir"
 
   // Acceso: cliente registrado ({ token, cliente }), invitado, o repartidor (sesión del
   // personal, ver esRepartidorDe). Sin ninguno se muestra la pantalla de acceso.
@@ -235,6 +237,20 @@ export default function PublicSite() {
   const puedePedir = (tienda.recoger || tienda.domicilio) && !esRepartidor
   const puedeReservar = tienda.reservaciones && !esRepartidor
 
+  /**
+   * "Volver a pedir" desde Mis pedidos: suma al carrito los platillos del pedido anterior (con
+   * los precios de hoy) y abre el carrito, avisando lo que ya no está disponible.
+   */
+  function repetirPedido({ lineas, noDisponibles, cambiaron }) {
+    lineas.forEach((l) => addToCart({ id: l.productoId, nombre: l.nombre, precio: l.precio, imageUrl: l.imageUrl }, l.mods, l.nota ?? '', l.cantidad))
+    const avisos = []
+    if (noDisponibles.length > 0) avisos.push(`No disponible ahora: ${noDisponibles.join(', ')}.`)
+    if (cambiaron.length > 0) avisos.push(`Revisa los extras de: ${cambiaron.join(', ')} (algunas opciones ya no existen).`)
+    setAvisoCarrito(avisos.length > 0 ? avisos.join(' ') : null)
+    setCheckout(false)
+    setCartOpen(true)
+  }
+
   function sesionVencida() {
     setClienteSesion(null)
     setTab('menu')
@@ -276,8 +292,10 @@ export default function PublicSite() {
           <img src={resolveMediaUrl(tienda.logoPath) || defaultLogo} alt="" className="w-10 h-10 rounded-full object-cover border border-gray-200" />
           <p className="font-bold text-lg truncate flex-1">{tienda.nombre}</p>
           <nav className="hidden sm:flex items-center gap-1 text-sm font-medium">
-            <button onClick={() => setTab('menu')} className={`px-3 py-2 rounded-lg ${tab === 'menu' ? 'bg-purple-50 text-purple-700' : 'text-gray-600 hover:bg-gray-100'}`}>Menú</button>
-            {tienda.mostrarMesas && (
+            {!esRepartidor && (
+              <button onClick={() => setTab('menu')} className={`px-3 py-2 rounded-lg ${tab === 'menu' ? 'bg-purple-50 text-purple-700' : 'text-gray-600 hover:bg-gray-100'}`}>Menú</button>
+            )}
+            {tienda.mostrarMesas && !esRepartidor && (
               <button onClick={() => setTab('mesas')} className={`px-3 py-2 rounded-lg ${tab === 'mesas' ? 'bg-purple-50 text-purple-700' : 'text-gray-600 hover:bg-gray-100'}`}>Mesas</button>
             )}
             {puedeReservar && (
@@ -342,8 +360,10 @@ export default function PublicSite() {
         </div>
         {/* Pestañas en móvil */}
         <div className="sm:hidden flex border-t border-gray-100 text-sm font-medium">
-          <button onClick={() => setTab('menu')} className={`flex-1 py-2.5 ${tab === 'menu' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Menú</button>
-          {tienda.mostrarMesas && (
+          {!esRepartidor && (
+            <button onClick={() => setTab('menu')} className={`flex-1 py-2.5 ${tab === 'menu' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Menú</button>
+          )}
+          {tienda.mostrarMesas && !esRepartidor && (
             <button onClick={() => setTab('mesas')} className={`flex-1 py-2.5 ${tab === 'mesas' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Mesas</button>
           )}
           {puedeReservar && (
@@ -358,7 +378,8 @@ export default function PublicSite() {
         </div>
       </header>
 
-      {/* Portada */}
+      {/* Portada (no para el repartidor: él solo ve sus entregas) */}
+      {!esRepartidor && (
       <section className="bg-gradient-to-br from-purple-700 via-purple-600 to-purple-500 text-white">
         <div className="max-w-6xl mx-auto px-4 py-10 sm:py-14 flex flex-col sm:flex-row items-center gap-6">
           <img src={resolveMediaUrl(tienda.logoPath) || defaultLogo} alt="" className="w-24 h-24 sm:w-28 sm:h-28 rounded-full object-cover border-4 border-white/70 shadow-xl bg-white" />
@@ -381,6 +402,7 @@ export default function PublicSite() {
           </div>
         </div>
       </section>
+      )}
 
       <main className="max-w-6xl mx-auto px-4 py-8 pb-28">
         {avisoCorreo && (
@@ -398,16 +420,9 @@ export default function PublicSite() {
             </button>
           </div>
         )}
-        {tab === 'menu' && (
+        {tab === 'menu' && !esRepartidor && (
           <>
-            {/* Solo si la TIENDA no recibe pedidos; al repartidor se le quita el carrito, pero
-                eso no significa que el restaurante no reciba pedidos. */}
-            {esRepartidor && (
-              <p className="mb-6 rounded-xl bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 text-sm">
-                🛵 Estás como repartidor: aquí solo consultas el menú. Tus pedidos están en <button type="button" className="font-semibold underline" onClick={() => setTab('entregas')}>Entregas</button>.
-              </p>
-            )}
-            {!esRepartidor && !puedePedir && (
+            {!puedePedir && (
               <p className="mb-6 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 text-sm">
                 Por ahora este restaurante no recibe pedidos en línea, pero puedes ver su menú.
               </p>
@@ -472,7 +487,7 @@ export default function PublicSite() {
           </>
         )}
 
-        {tab === 'mesas' && tienda.mostrarMesas && (
+        {tab === 'mesas' && tienda.mostrarMesas && !esRepartidor && (
           <>
             <h2 className="text-2xl font-bold">Disponibilidad de mesas</h2>
             <p className="text-sm text-gray-500 mt-1">
@@ -513,14 +528,15 @@ export default function PublicSite() {
           </>
         )}
 
-        {tab === 'entregas' && esRepartidor && <Deliveries />}
+        {esRepartidor && <Deliveries />}
 
         {tab === 'reservar' && puedeReservar && (
           <Reservaciones slug={slug} tienda={tienda} cliente={cliente} clienteToken={clienteSesion?.token} onSesionVencida={sesionVencida} />
         )}
 
         {tab === 'mispedidos' && cliente && (
-          <MisPedidos slug={slug} token={clienteSesion.token} onSesionVencida={sesionVencida} onPedir={() => setTab('menu')} />
+          <MisPedidos slug={slug} tienda={tienda} token={clienteSesion.token} onSesionVencida={sesionVencida} onPedir={() => setTab('menu')}
+            onRepetir={puedePedir ? repetirPedido : undefined} />
         )}
 
         {tab === 'perfil' && cliente && (
@@ -533,7 +549,8 @@ export default function PublicSite() {
             <h2 className="text-2xl font-bold">{pedidos.length === 1 ? 'Mi pedido' : 'Mis pedidos'}</h2>
             {pedidos.length === 0 && <p className="text-center text-gray-400 py-10">No tienes pedidos en seguimiento.</p>}
             {[...pedidos].reverse().map((p) => (
-              <PedidoTracker key={p.id} tienda={tienda} status={statuses[p.id]} onCerrar={() => cerrarSeguimiento(p.id)} />
+              <PedidoTracker key={p.id} tienda={tienda} status={statuses[p.id]} onCerrar={() => cerrarSeguimiento(p.id)}
+                slug={slug} token={p.token} onActualizado={(st) => setStatuses((s) => ({ ...s, [p.id]: st }))} />
             ))}
             {puedePedir && (
               <button onClick={() => setTab('menu')} className="w-full rounded-full border border-gray-300 bg-white py-3 font-semibold hover:bg-gray-50">
@@ -577,7 +594,8 @@ export default function PublicSite() {
         <CartDrawer
           slug={slug} tienda={tienda} cart={cart} total={cartTotal} checkout={checkout}
           cliente={cliente} clienteToken={clienteSesion?.token} onSesionVencida={() => { sesionVencida(); setCartOpen(false) }}
-          setCheckout={setCheckout} setQty={setQty} onClose={() => setCartOpen(false)}
+          setCheckout={setCheckout} setQty={setQty} onClose={() => { setCartOpen(false); setAvisoCarrito(null) }}
+          aviso={avisoCarrito} onCerrarAviso={() => setAvisoCarrito(null)}
           onPedidoCreado={(p) => {
             setCart([])
             setCartOpen(false)
@@ -649,6 +667,11 @@ function CustomizeModal({ producto, onClose, onAdd }) {
               rows={2} maxLength={200} placeholder="Ej. sin cebolla" value={nota} onChange={(e) => setNota(e.target.value)} />
           </div>
         </div>
+        {unit > Number(producto.precio) && (
+          <p className="px-4 pt-3 text-xs text-gray-600 text-right border-t border-gray-100">
+            {fmt(producto.precio)} + {fmt(unit - Number(producto.precio))} extras = <b>{fmt(unit)}</b> c/u
+          </p>
+        )}
         <div className="p-4 border-t border-gray-100 flex items-center gap-3">
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => setCantidad((q) => Math.max(1, q - 1))} className="w-9 h-9 rounded-full bg-gray-100 font-bold">−</button>
@@ -666,7 +689,7 @@ function CustomizeModal({ producto, onClose, onAdd }) {
 }
 
 /** Panel lateral del carrito; en su segundo paso, el formulario para enviar el pedido. */
-function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, onClose, onPedidoCreado, cliente, clienteToken, onSesionVencida }) {
+function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, onClose, onPedidoCreado, cliente, clienteToken, onSesionVencida, aviso, onCerrarAviso }) {
   useEscapeKey(onClose)
   const pagos = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA'].filter((k) =>
     (k === 'EFECTIVO' && tienda.pagoEfectivo) || (k === 'TARJETA' && tienda.pagoTarjeta) || (k === 'TRANSFERENCIA' && tienda.pagoTransferencia))
@@ -737,13 +760,24 @@ function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, 
         {!checkout ? (
           <>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {aviso && (
+                <div className="rounded-xl border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm text-yellow-900 flex items-start gap-2">
+                  <p className="flex-1">⚠️ {aviso}</p>
+                  <button type="button" onClick={onCerrarAviso} className="opacity-60 hover:opacity-100">✕</button>
+                </div>
+              )}
               {cart.length === 0 && <p className="text-center text-gray-400 py-16">Tu carrito está vacío.</p>}
               {cart.map((l) => (
                 <div key={l.key} className="flex gap-3">
                   {l.imageUrl ? <img src={resolveMediaUrl(l.imageUrl)} alt="" className="w-16 h-16 rounded-xl object-cover" /> : <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">🍽️</div>}
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold leading-snug">{l.nombre}</p>
-                    {l.mods.map((m) => <p key={m.id} className="text-xs text-gray-500">{m.grupo}: {m.nombre}</p>)}
+                    {l.mods.map((m) => (
+                      <p key={m.id} className="text-xs text-gray-500">{m.grupo}: {m.nombre}{Number(m.precioExtra) > 0 ? ` (+${fmt(m.precioExtra)})` : ''}</p>
+                    ))}
+                    {l.mods.some((m) => Number(m.precioExtra) > 0) && (
+                      <p className="text-xs font-medium text-purple-700">{fmt(l.precio)} + {fmt(lineUnit(l) - Number(l.precio))} extras = {fmt(lineUnit(l))} c/u</p>
+                    )}
                     {l.nota && <p className="text-xs text-gray-500 italic">"{l.nota}"</p>}
                     <div className="mt-2 flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -859,7 +893,7 @@ function TransferenciaInfo({ tienda }) {
  * Seguimiento de un pedido enviado: Recibido → En preparación → Listo → Entregado. Se queda
  * visible hasta que se entrega (o se rechaza); solo entonces aparece "Cerrar seguimiento".
  */
-function PedidoTracker({ tienda, status, onCerrar }) {
+function PedidoTracker({ tienda, status, onCerrar, slug, token, onActualizado }) {
   if (!status) return <p className="text-center text-gray-400 py-8 bg-white rounded-2xl border border-gray-100">Cargando tu pedido...</p>
   const rechazado = status.estado === 'RECHAZADO'
   const steps = STEPS.filter((s) => !s.soloDomicilio || status.tipoEntrega === 'DOMICILIO')
@@ -906,6 +940,10 @@ function PedidoTracker({ tienda, status, onCerrar }) {
           <div className="flex justify-between font-bold text-lg pt-2 border-t border-gray-100"><span>Total</span><span>{fmt(status.total)}</span></div>
           <p className="text-sm text-gray-500">Pago: {PAGO_LABEL[status.metodoPago] ?? status.metodoPago}</p>
           {status.metodoPago === 'TRANSFERENCIA' && !terminado && <TransferenciaInfo tienda={tienda} />}
+          {puedeSubirComprobante(status) && slug && token && (
+            <ComprobanteTransferencia status={status} onActualizado={onActualizado}
+              onSubir={(file, incluyeEnvio) => uploadComprobantePedido(slug, token, file, incluyeEnvio)} />
+          )}
         </div>
         {!terminado && <p className="text-xs text-gray-400 mt-4">Se actualiza solo. Este seguimiento se queda aquí hasta que recibas tu pedido.</p>}
         {terminado && (

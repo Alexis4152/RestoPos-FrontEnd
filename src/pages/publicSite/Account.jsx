@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { loginCliente, registerCliente, getClientePedidos, reviewClientePedido, updateClienteMe, reportClientePedido, olvideContrasenaCliente, restablecerContrasenaCliente, getCuentasParaOpinar, opinarCuentaCliente } from '../../api/publicSite'
+import { loginCliente, registerCliente, getClientePedidos, reviewClientePedido, updateClienteMe, reportClientePedido, olvideContrasenaCliente, restablecerContrasenaCliente, getCuentasParaOpinar, opinarCuentaCliente, getRepetirPedido, uploadComprobanteCliente } from '../../api/publicSite'
+import ComprobanteTransferencia, { puedeSubirComprobante } from './ComprobanteTransferencia'
 import OpinionForm from './OpinionForm'
 import { useAuth } from '../../context/AuthContext'
 import { usePublicLiveRefresh, publicStreamBase } from '../../utils/liveEvents'
@@ -370,8 +371,28 @@ function Etapas({ pedido }) {
  * barra de etapas); abajo los terminados en una lista compacta que se despliega al tocarla —
  * por defecto los últimos 10, o todos los de un rango de fechas con el buscador.
  */
-export function MisPedidos({ slug, token, onSesionVencida, onPedir }) {
+export function MisPedidos({ slug, tienda, token, onSesionVencida, onPedir, onRepetir }) {
   const [pedidos, setPedidos] = useState(null)
+  // "Volver a pedir": pedido que se está cargando al carrito y aviso si no se pudo.
+  const [repitiendo, setRepitiendo] = useState(null)
+  const [avisoRepetir, setAvisoRepetir] = useState(null) // { id, texto }
+
+  async function repetir(p) {
+    setRepitiendo(p.id)
+    setAvisoRepetir(null)
+    try {
+      const r = await getRepetirPedido(slug, token, p.id)
+      const data = r.data.data
+      if (data.lineas.length === 0) {
+        setAvisoRepetir({ id: p.id, texto: 'Ninguno de los platillos de este pedido está disponible ahora.' })
+        return
+      }
+      onRepetir(data)
+    } catch (err) {
+      if (err.response?.status === 401) onSesionVencida()
+      else setAvisoRepetir({ id: p.id, texto: err.response?.data?.message ?? 'No se pudo cargar el pedido' })
+    } finally { setRepitiendo(null) }
+  }
   const [abiertoId, setAbiertoId] = useState(null)
   const [desde, setDesde] = useState('')
   const [hasta, setHasta] = useState('')
@@ -426,7 +447,7 @@ export function MisPedidos({ slug, token, onSesionVencida, onPedir }) {
           <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide">En curso</h3>
           <div className="mt-2 space-y-4">
             {enCurso.map((p) => (
-              <PedidoHistorial key={p.id} slug={slug} token={token} pedido={p} onCambio={actualizar} onSesionVencida={onSesionVencida} />
+              <PedidoHistorial key={p.id} slug={slug} tienda={tienda} token={token} pedido={p} onCambio={actualizar} onSesionVencida={onSesionVencida} />
             ))}
           </div>
         </section>
@@ -462,7 +483,9 @@ export function MisPedidos({ slug, token, onSesionVencida, onPedir }) {
               {terminados.map((p) => (
                 <PedidoTerminado key={p.id} slug={slug} token={token} pedido={p} abierto={abiertoId === p.id}
                   onToggle={() => setAbiertoId((id) => (id === p.id ? null : p.id))}
-                  onCambio={actualizar} onSesionVencida={onSesionVencida} />
+                  onCambio={actualizar} onSesionVencida={onSesionVencida}
+                  onRepetir={onRepetir ? () => repetir(p) : null} repitiendo={repitiendo === p.id}
+                  aviso={avisoRepetir?.id === p.id ? avisoRepetir.texto : null} />
               ))}
             </div>
           )}
@@ -473,12 +496,13 @@ export function MisPedidos({ slug, token, onSesionVencida, onPedir }) {
 }
 
 /** Fila compacta de un pedido terminado; al tocarla se despliega el detalle (y la calificación). */
-function PedidoTerminado({ slug, token, pedido, abierto, onToggle, onCambio, onSesionVencida }) {
+function PedidoTerminado({ slug, token, pedido, abierto, onToggle, onCambio, onSesionVencida, onRepetir, repitiendo, aviso }) {
   const info = ESTADO_INFO[pedido.estado] ?? { label: pedido.estado, cls: 'bg-gray-100 text-gray-700' }
   const porCalificar = pedido.tipoEntrega !== 'MESA' && pedido.estado === 'ENTREGADO' && !pedido.resenaEstrellas
   return (
     <div>
-      <button type="button" onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50">
+      <div className="flex items-center hover:bg-gray-50">
+      <button type="button" onClick={onToggle} className="flex-1 min-w-0 flex items-center gap-3 pl-4 pr-2 py-3 text-left">
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold">Pedido #{pedido.id} <span className="font-normal text-gray-500">· {fmtFecha(pedido.creadoEn)}</span></p>
           <p className="text-xs text-gray-500 truncate">{pedido.items.map((it) => `${Number(it.cantidad)}× ${it.nombre}`).join(', ')}</p>
@@ -490,6 +514,15 @@ function PedidoTerminado({ slug, token, pedido, abierto, onToggle, onCambio, onS
         <span className="text-sm font-bold w-20 text-right">{fmt(pedido.total)}</span>
         <span className="text-gray-400">{abierto ? '▾' : '▸'}</span>
       </button>
+      {/* Vuelve a cargar al carrito los platillos de este pedido (con el menú y precios de hoy). */}
+      {onRepetir && (
+        <button type="button" onClick={onRepetir} disabled={repitiendo} title="Volver a pedir"
+          className="mr-3 shrink-0 rounded-full border border-purple-300 bg-white px-3 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-50 disabled:opacity-50">
+          {repitiendo ? '...' : <>🔁<span className="hidden sm:inline"> Volver a pedir</span></>}
+        </button>
+      )}
+      </div>
+      {aviso && <p className="px-4 pb-2 text-xs text-red-600">{aviso}</p>}
       {abierto && (
         <div className="px-3 pb-3">
           <PedidoHistorial slug={slug} token={token} pedido={pedido} onCambio={onCambio} onSesionVencida={onSesionVencida} />
@@ -594,7 +627,7 @@ function ReporteEntrega({ slug, token, pedido, onCambio, onSesionVencida }) {
   )
 }
 
-function PedidoHistorial({ slug, token, pedido, onCambio, onSesionVencida }) {
+function PedidoHistorial({ slug, tienda, token, pedido, onCambio, onSesionVencida }) {
   const [estrellas, setEstrellas] = useState(0)
   const [comentario, setComentario] = useState('')
   const [error, setError] = useState('')
@@ -641,6 +674,13 @@ function PedidoHistorial({ slug, token, pedido, onCambio, onSesionVencida }) {
         ))}
       </ul>
       <p className="text-right font-bold mt-2">Total {fmt(pedido.total)}</p>
+
+      {/* Pago por transferencia a domicilio: datos de la cuenta y subir la foto del comprobante. */}
+      {puedeSubirComprobante(pedido) && (
+        <ComprobanteTransferencia status={pedido} tienda={tienda} onActualizado={onCambio}
+          onSubir={(file, incluyeEnvio) => uploadComprobanteCliente(slug, token, pedido.id, file, incluyeEnvio)
+            .catch((err) => { if (err.response?.status === 401) onSesionVencida(); throw err })} />
+      )}
 
       <ReporteEntrega slug={slug} token={token} pedido={pedido} onCambio={onCambio} onSesionVencida={onSesionVencida} />
       {enMesa && pedido.estado === 'ENTREGADO' && (

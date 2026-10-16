@@ -55,3 +55,6 @@ export const unlinkOrderClient = (orderId) => api.delete(`/orders/${orderId}/cli
 
 /** Opiniones de las cuentas de la orden: { [cuentaId]: opinión }. */
 export const getOrderOpinions = (orderId) => api.get(`/orders/${orderId}/opiniones`)
+
+/** Envío a domicilio: { estado, repartidor, tomadoAt, enCaminoAt, entregadoAt, eventos }. */
+export const getOrderDelivery = (orderId) => api.get(`/orders/${orderId}/entrega`)

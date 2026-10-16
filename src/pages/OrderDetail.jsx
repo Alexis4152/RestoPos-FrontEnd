@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getOrder, addDiner, deleteDiner, addOrderItem, cancelOrderItem, cancelOrder, updateOrderItemStatus, updateOrderItem, acceptWebOrder, linkOrderClient, unlinkOrderClient, getOrderOpinions } from '../api/ordenes'
+import EntregaSeguimiento from '../components/EntregaSeguimiento'
 import { createAccount, getAccountsByOrder, cancelAccount, getTicketPdf, getOpinionQr } from '../api/cuentas'
 import { createPayment } from '../api/pagos'
 import { getCategories, updateCategoryAvailabilityMode } from '../api/categories'
@@ -12,9 +13,12 @@ import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
 import { getModificadorGrupos } from '../api/modificadores'
 import { resolveMediaUrl } from '../utils/media'
+import ComprobanteImagen from '../components/ComprobanteImagen'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
+/** Suma de los extras (modificadores con costo) de UNA unidad de la línea. */
+const extrasDe = (item) => (item.modificadores ?? []).reduce((s, m) => s + Number(m.precioExtra || 0), 0)
 
 // Mismo patrón que el POS de DemoPV para validar formato de correo del lado del cliente —
 // no reemplaza al @Email real del backend, solo adelanta el error más común.
@@ -65,6 +69,7 @@ export default function OrderDetail() {
   const [modPicker, setModPicker] = useState(null) // producto en personalización, o null
   const [modSelections, setModSelections] = useState({}) // { [grupoId]: [opcionId, ...] }
   const [modNota, setModNota] = useState('')
+  const [modCantidad, setModCantidad] = useState(1) // piezas iguales con esa personalización
   // Acordeón: qué grupos están desplegados — todos cerrados al abrir el selector, para que un
   // producto con varios grupos (ej. sabores + extras + aparte) no se vea como una lista enorme
   // de un jalón. Se despliegan por separado al tocar cada uno.
@@ -229,6 +234,11 @@ export default function OrderDetail() {
   }
   const activeItems = order.items?.filter((i) => i.estado !== 'CANCELADO') ?? []
   const billableItems = activeItems.filter((i) => remaining(i) > 0)
+  // En caja solo se cobra lo ya entregado (regla de CuentaService#crearEnCaja); los cargos
+  // como el envío no pasan por cocina. Si TODO lo pendiente está sin entregar no hay nada
+  // que cobrar todavía; si es solo una parte, se puede cobrar lo entregado (p. ej. un comensal).
+  const sinEntregar = billableItems.filter((i) => !i.cargoExtra && i.estado !== 'ENTREGADO')
+  const nadaEntregado = billableItems.length > 0 && billableItems.every((i) => i.cargoExtra || i.estado !== 'ENTREGADO')
   // Filtro de la tabla de productos (ver `itemFilter`): por comensal muestra tanto lo que
   // va a consumir (activo) como lo que se le canceló, para que el mesero revise ambos de
   // un vistazo; "Todo lo cancelado" ignora el comensal y junta lo cancelado de todos.
@@ -241,8 +251,9 @@ export default function OrderDetail() {
   // Subtotal/Total del pie de la tabla: se recalculan según lo que el filtro de arriba esté
   // mostrando en ese momento (todo, un comensal, o lo cancelado), no el total fijo de la
   // orden completa — los cancelados no suman nada.
+  // Subtotal = (precio base + extras) × cantidad, antes de descuentos; Total = ya con descuentos.
   const filteredSubtotal = filteredItems.reduce((sum, item) =>
-    item.estado === 'CANCELADO' ? sum : sum + Number(item.precioUnitario) * Number(item.cantidad), 0)
+    item.estado === 'CANCELADO' ? sum : sum + (Number(item.precioUnitario) + extrasDe(item)) * Number(item.cantidad), 0)
   const filteredTotal = filteredItems.reduce((sum, item) =>
     item.estado === 'CANCELADO' ? sum : sum + Number(item.subtotal), 0)
   // Comensales con al menos un producto propio pendiente de cobrar — lo "Compartido"
@@ -348,6 +359,7 @@ export default function OrderDetail() {
     grupos.forEach((g) => { initial[g.id] = [] })
     setModSelections(initial)
     setModNota('')
+    setModCantidad(1)
     setModExpandedGrupos(new Set())
     setModPicker(p)
   }
@@ -397,13 +409,13 @@ export default function OrderDetail() {
       await addOrderItem(id, {
         productoId: modPicker.id,
         comensalId: pickerComensalId ? Number(pickerComensalId) : null,
-        cantidad: 1,
+        cantidad: modCantidad,
         observaciones: modNota.trim() || undefined,
         modificadorOpcionIds: modOpcionIds,
       })
       setModPicker(null)
       load()
-      notify('Producto agregado', 'success')
+      notify(modCantidad > 1 ? `${modCantidad} productos agregados` : 'Producto agregado', 'success')
     } catch (err) {
       notify(err.response?.data?.message ?? 'Error al agregar', 'error')
     } finally {
@@ -849,12 +861,22 @@ export default function OrderDetail() {
                 {order.metodoPago && <> · Paga con {({ EFECTIVO: 'efectivo', TARJETA: 'tarjeta', TRANSFERENCIA: 'transferencia' })[order.metodoPago] ?? order.metodoPago}</>}
               </p>
             )}
+            {/* Transferencia web: foto del comprobante que subió el cliente (solo personal autorizado). */}
+            {order.origen === 'WEB' && order.metodoPago === 'TRANSFERENCIA' && order.tipoEntrega !== 'DOMICILIO' && (
+              order.comprobantePath ? (
+                <details className="mt-1 text-sm">
+                  <summary className="cursor-pointer text-green-700 font-medium">
+                    ✅ Comprobante de transferencia{order.transferenciaIncluyeEnvio === false ? ' (sin envío: el envío se paga en efectivo)' : ''}
+                  </summary>
+                  <div className="mt-2 max-w-sm"><ComprobanteImagen ordenId={order.id} version={order.comprobanteAt} /></div>
+                </details>
+              ) : (
+                <p className="text-sm text-orange-700">⏳ El cliente aún no sube el comprobante de su transferencia</p>
+              )
+            )}
             {order.tipoEntrega === 'DOMICILIO' && (
-              <p className="text-sm text-gray-600">
-                🛵 {order.entregadaAt
-                  ? `Entregado${order.repartidor ? ` por ${order.repartidor.name}` : ''} a las ${new Date(order.entregadaAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`
-                  : order.repartidor ? `Lo lleva ${order.repartidor.name}` : 'Sin repartidor asignado'}
-              </p>
+              <EntregaSeguimiento ordenId={order.id}
+                version={`${order.repartidor?.id ?? ''}|${order.enCaminoAt ?? ''}|${order.entregadaAt ?? ''}|${order.estado}|${order.total}|${order.comprobanteAt ?? ''}|${accounts.map((c) => `${c.id}:${c.totalPagado}`).join(',')}`} />
             )}
             {order.notas && <p className="text-sm text-gray-600">📝 {order.notas}</p>}
             {order.cliente ? (
@@ -982,6 +1004,12 @@ export default function OrderDetail() {
                             {m.grupoNombre} {m.nombre}{Number(m.precioExtra) > 0 ? ` (+${fmt(m.precioExtra)})` : ''}
                           </p>
                         ))}
+                        {/* Desglose del precio cuando hay extras con costo: base + extras = precio por pieza. */}
+                        {!item.cargoExtra && extrasDe(item) > 0 && (
+                          <p className="text-xs font-medium text-purple-700">
+                            {fmt(item.precioUnitario)} + {fmt(extrasDe(item))} extras = {fmt(Number(item.precioUnitario) + extrasDe(item))} c/u
+                          </p>
+                        )}
                         {item.observaciones && <p className="text-xs text-gray-400">{item.observaciones}</p>}
                       </td>
                       <td className="px-4 py-2 text-gray-500">{item.comensal ? `Comensal ${item.comensal.numero}` : 'Compartido'}</td>
@@ -1032,9 +1060,24 @@ export default function OrderDetail() {
         <div className="space-y-4">
           <div className="card">
             <h3 className="font-semibold text-gray-800 mb-3">Cuentas</h3>
+            {!isClosed && !cobraRepartidor && sinEntregar.length > 0 && (
+              <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <p className="font-semibold">Falta marcar como {entregadoLabel.toLowerCase()}:</p>
+                <p className="text-xs mt-0.5">
+                  {sinEntregar.map((i) => `${Number(i.cantidad)}× ${i.productoNombre}`).join(', ')}
+                </p>
+                <p className="text-xs mt-1">Solo se puede cobrar lo que ya se entregó.</p>
+                <button type="button" disabled={marcandoTodo} onClick={handleMarcarTodoEntregado}
+                  className="mt-2 w-full rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-50">
+                  {marcandoTodo ? '...' : `✅ Marcar todo ${entregadoLabel.toLowerCase()}`}
+                </button>
+              </div>
+            )}
             {!isClosed && billableItems.length > 0 && !cobraRepartidor && (
               <button
-                className="btn-primary w-full py-2 text-sm mb-3"
+                className="btn-primary w-full py-2 text-sm mb-3 disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={nadaEntregado}
+                title={nadaEntregado ? `Primero marca los productos como ${entregadoLabel.toLowerCase()}` : undefined}
                 onClick={() => {
                   if (!order.mesa || onlySharedPending) setAccountTipo('TOTAL')
                   setShowAccount(true)
@@ -1175,21 +1218,38 @@ export default function OrderDetail() {
                 // personalización se agrega de inmediato, una a la vez, desde su propio selector.
                 const personalizable = productModGrupos(p).length > 0
                 return (
-                  <div key={p.id} className={`border border-gray-100 rounded-lg overflow-hidden flex shadow-sm ${qty > 0 ? 'min-h-24' : 'h-24'}`}>
+                  // Toda la tarjeta es clicable: con opciones abre "Personalizar"; sin opciones suma una pieza.
+                  <div key={p.id} role="button" tabIndex={0}
+                    onClick={() => (personalizable ? openModPicker(p) : incrementCartItem(p.id))}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter' && e.key !== ' ') return
+                      e.preventDefault()
+                      if (personalizable) openModPicker(p)
+                      else incrementCartItem(p.id)
+                    }}
+                    className={`border rounded-lg overflow-hidden flex shadow-sm cursor-pointer transition-colors hover:border-purple-300 hover:bg-purple-50/40 ${
+                      qty > 0 ? 'min-h-24 border-purple-300' : 'h-24 border-gray-100'}`}>
                     {p.imageUrl ? (
-                      <img src={resolveMediaUrl(p.imageUrl)} alt={p.name} className="w-24 h-24 object-cover shrink-0 self-start" />
+                      // Si la foto no carga se deja el recuadro gris (sin el texto roto del navegador).
+                      <img src={resolveMediaUrl(p.imageUrl)} alt="" className="w-24 h-24 object-cover shrink-0 self-start bg-gray-100"
+                        onError={(e) => { e.currentTarget.style.visibility = 'hidden' }} />
                     ) : (
                       <div className="w-24 h-24 bg-gray-100 flex items-center justify-center text-2xl text-gray-300 shrink-0 self-start">🍽️</div>
                     )}
                     <div className="p-2 flex-1 min-w-0 flex flex-col justify-between">
-                      <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2">{p.name}</p>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2">{p.name}</p>
+                        {personalizable && <p className="text-[11px] text-gray-400 leading-tight">Con opciones</p>}
+                      </div>
                       <div className="flex items-center justify-between gap-1">
                         <div className="min-w-0 flex items-baseline gap-1">
                           <span className="text-sm font-bold text-purple-700 shrink-0">{fmt(p.price)}</span>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                           {personalizable ? (
-                            <button type="button" className="btn-secondary !py-1 !px-2 !text-xs" onClick={() => openModPicker(p)}>Personalizar</button>
+                            <button type="button" title="Personalizar y agregar" aria-label={`Personalizar ${p.name}`}
+                              className="w-6 h-6 rounded-full bg-purple-600 text-white font-bold hover:bg-purple-700"
+                              onClick={() => openModPicker(p)}>+</button>
                           ) : (
                             <>
                               {qty > 0 && (
@@ -1207,6 +1267,7 @@ export default function OrderDetail() {
                       </div>
                       {qty > 0 && !personalizable && (
                         <input className="input !py-1 !text-xs mt-1" placeholder="Notas (opcional)"
+                          onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}
                           value={cart[p.id]?.observaciones ?? ''} onChange={(e) => setCartNota(p.id, e.target.value)} />
                       )}
                     </div>
@@ -1352,6 +1413,10 @@ export default function OrderDetail() {
               <div className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-center">
                 <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">Subtotal</p>
                 <p className="text-2xl font-bold text-green-700 mt-0.5">{fmt(editTotal)}</p>
+                <p className="text-xs text-green-800 mt-0.5">
+                  ({fmt(editItem.precioUnitario)}{editExtras > 0 ? ` + ${fmt(editExtras)} extras` : ''}) × {editCantidad}
+                  {Number(editItem.descuento || 0) > 0 ? ` − ${fmt(editItem.descuento)} desc.` : ''}
+                </p>
               </div>
               <div className="flex gap-2">
                 <button type="button" className="btn-secondary flex-1" onClick={() => setEditItem(null)}>Cancelar</button>
@@ -1449,14 +1514,29 @@ export default function OrderDetail() {
             <div className="p-5 border-t border-gray-100 space-y-3">
               <div className="rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-center">
                 <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">Total</p>
-                <p className="text-2xl font-bold text-green-700 mt-0.5">{fmt(modTotal)}</p>
+                <p className="text-2xl font-bold text-green-700 mt-0.5">{fmt(modTotal * modCantidad)}</p>
+                {(modExtrasTotal > 0 || modCantidad > 1) && (
+                  <p className="text-xs text-green-800 mt-0.5">
+                    {modExtrasTotal > 0 ? `(${fmt(modPicker.price)} + ${fmt(modExtrasTotal)} extras)` : fmt(modPicker.price)} × {modCantidad}
+                  </p>
+                )}
               </div>
-              <div className="flex gap-2">
-                <button type="button" className="btn-secondary flex-1" onClick={() => setModPicker(null)}>Cancelar</button>
+              <div className="flex items-center gap-3">
+                {/* Cantidad: varias piezas iguales con la misma personalización. */}
+                <div className="flex items-center gap-2">
+                  <button type="button" aria-label="Menos" disabled={modCantidad <= 1}
+                    onClick={() => setModCantidad((q) => Math.max(1, q - 1))}
+                    className="w-9 h-9 rounded-full bg-gray-100 font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40">−</button>
+                  <span className="w-6 text-center font-semibold">{modCantidad}</span>
+                  <button type="button" aria-label="Más" disabled={modCantidad >= 99}
+                    onClick={() => setModCantidad((q) => Math.min(99, q + 1))}
+                    className="w-9 h-9 rounded-full bg-gray-100 font-bold text-gray-700 hover:bg-gray-200 disabled:opacity-40">+</button>
+                </div>
                 <button type="button" className="btn-primary flex-1" disabled={loading || modFaltaObligatorio} onClick={handleConfirmModPicker}>
-                  {loading ? '...' : 'Agregar a la orden'}
+                  {loading ? '...' : modFaltaObligatorio ? 'Elige las opciones obligatorias' : `Agregar · ${fmt(modTotal * modCantidad)}`}
                 </button>
               </div>
+              <button type="button" className="w-full text-sm text-gray-500 hover:text-gray-700" onClick={() => setModPicker(null)}>Cancelar</button>
             </div>
           </div>
         </div>

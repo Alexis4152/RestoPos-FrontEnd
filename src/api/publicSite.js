@@ -33,6 +33,25 @@ export const createPublicPedido = (slug, data, clienteToken, idemKey) => publicA
 export const getPublicPedido = (slug, token) =>
   publicApi.get(`${base(slug)}/seguimiento/${encodeURIComponent(token)}`)
 
+/**
+ * Sube (o reemplaza) la foto del comprobante de transferencia de un pedido, por su código de
+ * seguimiento. `incluyeEnvio`: si la transferencia incluye el costo de envío. Regresa el estado del pedido.
+ */
+export const uploadComprobantePedido = (slug, token, file, incluyeEnvio) => {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('incluyeEnvio', incluyeEnvio ? 'true' : 'false')
+  return publicApi.post(`${base(slug)}/seguimiento/${encodeURIComponent(token)}/comprobante`, form)
+}
+
+/** Lo mismo que uploadComprobantePedido, para un pedido propio del cliente registrado ("Mis pedidos"). */
+export const uploadComprobanteCliente = (slug, token, id, file, incluyeEnvio) => {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('incluyeEnvio', incluyeEnvio ? 'true' : 'false')
+  return publicApi.post(`${base(slug)}/clientes/me/pedidos/${id}/comprobante`, form, clienteHeaders(token))
+}
+
 // ── Cuentas de cliente ───────────────────────────────────────────────────────────
 
 /** Registro: { nombre, telefono, direccion, email, password } → { token, cliente }. */
@@ -110,3 +129,7 @@ export const cancelarReservacion = (slug, token) => publicApi.post(`${base(slug)
 /** Reservaciones del cliente registrado. */
 export const getMisReservaciones = (slug, clienteToken) =>
   publicApi.get(`${base(slug)}/clientes/me/reservaciones`, clienteHeaders(clienteToken))
+
+/** "Volver a pedir": platillos de un pedido propio listos para el carrito ({ lineas, noDisponibles, cambiaron }). */
+export const getRepetirPedido = (slug, clienteToken, ordenId) =>
+  publicApi.get(`${base(slug)}/clientes/me/pedidos/${ordenId}/repetir`, clienteHeaders(clienteToken))
