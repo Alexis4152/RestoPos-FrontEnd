@@ -79,3 +79,6 @@ export const removeTiendaLogo = (id) => api.delete(`/tiendas/${id}/logo`)
 
 /** Guarda la configuración de la página web pública de la tienda (link, entregas, formas de pago). */
 export const updateWebConfig = (id, data) => api.put(`/tiendas/${id}/web-config`, data)
+
+/** Resumen en vivo de cada tienda al alcance (supervisor / super admin): mesas, pedidos por aceptar, ventas de hoy, corte. */
+export const getTiendasResumen = () => api.get('/tiendas/resumen')

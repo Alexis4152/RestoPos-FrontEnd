@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { getOrder, addDiner, deleteDiner, addOrderItem, cancelOrderItem, cancelOrder, updateOrderItemStatus, updateOrderItem, acceptWebOrder, linkOrderClient, unlinkOrderClient, getOrderOpinions } from '../api/ordenes'
+import { getTables } from '../api/mesas'
+import Icon, { Persona } from '../components/Icon'
 import EntregaSeguimiento from '../components/EntregaSeguimiento'
+import { moveOrderTable, joinOrderTable, splitOrderTable } from '../api/ordenes'
 import { createAccount, getAccountsByOrder, cancelAccount, getTicketPdf, getOpinionQr } from '../api/cuentas'
 import { createPayment } from '../api/pagos'
 import { getCategories, updateCategoryAvailabilityMode } from '../api/categories'
@@ -80,6 +83,11 @@ export default function OrderDetail() {
   // un comensal (sus productos, activos Y cancelados, para que el mesero pueda revisar de un
   // vistazo qué va a consumir y qué se le canceló).
   const [itemFilter, setItemFilter] = useState('ALL')
+  // "Mover de mesa": mesas libres de la tienda para elegir destino (null = cerrado).
+  const [mesasLibres, setMesasLibres] = useState(null)
+  // Mesas de la tienda: para saber cuáles están unidas a esta orden y para "Unir mesa".
+  const [mesasTienda, setMesasTienda] = useState([])
+  const [unirAbierto, setUnirAbierto] = useState(false)
   // Edición de una línea ya agregada (ver `openEditItem`): comensal, cantidad, notas y
   // modificadores. `editGrupos` se carga del producto al abrir; `editModsTouched` evita
   // mandar modificadores si el mesero no los tocó (así no se re-validan sin necesidad).
@@ -130,7 +138,12 @@ export default function OrderDetail() {
   // del modal de "Registrar pago" (ver el aviso y el botón deshabilitado más abajo).
   const [cashCut, setCashCut] = useState(null)
 
+  function loadMesas() {
+    getTables().then((r) => setMesasTienda(r.data.data ?? [])).catch(() => setMesasTienda([]))
+  }
+
   function load() {
+    loadMesas()
     getOrder(id).then((r) => setOrder(r.data.data))
     getAccountsByOrder(id).then((r) => setAccounts(r.data.data ?? [])).catch(() => setAccounts([]))
     getOrderOpinions(id).then((r) => setOpiniones(r.data.data ?? {})).catch(() => setOpiniones({}))
@@ -179,13 +192,15 @@ export default function OrderDetail() {
   // cobrar) — mismo efecto que su botón "Cancelar". modPicker va primero: está apilado encima
   // de showAddItem (se abre al personalizar un producto con modificadores).
   useEscapeKey(() => {
-    if (editItem) setEditItem(null)
+    if (mesasLibres) setMesasLibres(null)
+    else if (unirAbierto) setUnirAbierto(false)
+    else if (editItem) setEditItem(null)
     else if (categoryModeTarget) setCategoryModeTarget(null)
     else if (modPicker) setModPicker(null)
     else if (showAddItem) setShowAddItem(false)
     else if (showAccount) setShowAccount(false)
     else if (payModal) { setPayModal(null); setPaySuccess(null) }
-  }, !!(showAddItem || showAccount || payModal || modPicker || categoryModeTarget || editItem))
+  }, !!(showAddItem || showAccount || payModal || modPicker || categoryModeTarget || editItem || mesasLibres || unirAbierto))
 
   const holdTimeoutRef = useRef(null)
   const holdIntervalRef = useRef(null)
@@ -820,330 +835,470 @@ export default function OrderDetail() {
   const payEmailTooLong = payEmail.length > 150
   const payEmailInvalid = payEmail.trim() !== '' && !EMAIL_RE.test(payEmail.trim())
 
+  // ── Vista ────────────────────────────────────────────────────────────
+  const esMesa = !!order.mesa
+  const minutos = order.openedAt ? Math.max(0, Math.round((Date.now() - new Date(order.openedAt).getTime()) / 60000)) : null
+  const transcurrido = minutos == null ? '' : minutos < 60 ? `${minutos} min` : `${Math.floor(minutos / 60)} h ${String(minutos % 60).padStart(2, '0')}`
+  const piezasDe = (pred) => (order.items ?? []).filter((i) => i.estado !== 'CANCELADO' && !i.cargoExtra && pred(i))
+    .reduce((s, i) => s + Number(i.cantidad), 0)
+  const canceladosCount = (order.items ?? []).filter((i) => i.estado === 'CANCELADO').length
+  const chips = [
+    { key: 'ALL', label: 'Todos', n: piezasDe(() => true) },
+    ...(esMesa ? [{ key: 'SHARED', label: 'Compartido', n: piezasDe((i) => !i.comensal) }] : []),
+    ...(esMesa ? (order.comensales ?? []).map((c) => ({
+      key: String(c.id), label: `Comensal ${c.numero}${c.nombre ? ` (${c.nombre})` : ''}`, persona: true, comensal: c,
+      n: piezasDe((i) => i.comensal?.id === c.id),
+    })) : []),
+    ...(canceladosCount > 0 ? [{ key: 'CANCELLED_ALL', label: 'Cancelados', n: canceladosCount }] : []),
+  ]
+  const comensalFiltro = chips.find((c) => c.key === itemFilter)?.comensal
+  // Productos agrupados por dónde van: en cocina → listo para llevar → entregado (+ cargos y cancelados).
+  const GRUPOS_ITEMS = [
+    { key: 'cocina', titulo: 'En cocina', hint: 'preparándose', dot: 'bg-[#24519E]', pasa: (i) => !i.cargoExtra && ['PENDIENTE', 'PREPARANDO'].includes(i.estado) },
+    { key: 'listo', titulo: esMesa ? 'Listo para llevar a la mesa' : 'Listo para entregar', hint: 'cocina ya lo terminó', dot: 'bg-[#C77700]', pasa: (i) => !i.cargoExtra && ['LISTO', 'ENTREGADO_MESERO'].includes(i.estado) },
+    { key: 'entregado', titulo: entregadoLabel, hint: '', dot: 'bg-[#2E7D4F]', pasa: (i) => !i.cargoExtra && i.estado === 'ENTREGADO' },
+    { key: 'cargos', titulo: 'Cargos', hint: '', dot: 'bg-gray-400', pasa: (i) => i.cargoExtra && i.estado !== 'CANCELADO' },
+    { key: 'cancelado', titulo: 'Cancelado', hint: '', dot: 'bg-red-700', pasa: (i) => i.estado === 'CANCELADO' },
+  ]
+  const grupos = GRUPOS_ITEMS.map((g) => ({ ...g, items: filteredItems.filter(g.pasa) })).filter((g) => g.items.length > 0)
+  const PAGO_TXT = { EFECTIVO: 'efectivo', TARJETA: 'tarjeta', TRANSFERENCIA: 'transferencia' }
+
+  async function abrirMover() {
+    try {
+      const r = await getTables()
+      setMesasLibres((r.data.data ?? []).filter((m) => m.id !== order.mesa?.id && !m.ordenActiva && (m.estado === 'DISPONIBLE' || m.estado === 'RESERVADA')))
+    } catch { notify('No se pudieron cargar las mesas', 'error') }
+  }
+  const unidas = esMesa ? mesasTienda.filter((m) => m.ordenActiva?.id === order.id && m.id !== order.mesa.id) : []
+  async function unirCon(m) {
+    if (m.ordenActiva && !(await confirmDialog(
+      `La mesa ${m.numero} ya tiene su orden: sus productos y comensales pasan a esta orden y aquella se cierra. ¿Unirlas?`,
+      { confirmText: 'Unir mesas' }))) return
+    setUnirAbierto(false)
+    try {
+      await joinOrderTable(order.id, m.id)
+      notify(`Mesa ${m.numero} unida`, 'success')
+      load()
+    } catch (err) { notify(err.response?.data?.message ?? 'No se pudieron unir las mesas', 'error') }
+  }
+  async function separarMesa(m) {
+    if (!(await confirmDialog(`¿Separar la mesa ${m.numero}? Queda libre; los productos se quedan en esta orden.`, { confirmText: 'Separar' }))) return
+    try {
+      await splitOrderTable(order.id, m.id)
+      notify(`Mesa ${m.numero} separada`, 'success')
+      load()
+    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo separar la mesa', 'error') }
+  }
+
+  async function moverA(m) {
+    setMesasLibres(null)
+    try {
+      const r = await moveOrderTable(order.id, m.id)
+      notify(r.data.message ?? `Orden movida a la mesa ${m.numero}`, 'success')
+      load()
+    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo mover la orden', 'error') }
+  }
+
   return (
-    <div>
+    <div className="space-y-5">
       {order.pendienteAceptar && order.estado !== 'CANCELADA' && (
-        <div className="mb-4 rounded-xl border-2 border-blue-500 bg-blue-50 px-4 py-3 flex flex-wrap items-center gap-3">
-          <p className="flex-1 font-bold text-blue-900">🌐 Pedido de la página web por aceptar — cocina todavía no lo ve.</p>
-          <button className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700" onClick={handleAcceptWeb}>✅ Aceptar pedido</button>
-          <button className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50" onClick={handleRejectWeb}>Rechazar</button>
+        <div className="rounded-2xl border-2 border-[#A9BEE3] bg-[#E6EDF8] px-4 py-3 flex flex-wrap items-center gap-3">
+          <p className="flex-1 min-w-[200px] font-bold text-[#1E4585]">Pedido de la página web por aceptar — cocina todavía no lo ve.</p>
+          <button type="button" className="btn-primary min-h-[44px]" onClick={handleAcceptWeb}>Aceptar pedido</button>
+          <button type="button" className="btn-secondary min-h-[44px] text-red-700" onClick={handleRejectWeb}>Rechazar</button>
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            title="Regresar"
-            onClick={() => navigate(order.mesa ? `/tables?zona=${order.mesa.zona?.id ?? ''}` : '/takeaway')}
-            className="flex-shrink-0 inline-flex items-center justify-center w-10 h-10 rounded-full bg-white border border-gray-300 shadow-sm text-gray-600 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 transition-colors"
-          >
-            <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-              <path fillRule="evenodd" clipRule="evenodd" d="M9.53 2.47a.75.75 0 010 1.06L4.81 8.25H16.5a.75.75 0 010 1.5H4.81l4.72 4.72a.75.75 0 11-1.06 1.06l-6-6a.75.75 0 010-1.06l6-6a.75.75 0 011.06 0z" />
-            </svg>
+
+      <header className="flex flex-wrap items-center gap-3">
+        <button type="button" aria-label="Regresar"
+          onClick={() => navigate(order.mesa ? `/tables?zona=${order.mesa.zona?.id ?? ''}` : '/takeaway')}
+          className="w-11 h-11 rounded-full border border-[#D9D5CC] bg-white flex items-center justify-center text-gray-700 hover:text-purple-700 hover:border-purple-300 shrink-0">
+          <Icon name="atras" className="w-5 h-5" strokeWidth={2} />
+        </button>
+        <div className="flex-1 min-w-[220px]">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-[28px] font-extrabold tracking-tight">
+              {esMesa ? `Mesa ${[order.mesa.numero, ...unidas.map((u) => u.numero)].join(' + ')}` : (order.clienteNombre ?? 'Para llevar')}
+            </h1>
+            <span className="px-3 py-1 rounded-lg text-[13px] font-extrabold bg-[#F1EFEA] text-gray-800">{ESTADO_ORDEN_LABEL[order.estado] ?? order.estado}</span>
+          </div>
+          <p className="text-sm text-gray-600 mt-0.5">
+            Orden #{order.id}
+            {esMesa && order.mesa.zona?.nombre ? ` · ${order.mesa.zona.nombre}` : ''}
+            {!esMesa ? ` · ${order.tipoEntrega === 'DOMICILIO' ? 'A domicilio' : 'Para recoger'}` : ''}
+            {' · '}{order.mesero?.name ?? 'sin mesero'}
+            {order.openedAt ? ` · abierta ${new Date(order.openedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}${!isClosed ? ` (${transcurrido})` : ''}` : ''}
+          </p>
+        </div>
+        {!isClosed && esMesa && (
+          <button type="button" className="btn-secondary min-h-[44px] inline-flex items-center gap-2" onClick={abrirMover}>
+            <Icon name="mover" className="w-4 h-4" /> Mover de mesa
           </button>
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              {order.mesa ? `Mesa ${order.mesa.numero}` : 'Para llevar'} — Orden #{order.id}
-            </h2>
-            <p className="text-sm text-gray-500">
-              Mesero: {order.mesero?.name ?? '—'} ·{' '}
-              <span className="font-medium">{ESTADO_ORDEN_LABEL[order.estado] ?? order.estado}</span>
+        )}
+        {!isClosed && esMesa && (
+          <button type="button" className="btn-secondary min-h-[44px] inline-flex items-center gap-2" onClick={() => { loadMesas(); setUnirAbierto(true) }}>
+            <Icon name="unir" className="w-4 h-4" /> Unir mesa
+          </button>
+        )}
+        {!isClosed && (
+          <button type="button" className="btn-secondary min-h-[44px] text-red-700" onClick={handleCancelOrder}>Cancelar orden</button>
+        )}
+        {!isClosed && (
+          <button type="button" className="btn-primary min-h-[44px] inline-flex items-center gap-2" onClick={openAddItem}>
+            <Icon name="mas" className="w-4 h-4" strokeWidth={2} /> Agregar productos
+          </button>
+        )}
+      </header>
+
+      <div className="flex flex-wrap gap-5 items-start">
+        {/* ── Productos ── */}
+        <section aria-label="Productos de la orden" className="flex-[999_1_560px] min-w-0 bg-white border border-[#E4E1DA] rounded-2xl p-5 space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-extrabold mr-2">Productos</h2>
+            {!isClosed && (order.items ?? []).some((i) => i.estado !== 'ENTREGADO' && i.estado !== 'CANCELADO') && (
+              <button type="button" disabled={marcandoTodo} onClick={handleMarcarTodoEntregado}
+                className="ml-auto min-h-[36px] px-3 rounded-xl border border-[#A9BEE3] bg-[#E6EDF8] text-[#1E4585] text-sm font-bold hover:bg-[#dbe5f5] disabled:opacity-40">
+                {marcandoTodo ? '...' : `Marcar todo ${entregadoLabel.toLowerCase()}`}
+              </button>
+            )}
+          </div>
+
+          {/* Filtro por comensal (y lo cancelado). */}
+          <div className="flex flex-wrap items-center gap-2" aria-label="Filtrar por comensal">
+            {chips.map((c) => (
+              <button key={c.key} type="button" aria-pressed={itemFilter === c.key} onClick={() => setItemFilter(c.key)}
+                className={`chip ${itemFilter === c.key ? 'chip-on' : ''}`}>
+                {c.persona && <Persona className="w-4 h-4" />}
+                {c.label} <span className="opacity-70">{c.n}</span>
+              </button>
+            ))}
+            {esMesa && !isClosed && (
+              <button type="button" onClick={handleAddDiner} className="chip border-dashed text-purple-700">
+                <Icon name="mas" className="w-4 h-4" strokeWidth={2} /> Comensal
+              </button>
+            )}
+            {comensalFiltro && !isClosed && (
+              <button type="button" onClick={() => handleDeleteDiner(comensalFiltro)} className="text-sm font-semibold text-red-700 hover:underline px-1">
+                Quitar comensal {comensalFiltro.numero}
+              </button>
+            )}
+          </div>
+
+          {grupos.length === 0 && (
+            <p className="text-center text-gray-600 py-8">
+              {(!order.items || order.items.length === 0) ? 'Sin productos todavía' : 'Nada que mostrar con este filtro'}
             </p>
+          )}
+
+          {grupos.map((g) => (
+            <div key={g.key} className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className={`w-2.5 h-2.5 rounded-full ${g.dot}`} aria-hidden="true" />
+                <h3 className="text-sm font-extrabold">{g.titulo} · {g.items.reduce((s, i) => s + Number(i.cantidad), 0)}</h3>
+                {g.hint && <span className="text-[13px] text-gray-600">{g.hint}</span>}
+              </div>
+              <ul className={`border border-[#ECE9E2] rounded-xl divide-y divide-[#F0EEE8] ${g.key === 'cancelado' ? 'opacity-60' : ''}`}>
+                {g.items.map((item) => (
+                  <li key={item.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3.5 py-3">
+                    <span className="w-7 font-extrabold text-gray-700">{Number(item.cantidad).toString()}</span>
+                    <div className="flex-1 min-w-[180px]">
+                      <p className={`text-[15px] font-bold ${item.estado === 'CANCELADO' ? 'line-through' : ''}`}>{item.productoNombre}</p>
+                      {(item.modificadores ?? []).length > 0 && (
+                        <p className="text-[13px] text-gray-600">
+                          {item.modificadores.map((m) => `${m.grupoNombre} ${m.nombre}${Number(m.precioExtra) > 0 ? ` (+${fmt(m.precioExtra)})` : ''}`).join(' · ')}
+                        </p>
+                      )}
+                      {!item.cargoExtra && extrasDe(item) > 0 && (
+                        <p className="text-xs font-semibold text-purple-700">
+                          {fmt(item.precioUnitario)} + {fmt(extrasDe(item))} extras = {fmt(Number(item.precioUnitario) + extrasDe(item))} c/u
+                        </p>
+                      )}
+                      {item.observaciones && <p className="text-[13px] text-gray-600 italic">{item.observaciones}</p>}
+                      {item.estado !== 'CANCELADO' && paymentLabel(item) && <p className="text-xs text-gray-600">{paymentLabel(item).replace(/^ · /, '')}</p>}
+                    </div>
+                    {esMesa && (
+                      <span className="text-xs font-bold px-2 py-1 rounded-md bg-[#F1EFEA] text-gray-700 whitespace-nowrap">
+                        {item.comensal ? `C${item.comensal.numero}` : 'Compartido'}
+                      </span>
+                    )}
+                    <span className="w-24 text-right font-extrabold">{fmt(item.subtotal)}</span>
+                    {!isClosed && (
+                      <div className="flex items-center gap-1.5 ml-auto">
+                        {!item.cargoExtra && item.estado !== 'CANCELADO' && item.estado !== 'ENTREGADO' && (
+                          <button type="button" onClick={() => handleMarcarEntregado(item)}
+                            className="min-h-[36px] px-3 rounded-lg border border-purple-300 bg-purple-50 text-purple-800 text-[13px] font-bold hover:bg-purple-100">
+                            Entregar
+                          </button>
+                        )}
+                        {!item.cargoExtra && item.estado !== 'CANCELADO' && (
+                          <button type="button" aria-label={`Editar ${item.productoNombre}`} onClick={() => openEditItem(item)}
+                            className="w-9 h-9 rounded-lg text-gray-700 hover:bg-[#F1EFEA] flex items-center justify-center">
+                            <Icon name="editar" className="w-4 h-4" />
+                          </button>
+                        )}
+                        {item.estado !== 'CANCELADO' && Number(item.cantidadFacturada) === 0 && (
+                          <button type="button" aria-label={`Cancelar ${item.productoNombre}`} onClick={() => handleCancelItem(item)}
+                            className="w-9 h-9 rounded-lg text-red-700 hover:bg-red-50 flex items-center justify-center">
+                            <Icon name="borrar" className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+
+          <div className="flex justify-end border-t border-[#ECE9E2] pt-3">
+            <dl className="text-sm grid grid-cols-[auto_auto] gap-x-6 gap-y-1 text-right">
+              <dt className="text-gray-600">Subtotal{itemFilter !== 'ALL' ? ' (filtro)' : ''}</dt><dd className="font-bold">{fmt(filteredSubtotal)}</dd>
+              <dt className="font-extrabold">Total</dt><dd className="font-extrabold text-base">{fmt(filteredTotal)}</dd>
+            </dl>
+          </div>
+        </section>
+
+        {/* ── Columna derecha: cobro y datos ── */}
+        <div className="flex-[1_1_320px] min-w-0 space-y-4">
+          <section aria-label="Cobro" className="bg-white border border-[#E4E1DA] rounded-2xl p-5 space-y-3.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="text-base font-extrabold">Cobro</h2>
+              <span className="text-2xl font-extrabold">{fmt(order.total)}</span>
+            </div>
+            {!isClosed && !cobraRepartidor && sinEntregar.length > 0 && (
+              <div role="status" className="rounded-xl bg-[#FBF0DC] px-3.5 py-3 text-[13px] text-[#6B4100] leading-snug">
+                <p className="font-extrabold">Falta marcar como {entregadoLabel.toLowerCase()}:</p>
+                <p className="mt-0.5">{sinEntregar.map((i) => `${Number(i.cantidad)}× ${i.productoNombre}`).join(', ')}</p>
+                <p className="mt-1">Solo se puede cobrar lo que ya se entregó.</p>
+              </div>
+            )}
+            {!isClosed && billableItems.length > 0 && !cobraRepartidor && (
+              <button type="button" className="btn-primary w-full min-h-[44px]" disabled={nadaEntregado}
+                title={nadaEntregado ? `Primero marca los productos como ${entregadoLabel.toLowerCase()}` : undefined}
+                onClick={() => {
+                  if (!order.mesa || onlySharedPending) setAccountTipo('TOTAL')
+                  setShowAccount(true)
+                }}>
+                Generar cuenta
+              </button>
+            )}
+            {!isClosed && cobraRepartidor && (
+              <div className="rounded-xl bg-[#E6EDF8] px-3.5 py-3 text-[13px] text-[#1E4585]">
+                <b>Lo cobra el repartidor</b> al entregarlo{order.metodoPago ? ` (${PAGO_TXT[order.metodoPago] ?? order.metodoPago})` : ''}. No se genera cuenta en caja.
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {accounts.map((c) => (
+                <div key={c.id} className="border border-[#ECE9E2] rounded-xl p-3 text-sm">
+                  <div className="flex justify-between items-start gap-2">
+                    <div>
+                      <p className="font-bold">{c.ticketFolio ?? `Cuenta #${c.id}`}</p>
+                      <p className="text-xs text-gray-600">
+                        {c.tipo === 'TOTAL' ? 'Total' : c.tipo === 'POR_COMENSAL' ? `Comensal ${c.comensal?.numero}` : 'Personalizada'}
+                      </p>
+                    </div>
+                    <span className={`text-xs font-extrabold px-2 py-0.5 rounded-md ${
+                      c.estado === 'PAGADA' ? 'bg-[#E7F3EC] text-[#22603C]' : c.estado === 'CANCELADA' ? 'bg-gray-100 text-gray-600' : 'bg-[#FBF0DC] text-[#7A4A00]'
+                    }`}>{({ PAGADA: 'Pagada', CANCELADA: 'Cancelada', PENDIENTE: 'Pendiente' })[c.estado] ?? c.estado}</span>
+                  </div>
+                  <p className="mt-1 text-gray-700">Total <b>{fmt(c.total)}</b> · Pagado {fmt(c.totalPagado)}</p>
+                  <div className="mt-3 space-y-2">
+                    {c.estado === 'PENDIENTE' && hasSection('CASH_CUTS') && (
+                      <button type="button" className="btn-primary w-full min-h-[40px]" onClick={() => openPayModal(c)}>Registrar pago</button>
+                    )}
+                    {c.estado === 'PENDIENTE' && (isAdmin || isMesero) && (
+                      <button type="button" className="btn-secondary w-full min-h-[40px] text-red-700" onClick={() => handleCancelAccount(c)}>Cancelar cuenta</button>
+                    )}
+                    {c.estado === 'PAGADA' && (
+                      <button type="button" className="btn-secondary w-full min-h-[40px]" onClick={() => handleViewTicket(c)}>Ver ticket</button>
+                    )}
+                    {c.estado === 'PAGADA' && order.mesa && !opiniones[c.id] && (
+                      <button type="button" className="w-full min-h-[40px] rounded-xl border border-[#E2B76B] bg-[#FBF0DC] text-[#6B4100] text-sm font-bold"
+                        onClick={() => handleShowOpinionQr(c)}>QR para que opine</button>
+                    )}
+                  </div>
+                  {opiniones[c.id] && (
+                    <div className="mt-2 rounded-xl bg-[#FBF7EC] border border-[#EADFC3] px-3 py-2 text-sm">
+                      <p>
+                        <span className="text-[#B86E00]">{'★'.repeat(opiniones[c.id].estrellas)}</span>
+                        <span className="text-gray-300">{'★'.repeat(5 - opiniones[c.id].estrellas)}</span>
+                        <span className="ml-1 font-bold text-gray-800">Opinión del cliente</span>
+                      </p>
+                      {opiniones[c.id].meseroEstrellas && <p className="text-xs text-gray-700">Atención del mesero: {'★'.repeat(opiniones[c.id].meseroEstrellas)}</p>}
+                      {opiniones[c.id].platillos.length > 0 && (
+                        <p className="text-xs text-gray-700">{opiniones[c.id].platillos.map((p) => `${p.meGusta ? '👍' : '👎'} ${p.nombre}`).join(' · ')}</p>
+                      )}
+                      {opiniones[c.id].comentario && <p className="text-gray-800 italic">"{opiniones[c.id].comentario}"</p>}
+                    </div>
+                  )}
+                </div>
+              ))}
+              {accounts.length === 0 && <p className="text-sm text-gray-600">Sin cuentas generadas</p>}
+            </div>
+          </section>
+
+          <section aria-label={esMesa ? 'Datos de la mesa' : 'Cliente y entrega'} className="bg-white border border-[#E4E1DA] rounded-2xl p-5 space-y-3">
+            <h2 className="text-base font-extrabold">{esMesa ? 'Mesa' : 'Cliente y entrega'}</h2>
+            {unidas.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-gray-600">Mesas unidas:</span>
+                {unidas.map((m) => (
+                  <span key={m.id} className="inline-flex items-center gap-1 rounded-lg bg-[#E6EDF8] text-[#1E4585] pl-2.5 pr-1 py-0.5 font-bold">
+                    Mesa {m.numero}
+                    {!isClosed && (
+                      <button type="button" onClick={() => separarMesa(m)} aria-label={`Separar mesa ${m.numero}`}
+                        className="w-6 h-6 rounded-md hover:bg-white/70 flex items-center justify-center text-xs">✕</button>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+            {esMesa && (() => {
+              const sentados = order.numeroComensales ?? order.comensales?.length ?? 0
+              const cap = Math.max(order.mesa.capacidad || 0, sentados)
+              return (
+                <div className="flex flex-wrap items-center gap-1">
+                  {Array.from({ length: Math.min(cap, 12) }, (_, i) => (
+                    <Persona key={i} llena={i < sentados} className="w-6 h-6" color={i < sentados ? '#24519E' : '#A39E94'} />
+                  ))}
+                  <span className="text-sm font-bold ml-1.5">{sentados} de {cap} lugares</span>
+                </div>
+              )
+            })()}
             {order.clienteNombre && (
-              <p className="text-sm text-gray-700">👤 <span className="font-medium">{order.clienteNombre}</span>
-                {order.clienteTelefono && <> · 📞 <a href={`tel:${order.clienteTelefono}`} className="hover:underline">{order.clienteTelefono}</a></>}
+              <p className="text-sm"><b>{order.clienteNombre}</b>
+                {order.clienteTelefono && <> · <a href={`tel:${order.clienteTelefono}`} className="text-purple-700 hover:underline">{order.clienteTelefono}</a></>}
               </p>
             )}
-            {order.direccion && <p className="text-sm text-gray-500">📍 {order.direccion}</p>}
+            {order.direccion && <p className="text-sm text-gray-700">{order.direccion}</p>}
             {order.origen === 'WEB' && (
-              <p className="text-sm text-blue-700 font-medium">
-                🌐 Pedido web · {order.tipoEntrega === 'DOMICILIO' ? '🛵 A domicilio' : '🛍️ Para recoger'}
-                {order.metodoPago && <> · Paga con {({ EFECTIVO: 'efectivo', TARJETA: 'tarjeta', TRANSFERENCIA: 'transferencia' })[order.metodoPago] ?? order.metodoPago}</>}
+              <p className="text-sm font-semibold text-[#1E4585]">
+                Pedido web · {order.tipoEntrega === 'DOMICILIO' ? 'A domicilio' : 'Para recoger'}
+                {order.metodoPago && <> · paga con {PAGO_TXT[order.metodoPago] ?? order.metodoPago}</>}
               </p>
             )}
-            {/* Transferencia web: foto del comprobante que subió el cliente (solo personal autorizado). */}
             {order.origen === 'WEB' && order.metodoPago === 'TRANSFERENCIA' && order.tipoEntrega !== 'DOMICILIO' && (
               order.comprobantePath ? (
-                <details className="mt-1 text-sm">
-                  <summary className="cursor-pointer text-green-700 font-medium">
-                    ✅ Comprobante de transferencia{order.transferenciaIncluyeEnvio === false ? ' (sin envío: el envío se paga en efectivo)' : ''}
+                <details className="text-sm">
+                  <summary className="cursor-pointer text-[#22603C] font-bold">
+                    Comprobante de transferencia{order.transferenciaIncluyeEnvio === false ? ' (sin envío: el envío se paga en efectivo)' : ''}
                   </summary>
                   <div className="mt-2 max-w-sm"><ComprobanteImagen ordenId={order.id} version={order.comprobanteAt} /></div>
                 </details>
               ) : (
-                <p className="text-sm text-orange-700">⏳ El cliente aún no sube el comprobante de su transferencia</p>
+                <p className="text-sm text-[#7A4A00]">El cliente aún no sube el comprobante de su transferencia</p>
               )
             )}
             {order.tipoEntrega === 'DOMICILIO' && (
               <EntregaSeguimiento ordenId={order.id}
                 version={`${order.repartidor?.id ?? ''}|${order.enCaminoAt ?? ''}|${order.entregadaAt ?? ''}|${order.estado}|${order.total}|${order.comprobanteAt ?? ''}|${accounts.map((c) => `${c.id}:${c.totalPagado}`).join(',')}`} />
             )}
-            {order.notas && <p className="text-sm text-gray-600">📝 {order.notas}</p>}
+            {order.notas && <p className="text-sm text-gray-700">Notas: {order.notas}</p>}
             {order.cliente ? (
-              <p className="text-sm text-gray-600">
-                ⭐ Cliente registrado · {order.cliente.nombre} ({order.cliente.email})
+              <p className="text-sm text-gray-700">
+                Cliente registrado · {order.cliente.nombre} ({order.cliente.email})
                 {order.origen !== 'WEB' && (
-                  <button type="button" onClick={handleUnlinkClient} className="ml-2 text-xs text-red-600 hover:underline">Quitar</button>
+                  <button type="button" onClick={handleUnlinkClient} className="ml-2 text-xs font-semibold text-red-700 hover:underline">Quitar</button>
                 )}
               </p>
             ) : order.origen !== 'WEB' && order.estado !== 'CANCELADA' && (
-              // Ligar la visita a la cuenta del cliente en la página web: así la ve en "Mis
-              // pedidos" y puede calificarla desde ahí (además del QR del ticket).
-              <form onSubmit={handleLinkClient} className="mt-1 flex flex-wrap items-center gap-2">
-                <input className="input !w-64 !py-1 text-sm" placeholder="Correo o teléfono del cliente registrado"
+              // Ligar la visita a la cuenta del cliente en la página web: la ve en "Mis pedidos" y la califica.
+              <form onSubmit={handleLinkClient} className="flex flex-wrap items-center gap-2">
+                <label htmlFor="ligar-cliente" className="sr-only">Correo o teléfono del cliente registrado</label>
+                <input id="ligar-cliente" className="input flex-1 min-w-[160px]" placeholder="Correo o teléfono del cliente"
                   value={clienteBusqueda} onChange={(e) => setClienteBusqueda(e.target.value)} />
-                <button disabled={ligando || !clienteBusqueda.trim()} className="btn-secondary !py-1 text-sm disabled:opacity-40">
+                <button disabled={ligando || !clienteBusqueda.trim()} className="btn-secondary disabled:opacity-40">
                   {ligando ? '...' : 'Ligar cliente'}
                 </button>
               </form>
             )}
             {order.reporteTipo && (
-              <div className={`mt-1 rounded-lg border px-3 py-1.5 ${order.reporteTipo === 'BIEN' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                <p className="text-sm font-semibold">
-                  {({ BIEN: '✅ El cliente reporta que llegó bien', MAL: '⚠️ El cliente reporta que llegó mal', FALTANTE: '❌ El cliente reporta que le faltó algo' })[order.reporteTipo]}
-                  <span className="font-normal text-gray-500"> · {new Date(order.reporteAt).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}</span>
+              <div className={`rounded-xl border px-3 py-2 ${order.reporteTipo === 'BIEN' ? 'bg-[#E7F3EC] border-[#9CCBB0]' : 'bg-red-50 border-red-200'}`}>
+                <p className="text-sm font-bold">
+                  {({ BIEN: 'El cliente reporta que llegó bien', MAL: 'El cliente reporta que llegó mal', FALTANTE: 'El cliente reporta que le faltó algo' })[order.reporteTipo]}
+                  <span className="font-normal text-gray-600"> · {new Date(order.reporteAt).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}</span>
                 </p>
                 {order.reporteProductos && <p className="text-sm text-gray-700">Productos: {order.reporteProductos}</p>}
                 {order.reporteComentario && <p className="text-sm text-gray-700 italic">"{order.reporteComentario}"</p>}
               </div>
             )}
             {order.resenaEstrellas && (
-              <div className="mt-1 inline-block rounded-lg bg-yellow-50 border border-yellow-200 px-3 py-1.5">
+              <div className="rounded-xl bg-[#FBF7EC] border border-[#EADFC3] px-3 py-2">
                 <p className="text-sm">
-                  <span className="text-yellow-500 tracking-tight">{'★'.repeat(order.resenaEstrellas)}</span>
-                  <span className="text-gray-300 tracking-tight">{'★'.repeat(5 - order.resenaEstrellas)}</span>
-                  <span className="ml-2 font-semibold text-gray-700">Calificación del cliente</span>
+                  <span className="text-[#B86E00]">{'★'.repeat(order.resenaEstrellas)}</span>
+                  <span className="text-gray-300">{'★'.repeat(5 - order.resenaEstrellas)}</span>
+                  <span className="ml-2 font-bold text-gray-800">Calificación del cliente</span>
                 </p>
                 {order.resenaComentario && <p className="text-sm text-gray-700 italic">"{order.resenaComentario}"</p>}
               </div>
             )}
-          </div>
+          </section>
         </div>
-        {!isClosed && (
-          <button className="btn-danger" onClick={handleCancelOrder}>Cancelar orden</button>
-        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          {/* Comensales — no aplica a las órdenes "para llevar" (sin mesa): no hay a quién
-              repartirle los productos, así que ni tiene sentido el concepto aquí. */}
-          {order.mesa && (
-            <div className="card">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-gray-800">Comensales</h3>
-                {!isClosed && <button className="btn-secondary py-1 px-3 text-xs" onClick={handleAddDiner}>+ Agregar comensal</button>}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {order.comensales?.map((c) => (
-                  <span key={c.id} className="bg-gray-100 rounded-full pl-3 pr-1 py-1 text-sm text-gray-700 flex items-center gap-1.5">
-                    Comensal {c.numero}{c.nombre ? ` (${c.nombre})` : ''}
-                    {!isClosed && (
-                      <button
-                        type="button"
-                        title="Quitar comensal"
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 leading-none"
-                        onClick={() => handleDeleteDiner(c)}
-                      >✕</button>
-                    )}
-                  </span>
-                ))}
-                {(!order.comensales || order.comensales.length === 0) && (
-                  <p className="text-gray-400 text-sm">Sin comensales todavía</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Items */}
-          <div className="card p-0 overflow-hidden">
-            <div className="p-4 pb-0">
-              <h3 className="font-semibold text-gray-800 mb-2">Productos</h3>
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                {/* Filtra la tabla de abajo por comensal (lo que va a consumir + lo que se le
-                    canceló) o para ver de un jalón todo lo cancelado de la orden, sin importar
-                    de quién. */}
-                <select className="input !w-auto text-xs py-1.5" value={itemFilter} onChange={(e) => setItemFilter(e.target.value)}>
-                  <option value="ALL">Todos los productos</option>
-                  <option value="SHARED">Compartido</option>
-                  {order.mesa && order.comensales?.map((c) => (
-                    <option key={c.id} value={String(c.id)}>Comensal {c.numero}{c.nombre ? ` (${c.nombre})` : ''}</option>
-                  ))}
-                  <option value="CANCELLED_ALL">Todo lo cancelado</option>
-                </select>
-                <div className="flex gap-2">
-                  {!isClosed && (order.items ?? []).some((i) => i.estado !== 'ENTREGADO' && i.estado !== 'CANCELADO') && (
-                    <button
-                      className="text-sm font-semibold px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
-                      disabled={marcandoTodo}
-                      onClick={handleMarcarTodoEntregado}
-                    >
-                      ✅ Marcar todo {entregadoLabel.toLowerCase()}
-                    </button>
-                  )}
-                  {!isClosed && <button className="btn-primary py-1.5 px-3 text-sm" onClick={openAddItem}>+ Agregar producto</button>}
-                </div>
-              </div>
-            </div>
-            <div className="overflow-x-auto mt-3">
-              <table className="w-full text-sm min-w-[600px]">
-                <thead className="bg-gray-50 border-b border-gray-100">
-                  <tr>
-                    {['Producto', 'Comensal', 'Cant.', 'Subtotal', 'Estado', ''].map((h) => (
-                      <th key={h} className="text-left px-4 py-2 font-medium text-gray-600">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {filteredItems.map((item) => (
-                    <tr key={item.id} className={item.estado === 'CANCELADO' ? 'opacity-40' : ''}>
-                      <td className="px-4 py-2 text-gray-900">
-                        {item.productoNombre}
-                        {(item.modificadores ?? []).map((m) => (
-                          <p key={m.id} className="text-xs text-gray-500">
-                            {m.grupoNombre} {m.nombre}{Number(m.precioExtra) > 0 ? ` (+${fmt(m.precioExtra)})` : ''}
-                          </p>
+      {/* Unir otra mesa a esta orden */}
+      {unirAbierto && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setUnirAbierto(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-extrabold">Unir una mesa a esta orden</h3>
+            <p className="text-sm text-gray-600 mt-1">Una mesa libre queda ocupada por esta orden. Si ya tiene su orden, sus productos y comensales pasan aquí.</p>
+            {(() => {
+              const opciones = mesasTienda.filter((m) => m.ordenActiva?.id !== order.id && m.estado !== 'FUERA_DE_SERVICIO')
+              const zonasOp = [...new Set(opciones.map((m) => m.zona?.nombre ?? 'Sin zona'))]
+              if (opciones.length === 0) return <p className="text-sm text-gray-700 py-6 text-center">No hay otras mesas.</p>
+              return (
+                <div className="mt-4 space-y-4">
+                  {zonasOp.map((zona) => (
+                    <div key={zona}>
+                      <p className="text-xs font-bold uppercase tracking-wider text-gray-600 mb-1.5">{zona}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {opciones.filter((m) => (m.zona?.nombre ?? 'Sin zona') === zona).map((m) => (
+                          <button key={m.id} type="button" onClick={() => unirCon(m)}
+                            className="min-h-[44px] px-4 rounded-xl border border-[#D9D5CC] bg-white text-sm font-bold hover:border-purple-400 hover:bg-purple-50 text-left">
+                            Mesa {m.numero}
+                            <span className={`block text-[11px] font-semibold ${m.ordenActiva ? 'text-[#1E4585]' : 'text-[#22603C]'}`}>
+                              {m.unidaA ? `Unida a mesa ${m.unidaA}` : m.ordenActiva ? `Ocupada · ${fmt(m.ordenActiva.total)}` : 'Libre'}
+                            </span>
+                          </button>
                         ))}
-                        {/* Desglose del precio cuando hay extras con costo: base + extras = precio por pieza. */}
-                        {!item.cargoExtra && extrasDe(item) > 0 && (
-                          <p className="text-xs font-medium text-purple-700">
-                            {fmt(item.precioUnitario)} + {fmt(extrasDe(item))} extras = {fmt(Number(item.precioUnitario) + extrasDe(item))} c/u
-                          </p>
-                        )}
-                        {item.observaciones && <p className="text-xs text-gray-400">{item.observaciones}</p>}
-                      </td>
-                      <td className="px-4 py-2 text-gray-500">{item.comensal ? `Comensal ${item.comensal.numero}` : 'Compartido'}</td>
-                      <td className="px-4 py-2 text-gray-700">{Number(item.cantidad).toString()}</td>
-                      <td className="px-4 py-2 text-gray-700">{fmt(item.subtotal)}</td>
-                      <td className="px-4 py-2 text-xs text-gray-500">
-                        {itemEstadoLabel(item)}{item.estado !== 'CANCELADO' ? paymentLabel(item) : ''}
-                      </td>
-                      <td className="px-4 py-2">
-                        <div className="flex gap-2 justify-end">
-                          {!isClosed && !item.cargoExtra && item.estado !== 'CANCELADO' && item.estado !== 'ENTREGADO' && (
-                            <button
-                              className="text-xs font-semibold px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100"
-                              onClick={() => handleMarcarEntregado(item)}
-                            >
-                              {entregadoLabel}
-                            </button>
-                          )}
-                          {!isClosed && !item.cargoExtra && item.estado !== 'CANCELADO' && (
-                            <button className="text-xs font-semibold px-2 py-0.5 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100"
-                              onClick={() => openEditItem(item)}>Editar</button>
-                          )}
-                          {!isClosed && item.estado !== 'CANCELADO' && Number(item.cantidadFacturada) === 0 && (
-                            <button className="text-red-500 hover:underline text-xs" onClick={() => handleCancelItem(item)}>Cancelar</button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   ))}
-                  {filteredItems.length === 0 && (
-                    <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400">
-                      {(!order.items || order.items.length === 0) ? 'Sin productos todavía' : 'Nada que mostrar con este filtro'}
-                    </td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <div className="p-4 border-t border-gray-100 flex justify-end">
-              <div className="text-sm space-y-1 text-right">
-                <p className="text-gray-500">Subtotal: <span className="font-medium text-gray-800">{fmt(filteredSubtotal)}</span></p>
-                <p className="text-gray-900 font-bold text-base">Total: {fmt(filteredTotal)}</p>
-              </div>
-            </div>
+                </div>
+              )
+            })()}
+            <div className="flex justify-end mt-5"><button type="button" className="btn-secondary" onClick={() => setUnirAbierto(false)}>Cancelar</button></div>
           </div>
         </div>
+      )}
 
-        {/* Cuentas / cobro */}
-        <div className="space-y-4">
-          <div className="card">
-            <h3 className="font-semibold text-gray-800 mb-3">Cuentas</h3>
-            {!isClosed && !cobraRepartidor && sinEntregar.length > 0 && (
-              <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                <p className="font-semibold">Falta marcar como {entregadoLabel.toLowerCase()}:</p>
-                <p className="text-xs mt-0.5">
-                  {sinEntregar.map((i) => `${Number(i.cantidad)}× ${i.productoNombre}`).join(', ')}
-                </p>
-                <p className="text-xs mt-1">Solo se puede cobrar lo que ya se entregó.</p>
-                <button type="button" disabled={marcandoTodo} onClick={handleMarcarTodoEntregado}
-                  className="mt-2 w-full rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-600 disabled:opacity-50">
-                  {marcandoTodo ? '...' : `✅ Marcar todo ${entregadoLabel.toLowerCase()}`}
-                </button>
-              </div>
-            )}
-            {!isClosed && billableItems.length > 0 && !cobraRepartidor && (
-              <button
-                className="btn-primary w-full py-2 text-sm mb-3 disabled:opacity-40 disabled:cursor-not-allowed"
-                disabled={nadaEntregado}
-                title={nadaEntregado ? `Primero marca los productos como ${entregadoLabel.toLowerCase()}` : undefined}
-                onClick={() => {
-                  if (!order.mesa || onlySharedPending) setAccountTipo('TOTAL')
-                  setShowAccount(true)
-                }}
-              >+ Generar cuenta</button>
-            )}
-            {/* Pedido web a domicilio: el cobro lo hace el repartidor al entregar (página web → Entregas). */}
-            {!isClosed && cobraRepartidor && (
-              <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm text-blue-900">
-                🛵 <b>Lo cobra el repartidor</b> al entregarlo{order.metodoPago ? ` (${({ EFECTIVO: 'efectivo', TARJETA: 'tarjeta', TRANSFERENCIA: 'transferencia' })[order.metodoPago] ?? order.metodoPago})` : ''}. No se genera cuenta en caja.
-              </div>
-            )}
-            <div className="space-y-3">
-              {accounts.map((c) => (
-                <div key={c.id} className="border border-gray-100 rounded-lg p-3 text-sm">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-gray-800">{c.ticketFolio ?? `Cuenta #${c.id}`}</p>
-                      <p className="text-xs text-gray-500">
-                        {c.tipo === 'TOTAL' ? 'Total' : c.tipo === 'POR_COMENSAL' ? `Comensal ${c.comensal?.numero}` : 'Personalizada'}
-                      </p>
-                    </div>
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                      c.estado === 'PAGADA' ? 'bg-green-100 text-green-700' : c.estado === 'CANCELADA' ? 'bg-gray-100 text-gray-500' : 'bg-orange-100 text-orange-700'
-                    }`}>{c.estado}</span>
+      {/* Mover la orden a otra mesa libre */}
+      {mesasLibres && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setMesasLibres(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-extrabold">Mover a otra mesa</h3>
+            <p className="text-sm text-gray-600 mt-1">Productos, comensales y cuentas se van con la orden; la mesa {order.mesa?.numero} queda libre.</p>
+            {mesasLibres.length === 0 && <p className="text-sm text-gray-700 py-6 text-center">No hay mesas libres en este momento.</p>}
+            <div className="mt-4 space-y-4">
+              {[...new Set(mesasLibres.map((m) => m.zona?.nombre ?? 'Sin zona'))].map((zona) => (
+                <div key={zona}>
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-600 mb-1.5">{zona}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {mesasLibres.filter((m) => (m.zona?.nombre ?? 'Sin zona') === zona).map((m) => (
+                      <button key={m.id} type="button" onClick={() => moverA(m)}
+                        className="min-h-[44px] px-4 rounded-xl border border-[#D9D5CC] bg-white text-sm font-bold hover:border-purple-400 hover:bg-purple-50">
+                        Mesa {m.numero}{m.capacidad ? <span className="font-normal text-gray-600"> · {m.capacidad} lugares</span> : null}
+                      </button>
+                    ))}
                   </div>
-                  <p className="mt-1 text-gray-700">Total: <span className="font-semibold">{fmt(c.total)}</span> · Pagado: {fmt(c.totalPagado)}</p>
-                  <div className="mt-3 space-y-2">
-                    {c.estado === 'PENDIENTE' && hasSection('CASH_CUTS') && (
-                      <button className="btn-primary w-full py-2 text-sm" onClick={() => openPayModal(c)}>Registrar pago</button>
-                    )}
-                    {c.estado === 'PENDIENTE' && (isAdmin || isMesero) && (
-                      <button
-                        className="w-full py-2 text-sm font-medium rounded-lg border border-red-200 text-red-600 bg-white hover:bg-red-50 transition-colors"
-                        onClick={() => handleCancelAccount(c)}
-                      >Cancelar cuenta</button>
-                    )}
-                    {c.estado === 'PAGADA' && (
-                      <button className="btn-secondary w-full py-2 text-sm" onClick={() => handleViewTicket(c)}>Ver ticket</button>
-                    )}
-                    {c.estado === 'PAGADA' && order.mesa && !opiniones[c.id] && (
-                      <button className="w-full py-2 text-sm font-medium rounded-lg border border-yellow-300 text-yellow-800 bg-yellow-50 hover:bg-yellow-100"
-                        onClick={() => handleShowOpinionQr(c)}>⭐ QR para que opine</button>
-                    )}
-                  </div>
-                  {opiniones[c.id] && (
-                    <div className="mt-2 rounded-lg bg-yellow-50 border border-yellow-200 px-3 py-2 text-sm">
-                      <p>
-                        <span className="text-yellow-500">{'★'.repeat(opiniones[c.id].estrellas)}</span>
-                        <span className="text-gray-300">{'★'.repeat(5 - opiniones[c.id].estrellas)}</span>
-                        <span className="ml-1 font-semibold text-gray-700">Opinión del cliente</span>
-                      </p>
-                      {opiniones[c.id].meseroEstrellas && <p className="text-xs text-gray-600">Atención del mesero: {'★'.repeat(opiniones[c.id].meseroEstrellas)}</p>}
-                      {opiniones[c.id].platillos.length > 0 && (
-                        <p className="text-xs text-gray-600">{opiniones[c.id].platillos.map((p) => `${p.meGusta ? '👍' : '👎'} ${p.nombre}`).join(' · ')}</p>
-                      )}
-                      {opiniones[c.id].comentario && <p className="text-gray-700 italic">"{opiniones[c.id].comentario}"</p>}
-                    </div>
-                  )}
                 </div>
               ))}
-              {accounts.length === 0 && <p className="text-gray-400 text-sm">Sin cuentas generadas</p>}
             </div>
+            <div className="flex justify-end mt-5"><button type="button" className="btn-secondary" onClick={() => setMesasLibres(null)}>Cancelar</button></div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* QR "califica tu visita" en pantalla */}
       {qrOpinion && (

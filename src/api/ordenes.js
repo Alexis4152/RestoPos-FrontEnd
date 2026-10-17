@@ -58,3 +58,15 @@ export const getOrderOpinions = (orderId) => api.get(`/orders/${orderId}/opinion
 
 /** Envío a domicilio: { estado, repartidor, tomadoAt, enCaminoAt, entregadoAt, eventos }. */
 export const getOrderDelivery = (orderId) => api.get(`/orders/${orderId}/entrega`)
+
+/** Mueve la orden de mesa a otra mesa libre. */
+export const moveOrderTable = (orderId, mesaId) => api.post(`/orders/${orderId}/mover-mesa`, { mesaId })
+
+/** Une otra mesa a la orden (libre, o con su propia orden que se fusiona en esta). */
+export const joinOrderTable = (orderId, mesaId) => api.post(`/orders/${orderId}/unir-mesa`, { mesaId })
+
+/** Separa (libera) una mesa que se había unido a la orden. */
+export const splitOrderTable = (orderId, mesaId) => api.post(`/orders/${orderId}/separar-mesa`, { mesaId })
+
+/** Avisos informativos para la campana: { reportes: [...], entregados: [...] }. */
+export const getOrderNotices = () => api.get('/orders/avisos')

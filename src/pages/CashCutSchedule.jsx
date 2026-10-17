@@ -49,7 +49,7 @@ export default function CashCutSchedule() {
 
   return (
     <div className="max-w-xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Cierre automático de cortes</h1>
+      <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900 mb-1">Cierre automático de cortes</h1>
       <p className="text-gray-500 text-sm mb-6">
         A esta hora, todos los días, el sistema cierra automáticamente cualquier corte de caja que
         haya quedado abierto (en cualquier tienda) y manda un reporte de cierre en Excel a los

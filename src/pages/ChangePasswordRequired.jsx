@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { changePassword } from '../api/auth'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
-import logo from '../assets/logo.png'
+import AuthLayout, { AuthAviso, authInput, authBoton } from '../components/AuthLayout'
+import PasswordInput from '../components/PasswordInput'
 
 /**
  * Pantalla obligatoria "Cambia tu contraseña" — la ve un usuario YA AUTENTICADO al que un
@@ -61,72 +62,36 @@ export default function ChangePasswordRequired() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#03050c] via-[#050b18] to-[#0d1b3d] flex items-center justify-center p-4 relative overflow-hidden">
-      <img
-        src={logo}
-        alt=""
-        aria-hidden="true"
-        className="pointer-events-none select-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] max-w-none opacity-[0.05]"
-      />
-      <div className="bg-white rounded-2xl shadow-2xl shadow-[#155dea]/30 w-full max-w-md p-6 sm:p-8 relative z-10">
-        <div className="text-center mb-8">
-          <img src={logo} alt="Nexora Systems" className="w-24 h-24 rounded-full mx-auto mb-3 shadow-[0_0_24px_rgba(43,132,245,0.5)]" />
-          <h1 className="text-2xl font-bold text-gray-900">Cambia tu contraseña</h1>
-          <p className="text-gray-500 text-sm mt-1">
-            {user?.name ? `Hola ${user.name}, por` : 'Por'} seguridad, antes de continuar elige una contraseña propia distinta a la temporal que recibiste por correo.
-          </p>
+    <AuthLayout titulo="Cambia tu contraseña"
+      subtitulo={`${user?.name ? `Hola ${user.name}, por` : 'Por'} seguridad, antes de continuar elige una contraseña propia distinta a la temporal que recibiste por correo.`}>
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <div className="space-y-1.5">
+          <label htmlFor="cp-actual" className="block text-sm font-bold text-gray-900">Contraseña temporal</label>
+          {/* Sin required/minLength nativos a propósito (ver handleSubmit). */}
+          <PasswordInput id="cp-actual" autoComplete="current-password" className={authInput} placeholder="La que recibiste por correo"
+            value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+          {fieldErrors.currentPassword && <p className="text-red-700 text-xs mt-1">{fieldErrors.currentPassword}</p>}
         </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña temporal</label>
-            {/* Sin required/minLength nativos a propósito (ver handleSubmit). */}
-            <input
-              type="password"
-              className="input"
-              placeholder="La que recibiste por correo"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-            />
-            {fieldErrors.currentPassword && <p className="text-red-600 text-xs mt-1">{fieldErrors.currentPassword}</p>}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nueva contraseña</label>
-            <input
-              type="password"
-              className="input"
-              placeholder="••••••••"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-            />
-            {fieldErrors.newPassword && <p className="text-red-600 text-xs mt-1">{fieldErrors.newPassword}</p>}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar contraseña</label>
-            <input
-              type="password"
-              className="input"
-              placeholder="••••••••"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
-            {fieldErrors.confirmPassword && <p className="text-red-600 text-xs mt-1">{fieldErrors.confirmPassword}</p>}
-          </div>
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
-              {error}
-            </div>
-          )}
-
-          <button type="submit" className="btn-primary w-full py-3" disabled={loading}>
-            {loading ? 'Guardando...' : 'Cambiar contraseña y continuar'}
-          </button>
-          <button type="button" className="w-full text-sm text-gray-400 hover:text-gray-600" onClick={logout}>
-            Cerrar sesión
-          </button>
-        </form>
-      </div>
-    </div>
+        <div className="space-y-1.5">
+          <label htmlFor="cp-nueva" className="block text-sm font-bold text-gray-900">Nueva contraseña</label>
+          <PasswordInput id="cp-nueva" autoComplete="new-password" className={authInput} placeholder="Tu nueva contraseña"
+            value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+          {fieldErrors.newPassword && <p className="text-red-700 text-xs mt-1">{fieldErrors.newPassword}</p>}
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="cp-confirmar" className="block text-sm font-bold text-gray-900">Confirmar contraseña</label>
+          <PasswordInput id="cp-confirmar" autoComplete="new-password" className={authInput} placeholder="Escríbela otra vez"
+            value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+          {fieldErrors.confirmPassword && <p className="text-red-700 text-xs mt-1">{fieldErrors.confirmPassword}</p>}
+        </div>
+        {error && <AuthAviso>{error}</AuthAviso>}
+        <button type="submit" className={authBoton} disabled={loading}>
+          {loading ? 'Guardando...' : 'Cambiar contraseña y continuar'}
+        </button>
+        <button type="button" className="block w-full text-center text-sm font-bold text-gray-600 hover:underline py-2" onClick={logout}>
+          Cerrar sesión
+        </button>
+      </form>
+    </AuthLayout>
   )
 }

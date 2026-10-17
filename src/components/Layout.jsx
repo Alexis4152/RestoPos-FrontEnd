@@ -1,47 +1,83 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { SECTIONS, WEB_ONLY_SECTIONS } from '../config/sections'
+import { WEB_ONLY_SECTIONS } from '../config/sections'
 import defaultLogo from '../assets/logo.png'
-import PickupNotifier from './PickupNotifier'
-import WebOrdersNotifier from './WebOrdersNotifier'
-import ReservasNotifier from './ReservasNotifier'
+import NotificationCenter from './NotificationCenter'
+import Icon from './Icon'
 import { resolveMediaUrl } from '../utils/media'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 
 /**
- * Fábrica de la función `className` que consume `NavLink` de react-router para
- * resaltar el link activo del sidebar, adaptando el estilo según si el sidebar
- * está colapsado (modo solo íconos, centrado) o expandido.
- *
- * @param {boolean} collapsed - Si el sidebar está en modo colapsado.
- * @returns {(navData: { isActive: boolean }) => string} Función que `NavLink` invoca para obtener las clases CSS.
+ * Clase de cada link del menú: claro, con el activo resaltado en el color de marca de la
+ * tienda (purple-* = variables de marca, ver tailwind.config.js). En modo contraído solo
+ * se ve el ícono, centrado.
  */
 const navLinkClass = (collapsed) => ({ isActive }) =>
-  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+  `flex items-center gap-3 min-h-[40px] px-3 rounded-xl text-sm font-semibold transition-colors ${
     collapsed ? 'justify-center' : ''
   } ${
-    isActive
-      ? 'bg-purple-600/20 text-purple-300'
-      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+    isActive ? 'bg-purple-50 text-purple-800' : 'text-gray-700 hover:bg-[#EFEDE7] hover:text-gray-900'
   }`
 
 // Rutas agrupadas bajo el submenú colapsable "Configuración" del sidebar.
-const CONFIG_ROUTES = ['/users', '/roles','/categories', '/appearance', '/store-info', '/web-config', '/cash-cut-schedule']
+const CONFIG_ROUTES = ['/users', '/roles', '/categories', '/appearance', '/store-info', '/web-config', '/cash-cut-schedule']
 
 /**
- * Shell visual de toda la app autenticada: arma el sidebar de navegación (logo de
- * la tienda, links según las `AppSection` habilitadas del usuario, submenú
- * "Configuración") y envuelve el contenido de la ruta actual (`children`) junto
- * con el pie de página.
+ * Grupos del menú principal: cada entrada aparece solo si el usuario tiene su sección
+ * (`section`). Reservaciones va con Mesas y Opiniones con Reportes (mismos permisos).
+ */
+const GRUPOS = [
+  { titulo: null, items: [{ section: 'DASHBOARD', to: '/', label: 'Inicio', icon: 'inicio' }] },
+  {
+    titulo: 'Servicio',
+    items: [
+      { section: 'TABLES', to: '/tables', label: 'Mesas', icon: 'mesas' },
+      { section: 'TABLES', to: '/reservaciones', label: 'Reservaciones', icon: 'reservas' },
+      { section: 'TAKEAWAY', to: '/takeaway', label: 'Para llevar', icon: 'llevar' },
+      { section: 'KITCHEN', to: '/kitchen', label: 'Cocina', icon: 'cocina' },
+      { section: 'ORDERS', to: '/orders', label: 'Órdenes', icon: 'ordenes' },
+    ],
+  },
+  {
+    titulo: 'Caja',
+    items: [
+      { section: 'SALES', to: '/sales', label: 'Ventas', icon: 'ventas' },
+      { section: 'CASH_CUTS', to: '/cash-cuts', label: 'Cortes de caja', icon: 'corte' },
+    ],
+  },
+  {
+    titulo: 'Gestión',
+    items: [
+      { section: 'MENU', to: '/menu', label: 'Menú', icon: 'menu' },
+      { section: 'INVENTORY', to: '/inventory', label: 'Inventario', icon: 'inventario' },
+      { section: 'REPORTS', to: '/reports', label: 'Reportes', icon: 'reportes' },
+      { section: 'REPORTS', to: '/opiniones', label: 'Opiniones', icon: 'opiniones' },
+    ],
+  },
+]
+
+const ROL_LABEL = {
+  SUPER_ADMIN: 'Super admin',
+  SUPERVISOR: 'Supervisor',
+  ADMIN: 'Administrador',
+  MESERO: 'Mesero',
+  CAJERO: 'Cajero',
+  COCINERO: 'Cocina',
+  REPARTIDOR: 'Repartidor',
+}
+
+const iniciales = (nombre = '') => nombre.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?'
+
+/**
+ * Shell de toda la app autenticada: menú lateral claro agrupado (Servicio / Caja / Gestión /
+ * Configuración) con el logo y nombre de la tienda, y el contenido de la ruta (`children`).
  *
- * El menú principal se arma filtrando `SECTIONS` por las secciones que el usuario
- * tiene habilitadas (excluyendo `USERS` y `ROLES`, que se agrupan aparte). El submenú
- * "Configuración" agrupa Usuarios y Roles y Permisos (si tiene esas secciones) y, solo si
- * `isAdmin`, Apariencia y Datos de la tienda. El estado de colapsado del sidebar y
- * de expandido de "Configuración" persiste en `localStorage` entre sesiones.
+ * Multi-tienda: el SUPER_ADMIN y el SUPERVISOR (actores de plataforma) ven arriba la tienda
+ * sobre la que están actuando y abajo "Cambiar tienda", que los regresa a /select-tienda. El
+ * resto de usuarios solo ve su tienda. El menú solo muestra las secciones del rol.
  *
- * @param {{ children: import('react').ReactNode }} props
+ * El estado contraído del menú y el de "Configuración" persisten en `localStorage`.
  */
 export default function Layout({ children }) {
   const { user, logout, hasSection, isAdmin, isSuperAdmin, isPlatformActor, clearSelectedTienda } = useAuth()
@@ -51,32 +87,21 @@ export default function Layout({ children }) {
   const [configOpen, setConfigOpen] = useState(
     () => localStorage.getItem('pos_config_menu_open') !== '0' || CONFIG_ROUTES.includes(location.pathname)
   )
-  // Drawer del sidebar en mobile/tablet (< lg) — independiente de `collapsed`, que solo
-  // aplica al modo solo-íconos del sidebar fijo de escritorio.
+  // Drawer del menú en mobile/tablet (< lg), independiente de `collapsed` (solo escritorio).
   const [mobileOpen, setMobileOpen] = useState(false)
+  useEscapeKey(() => setMobileOpen(false), !!mobileOpen)
 
-  // Cierra con ESC el drawer del sidebar en mobile/tablet — mismo efecto que el clic
-  // fuera del panel (el backdrop).
-  useEscapeKey(() => {
-    setMobileOpen(false)
-  }, !!mobileOpen)
-
-  /** Cierra la sesión del usuario actual y lo redirige a la pantalla de login. */
   function handleLogout() {
     logout()
     navigate('/login')
   }
 
-  /** Regresa a un actor de plataforma (SUPER_ADMIN/SUPERVISOR) a la pantalla de tiendas, para elegir otra sobre la cual actuar. */
+  /** Regresa a un actor de plataforma (SUPER_ADMIN/SUPERVISOR) a la pantalla de tiendas. */
   function handleChangeTienda() {
     clearSelectedTienda()
     navigate('/select-tienda')
   }
 
-  /**
-   * Alterna el sidebar entre expandido y colapsado (modo solo íconos), persistiendo
-   * la preferencia en `localStorage` (`pos_sidebar_collapsed`) para futuras sesiones.
-   */
   function toggleCollapsed() {
     setCollapsed((c) => {
       const next = !c
@@ -85,11 +110,6 @@ export default function Layout({ children }) {
     })
   }
 
-  /**
-   * Alterna el submenú "Configuración" (Usuarios, Roles, Apariencia, Datos de la tienda)
-   * entre expandido y colapsado, persistiendo la preferencia en `localStorage`
-   * (`pos_config_menu_open`) para futuras sesiones.
-   */
   function toggleConfig() {
     setConfigOpen((c) => {
       const next = !c
@@ -98,85 +118,78 @@ export default function Layout({ children }) {
     })
   }
 
-  // Usuarios y Roles van dentro de "Configuración", no en el menú principal.
-  const links = SECTIONS.filter((s) => hasSection(s.code) && !['USERS', 'ROLES'].includes(s.code) && !WEB_ONLY_SECTIONS.includes(s.code))
-  // "Opiniones" de clientes va junto a Reportes (misma sección de permisos).
-  // "Reservaciones" va junto a Mesas (misma sección de permisos).
-  const idxMesas = links.findIndex((s) => s.code === 'TABLES')
-  if (idxMesas >= 0) links.splice(idxMesas + 1, 0, { code: 'TABLES_RESERVAS', label: 'Reservaciones', icon: '📅', to: '/reservaciones' })
-  const idxReportes = links.findIndex((s) => s.code === 'REPORTS')
-  if (idxReportes >= 0) links.splice(idxReportes + 1, 0, { code: 'REPORTS_OPINIONES', label: 'Opiniones', icon: '⭐', to: '/opiniones' })
+  const grupos = GRUPOS
+    .map((g) => ({ ...g, items: g.items.filter((it) => hasSection(it.section) && !WEB_ONLY_SECTIONS.includes(it.section)) }))
+    .filter((g) => g.items.length > 0)
 
-  const canSeeRoles = hasSection('ROLES')
   const configItems = [
-    hasSection('USERS') && { to: '/users', icon: '👥', label: 'Usuarios' },
-    canSeeRoles &&{ to: '/roles', icon: '🔑', label: 'Roles y Permisos' },
-    isAdmin && { to: '/categories', icon: '🏷️', label: 'Categorías' },
-    isAdmin && { to: '/appearance', icon: '🎨', label: 'Apariencia' },
-    isAdmin && { to: '/store-info', icon: '🏬', label: 'Datos de la tienda' },
-    isAdmin && { to: '/web-config', icon: '🌐', label: 'Página web' },
-    isSuperAdmin && { to: '/cash-cut-schedule', icon: '⏰', label: 'Cierre automático de cortes' },
+    hasSection('USERS') && { to: '/users', label: 'Usuarios' },
+    hasSection('ROLES') && { to: '/roles', label: 'Roles y permisos' },
+    isAdmin && { to: '/categories', label: 'Categorías' },
+    isAdmin && { to: '/appearance', label: 'Apariencia' },
+    isAdmin && { to: '/store-info', label: 'Datos de la tienda' },
+    isAdmin && { to: '/web-config', label: 'Página web' },
+    isSuperAdmin && { to: '/cash-cut-schedule', label: 'Cierre automático de cortes' },
   ].filter(Boolean)
   const configActive = CONFIG_ROUTES.includes(location.pathname)
   const sidebarLogo = resolveMediaUrl(user?.tienda?.logoPath) || defaultLogo
+  const tiendaNombre = user?.tienda?.name || (isPlatformActor ? 'Sin tienda elegida' : 'RestoPOS')
 
-  /**
-   * Contenido interno del sidebar (logo, nav, pie con rol/logout), compartido entre el
-   * `<aside>` fijo de escritorio (`lg:` en adelante, respeta `collapsed`) y el drawer
-   * off-canvas de mobile/tablet (siempre expandido). `onNavigate` se dispara al hacer
-   * click en un link — en el drawer cierra el overlay; en el sidebar fijo no hace nada.
-   */
   function renderSidebarBody(isCollapsed, onNavigate) {
     return (
       <>
-        <div className="p-6 border-b border-[var(--brand-sidebar-border)] overflow-hidden">
-          {isCollapsed ? (
-            <img src={sidebarLogo} alt={user?.tienda?.name || 'Nexora Systems'} className="w-10 h-10 rounded-full mx-auto object-cover shadow-[0_0_12px_rgba(43,132,245,0.5)]" />
-          ) : (
-            <>
-              <div className="flex items-center gap-3">
-                <img src={sidebarLogo} alt={user?.tienda?.name || 'Nexora Systems'} className="w-11 h-11 rounded-full shrink-0 object-cover shadow-[0_0_12px_rgba(43,132,245,0.5)]" />
-                <h1 className="text-base font-bold text-white leading-tight">RestoPOS</h1>
+        {/* Tienda */}
+        <div className={`px-4 pt-5 pb-4 ${isCollapsed ? 'flex justify-center' : ''}`}>
+          <div className="flex items-center gap-3 min-w-0">
+            <img src={sidebarLogo} alt="" className="w-10 h-10 rounded-xl object-cover border border-[#E4E1DA] bg-white shrink-0" />
+            {!isCollapsed && (
+              <div className="min-w-0 leading-tight">
+                <p className="font-extrabold text-[15px] text-gray-900">RestoPOS</p>
+                <p className="text-xs text-gray-600 truncate" title={tiendaNombre}>{tiendaNombre}</p>
               </div>
-              <p className="text-xs text-purple-300/70 mt-2 whitespace-nowrap">{user?.name}</p>
-            </>
-          )}
+            )}
+          </div>
         </div>
 
-        <nav className="sidebar-scroll flex-1 p-4 space-y-1 overflow-y-auto overflow-x-hidden">
-          {links.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.to === '/'} title={isCollapsed ? n.label : undefined} className={navLinkClass(isCollapsed)} onClick={onNavigate}>
-              <span>{n.icon}</span>
-              {!isCollapsed && <span className="whitespace-nowrap">{n.label}</span>}
-            </NavLink>
+        <nav aria-label="Menú principal" className="sidebar-scroll flex-1 px-3 pb-3 overflow-y-auto overflow-x-hidden space-y-4">
+          {grupos.map((g) => (
+            <div key={g.titulo ?? 'inicio'}>
+              {g.titulo && !isCollapsed && (
+                <p className="px-3 mb-1 text-[11px] font-bold uppercase tracking-wider text-gray-600">{g.titulo}</p>
+              )}
+              <div className="space-y-0.5">
+                {g.items.map((n) => (
+                  <NavLink key={n.to} to={n.to} end={n.to === '/'} title={isCollapsed ? n.label : undefined}
+                    className={navLinkClass(isCollapsed)} onClick={onNavigate}>
+                    <Icon name={n.icon} className="w-[18px] h-[18px] shrink-0" />
+                    {!isCollapsed && <span className="whitespace-nowrap">{n.label}</span>}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
 
           {configItems.length > 0 && (
             isCollapsed ? (
-              // Sin espacio para agrupar en modo icono: se muestran sueltos, igual que el resto.
-              configItems.map((n) => (
-                <NavLink key={n.to} to={n.to} title={n.label} className={navLinkClass(true)} onClick={onNavigate}>
-                  <span>{n.icon}</span>
-                </NavLink>
-              ))
+              <NavLink to={configItems[0].to} title="Configuración" className={navLinkClass(true)} onClick={onNavigate}>
+                <Icon name="config" className="w-[18px] h-[18px]" />
+              </NavLink>
             ) : (
               <div>
-                <button
-                  onClick={toggleConfig}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                    configActive ? 'text-purple-300' : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                  }`}
-                >
-                  <span>⚙️</span>
-                  <span className="whitespace-nowrap flex-1 text-left">Configuración</span>
-                  <span className={`text-xs transition-transform ${configOpen ? 'rotate-90' : ''}`}>›</span>
+                <button type="button" onClick={toggleConfig} aria-expanded={configOpen}
+                  className={`w-full flex items-center gap-3 min-h-[40px] px-3 rounded-xl text-sm font-semibold transition-colors ${
+                    configActive ? 'text-purple-800' : 'text-gray-700 hover:bg-[#EFEDE7]'}`}>
+                  <Icon name="config" className="w-[18px] h-[18px] shrink-0" />
+                  <span className="flex-1 text-left">Configuración</span>
+                  <span className={`text-xs transition-transform ${configOpen ? 'rotate-90' : ''}`} aria-hidden="true">›</span>
                 </button>
                 {configOpen && (
-                  <div className="mt-1 ml-4 pl-3 border-l border-[var(--brand-sidebar-border)] space-y-1">
+                  <div className="mt-0.5 ml-5 pl-3 border-l border-[#E4E1DA] space-y-0.5">
                     {configItems.map((n) => (
-                      <NavLink key={n.to} to={n.to} className={navLinkClass(false)} onClick={onNavigate}>
-                        <span>{n.icon}</span>
-                        <span className="whitespace-nowrap">{n.label}</span>
+                      <NavLink key={n.to} to={n.to} onClick={onNavigate}
+                        className={({ isActive }) => `block px-3 py-2 rounded-lg text-sm font-semibold ${
+                          isActive ? 'bg-purple-50 text-purple-800' : 'text-gray-600 hover:bg-[#EFEDE7] hover:text-gray-900'}`}>
+                        {n.label}
                       </NavLink>
                     ))}
                   </div>
@@ -186,33 +199,28 @@ export default function Layout({ children }) {
           )}
         </nav>
 
-        <div className="p-4 border-t border-[var(--brand-sidebar-border)]">
+        {/* Usuario, cambio de tienda (plataforma) y salida */}
+        <div className="p-3 border-t border-[#E4E1DA] space-y-1">
           {!isCollapsed && (
-            <div className="mb-2 px-3 py-2 text-xs text-slate-400">
-              <span className="inline-block bg-purple-600/20 text-purple-300 rounded px-2 py-0.5 font-medium">
-                {user?.role}
+            <div className="flex items-center gap-3 px-2 py-2 rounded-xl bg-[#F1EFEA]">
+              <span className="w-9 h-9 rounded-full bg-purple-100 text-purple-800 flex items-center justify-center text-xs font-extrabold shrink-0">
+                {iniciales(user?.name)}
               </span>
+              <div className="min-w-0 leading-tight">
+                <p className="text-sm font-bold truncate">{user?.name}</p>
+                <p className="text-xs text-gray-600">{ROL_LABEL[user?.role] ?? user?.role}</p>
+              </div>
             </div>
           )}
           {isPlatformActor && (
-            <button
-              onClick={handleChangeTienda}
-              title={isCollapsed ? 'Cambiar tienda' : undefined}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 hover:bg-white/5 hover:text-white transition-colors ${
-                isCollapsed ? 'justify-center' : ''
-              }`}
-            >
-              <span>🔁</span> {!isCollapsed && 'Cambiar tienda'}
+            <button type="button" onClick={handleChangeTienda} title={isCollapsed ? 'Cambiar tienda' : undefined}
+              className={`w-full flex items-center gap-3 min-h-[40px] px-3 rounded-xl text-sm font-semibold text-gray-700 hover:bg-[#EFEDE7] ${isCollapsed ? 'justify-center' : ''}`}>
+              <Icon name="cambiar" className="w-[18px] h-[18px] shrink-0" /> {!isCollapsed && 'Cambiar tienda'}
             </button>
           )}
-          <button
-            onClick={handleLogout}
-            title={isCollapsed ? 'Cerrar sesión' : undefined}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:bg-red-500/10 transition-colors ${
-              isCollapsed ? 'justify-center' : ''
-            }`}
-          >
-            <span>🚪</span> {!isCollapsed && 'Cerrar sesión'}
+          <button type="button" onClick={handleLogout} title={isCollapsed ? 'Cerrar sesión' : undefined}
+            className={`w-full flex items-center gap-3 min-h-[40px] px-3 rounded-xl text-sm font-semibold text-red-700 hover:bg-red-50 ${isCollapsed ? 'justify-center' : ''}`}>
+            <Icon name="salir" className="w-[18px] h-[18px] shrink-0" /> {!isCollapsed && 'Cerrar sesión'}
           </button>
         </div>
       </>
@@ -220,49 +228,48 @@ export default function Layout({ children }) {
   }
 
   return (
-    <div className="flex h-screen bg-purple-50">
-      {/* Sidebar fijo — solo visible desde `lg:` en adelante */}
-      <aside className={`hidden lg:flex ${collapsed ? 'w-20' : 'w-64'} bg-[var(--brand-sidebar)] border-r border-[var(--brand-sidebar-border)] flex-col transition-all duration-200 relative shrink-0`}>
-        <button
-          onClick={toggleCollapsed}
-          title={collapsed ? 'Expandir menú' : 'Contraer menú'}
-          className="absolute -right-3 top-8 w-6 h-6 rounded-full bg-white border border-gray-200 shadow flex items-center justify-center text-xs text-gray-500 hover:text-purple-700 hover:border-purple-300 z-10"
-        >
+    <div className="flex h-screen bg-[#F4F3EF]">
+      {/* Menú fijo — desde `lg:` */}
+      <aside className={`hidden lg:flex ${collapsed ? 'w-20' : 'w-60'} bg-[#FBFAF7] border-r border-[#E4E1DA] flex-col relative shrink-0`}>
+        <button type="button" onClick={toggleCollapsed} aria-label={collapsed ? 'Expandir menú' : 'Contraer menú'}
+          className="absolute -right-3 top-7 w-6 h-6 rounded-full bg-white border border-[#D9D5CC] shadow-sm flex items-center justify-center text-xs text-gray-600 hover:text-purple-700 z-10">
           {collapsed ? '›' : '‹'}
         </button>
         {renderSidebarBody(collapsed, undefined)}
       </aside>
 
-      {/* Drawer off-canvas — solo antes de `lg:` */}
+      {/* Drawer — antes de `lg:` */}
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
-          <aside className="relative w-72 max-w-[85vw] bg-[var(--brand-sidebar)] flex flex-col h-full">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
+          <aside className="relative w-72 max-w-[85vw] bg-[#FBFAF7] flex flex-col h-full">
             {renderSidebarBody(false, () => setMobileOpen(false))}
           </aside>
         </div>
       )}
 
-      {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="lg:hidden flex items-center gap-3 bg-white border-b border-gray-200 px-4 py-3 shrink-0">
-          <button onClick={() => setMobileOpen(true)} className="p-2 -ml-2 text-gray-600" aria-label="Abrir menú">☰</button>
-          <img src={sidebarLogo} alt={user?.tienda?.name || 'Nexora Systems'} className="w-8 h-8 rounded-full object-cover" />
-          <span className="font-semibold text-gray-800 truncate">{user?.tienda?.name || 'RestoPOS'}</span>
+        {/* Barra superior: en móvil, menú y tienda; en todas, la campana de notificaciones. */}
+        <header className="flex items-center gap-3 bg-[#FBFAF7] lg:bg-[#F4F3EF] border-b border-[#E4E1DA] lg:border-b-0 px-4 lg:px-8 py-2 lg:pt-4 lg:pb-0 shrink-0">
+          <button type="button" onClick={() => setMobileOpen(true)} className="lg:hidden w-11 h-11 -ml-2 flex items-center justify-center text-gray-700" aria-label="Abrir menú">
+            <Icon name="menuHamb" className="w-6 h-6" />
+          </button>
+          <img src={sidebarLogo} alt="" className="lg:hidden w-8 h-8 rounded-lg object-cover" />
+          <span className="lg:hidden font-bold text-gray-900 truncate flex-1">{tiendaNombre}</span>
+          <span className="hidden lg:block flex-1 text-[13px] text-gray-600 capitalize">
+            {new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}
+            {isPlatformActor && user?.tienda?.name ? ` · ${user.tienda.name}` : ''}
+          </span>
+          <NotificationCenter />
         </header>
         <main className="flex-1 overflow-y-auto flex flex-col">
-          <div className="p-4 sm:p-6 lg:p-8 flex-1">{children}</div>
-          <footer className="px-4 sm:px-6 lg:px-8 py-4 text-center text-xs text-gray-400 border-t border-gray-100">
+          <div className="p-4 sm:p-6 lg:px-8 lg:py-7 flex-1">{children}</div>
+          <footer className="px-4 sm:px-6 lg:px-8 py-4 text-center text-xs text-gray-500 border-t border-[#E4E1DA]">
             © {new Date().getFullYear()} Nexora Systems. Todos los derechos reservados.
           </footer>
         </main>
       </div>
 
-      {/* Aviso "platos por recoger" — solo para quien toma órdenes (mesero). */}
-      {(hasSection('ORDERS') || hasSection('TAKEAWAY')) && <PickupNotifier />}
-      {/* Pedidos de la página web por aceptar — para quien atiende "Para llevar". */}
-      {(hasSection('TAKEAWAY') || hasSection('ORDERS')) && <WebOrdersNotifier />}
-      {hasSection('TABLES') && <ReservasNotifier />}
     </div>
   )
 }

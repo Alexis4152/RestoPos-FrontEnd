@@ -58,7 +58,7 @@ export default function Reports() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Reportes</h2>
+      <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900 mb-6">Reportes</h1>
 
       {/* Date filter */}
       <div className="flex flex-wrap gap-3 items-end mb-6">

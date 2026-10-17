@@ -33,7 +33,7 @@ export default function Opiniones() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-4">⭐ Opiniones</h2>
+      <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900 mb-4">Opiniones</h1>
 
       <form onSubmit={(e) => { e.preventDefault(); cargar() }} className="card flex flex-wrap items-end gap-3 mb-6">
         <label className="text-xs text-gray-600">Desde<input type="date" className="input mt-1" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)} /></label>

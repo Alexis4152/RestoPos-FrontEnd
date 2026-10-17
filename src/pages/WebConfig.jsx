@@ -97,7 +97,7 @@ export default function WebConfig() {
   return (
     <form onSubmit={handleSave} className="max-w-2xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Página web</h1>
+        <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900">Página web</h1>
         <p className="text-gray-500 text-sm mt-1">
           Una página para tus clientes, sin el diseño del punto de venta: ven tu menú, las mesas libres u ocupadas y
           pueden hacer pedidos para recoger o a domicilio. Los pedidos te llegan a "Para llevar" para que los aceptes.

@@ -3,29 +3,28 @@ import { getKitchenOrders, getKitchenDeliveredToday } from '../api/kitchen'
 import { updateOrderItemStatus } from '../api/ordenes'
 import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
+import Icon from '../components/Icon'
 
 const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '—'
 
-const ESTADO_LABEL = {
-  ABIERTA: 'Abierta', EN_PROCESO: 'En proceso', LISTA: 'Lista', PENDIENTE_PAGO: 'Pendiente de pago',
+const ITEM_ESTADO = {
+  PENDIENTE: { label: 'Pendiente', cls: 'bg-[#F1EFEA] text-gray-700' },
+  PREPARANDO: { label: 'Preparando', cls: 'bg-[#E6EDF8] text-[#1E4585]' },
+  LISTO: { label: 'Listo', cls: 'bg-[#E7F3EC] text-[#22603C]' },
+  ENTREGADO_MESERO: { label: 'Entregado a mesero', cls: 'bg-purple-50 text-purple-800' },
+  ENTREGADO: { label: 'Entregado', cls: 'bg-[#E7F3EC] text-[#22603C]' },
 }
-const ESTADO_STYLE = {
-  ABIERTA: 'border-blue-200 bg-blue-50/40',
-  EN_PROCESO: 'border-orange-200 bg-orange-50/40',
-  LISTA: 'border-green-200 bg-green-50/40',
-  PENDIENTE_PAGO: 'border-gray-200 bg-gray-50',
-}
-const ITEM_ESTADO_STYLE = {
-  PENDIENTE: 'bg-gray-100 text-gray-600',
-  PREPARANDO: 'bg-orange-100 text-orange-700',
-  LISTO: 'bg-green-100 text-green-700',
-  ENTREGADO_MESERO: 'bg-purple-100 text-purple-700',
-  ENTREGADO: 'bg-blue-100 text-blue-600',
+/** Minutos desde que se abrió la orden, y su color: a los 20 min ámbar, a los 35 rojo. */
+function espera(desde) {
+  if (!desde) return { texto: '', cls: 'text-gray-600' }
+  const min = Math.max(0, Math.round((Date.now() - new Date(desde).getTime()) / 60000))
+  const texto = min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`
+  return { texto, cls: min >= 35 ? 'bg-red-100 text-red-800' : min >= 20 ? 'bg-[#FBF0DC] text-[#7A4A00]' : 'bg-[#F1EFEA] text-gray-700' }
 }
 const itemEstadoLabel = (item, orden) => {
   if (item.estado === 'ENTREGADO_MESERO') return 'Entregado a mesero'
   if (item.estado === 'ENTREGADO') return orden.mesa ? 'Entregado a mesa' : 'Entregado para llevar'
-  return item.estado
+  return ITEM_ESTADO[item.estado]?.label ?? item.estado
 }
 // Para cocina, un producto ya salió en cuanto se le entrega al mesero.
 const pendienteCocina = (i) => !['ENTREGADO_MESERO', 'ENTREGADO', 'CANCELADO'].includes(i.estado)
@@ -61,6 +60,8 @@ export default function Kitchen() {
 
   // Vista "Ya entregados": lo que cocina entregó hoy (viene de otro endpoint, incluye órdenes ya cobradas).
   const [entregadosHoy, setEntregadosHoy] = useState([])
+  const [, setTick] = useState(0)
+  useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 60000); return () => clearInterval(t) }, [])
   const loadEntregados = () => getKitchenDeliveredToday().then((r) => setEntregadosHoy(r.data.data ?? [])).catch(() => setEntregadosHoy([]))
   useEffect(() => { if (mesaFilter === VER_ENTREGADOS) loadEntregados() }, [mesaFilter])
   useLiveRefresh(loadEntregados, { activo: mesaFilter === VER_ENTREGADOS, filtro: (e) => e.name === 'orden' })
@@ -132,107 +133,107 @@ export default function Kitchen() {
     return String(o.mesa?.id ?? '') === mesaFilter
   })
 
+  const filtros = [
+    { key: '', label: 'Todo' },
+    ...mesasConOrden.map((m) => ({ key: String(m.id), label: `Mesa ${m.numero}` })),
+    ...(hayParaLlevar ? [{ key: 'TAKEAWAY', label: 'Para llevar' }] : []),
+  ]
+
   return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Cocina</h2>
-        <select
-          className={`!w-auto min-w-[16rem] rounded-xl border-2 px-4 py-3 text-lg font-bold shadow-md cursor-pointer focus:outline-none focus:ring-4 focus:ring-blue-200 ${
-            mesaFilter ? 'border-blue-600 bg-blue-600 text-white' : 'border-blue-500 bg-white text-blue-800'}`}
-          value={mesaFilter} onChange={(e) => setMesaFilter(e.target.value)}>
-          <option value="" className="bg-white text-gray-900">Todas las mesas</option>
-          {mesasConOrden.map((m) => (
-            <option key={m.id} value={m.id} className="bg-white text-gray-900">Mesa {m.numero}{m.zona?.nombre ? ` (${m.zona.nombre})` : ''}</option>
-          ))}
-          {hayParaLlevar && <option value="TAKEAWAY" className="bg-white text-gray-900">Para llevar</option>}
-          <option disabled className="bg-white text-gray-400">──────────</option>
-          <option value={VER_ENTREGADOS} className="bg-white text-gray-900">✅ Ya entregados</option>
-        </select>
+    <div className="space-y-5">
+      <header className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[220px]">
+          <h1 className="text-[28px] font-extrabold tracking-tight">Cocina</h1>
+          <p className="text-sm text-gray-600">
+            {verEntregados ? 'Lo que entregaste hoy, lo más reciente primero' : `${conPendientes.length} orden${conPendientes.length === 1 ? '' : 'es'} por preparar, la más antigua primero`}
+          </p>
+        </div>
+      </header>
+
+      <div className="flex flex-wrap items-center gap-2" aria-label="Filtrar comandas">
+        {filtros.map((f) => (
+          <button key={f.key || 'todo'} type="button" aria-pressed={mesaFilter === f.key} onClick={() => setMesaFilter(f.key)}
+            className={`chip min-h-[44px] text-[15px] ${mesaFilter === f.key ? 'chip-on' : ''}`}>{f.label}</button>
+        ))}
+        <span className="flex-1" />
+        <button type="button" aria-pressed={verEntregados} onClick={() => setMesaFilter(verEntregados ? '' : VER_ENTREGADOS)}
+          className={`chip min-h-[44px] text-[15px] ${verEntregados ? 'chip-on' : ''}`}>Ya entregados hoy</button>
       </div>
 
-      {verEntregados && (
-        <p className="mb-4 text-sm text-gray-500">Lo que entregaste hoy, lo más reciente primero. Vuelve a "Todas las mesas" para ver lo pendiente.</p>
-      )}
-
       {!loading && filteredOrders.length === 0 && (
-        <p className="text-gray-400 text-center py-12">{verEntregados ? 'Todavía no has entregado nada hoy' : 'Sin pedidos pendientes'}</p>
+        <p className="text-gray-600 text-center py-14 text-lg">{verEntregados ? 'Todavía no has entregado nada hoy' : 'Sin pedidos pendientes'}</p>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
         {filteredOrders.map((orden) => {
           const pendientes = (orden.items ?? []).filter(pendienteCocina)
+          const t = espera(orden.openedAt)
           return (
-          <div key={orden.id} className={`card border-2 ${ESTADO_STYLE[orden.estado] ?? 'border-gray-100'}`}>
-            <div className="flex items-center justify-between mb-1">
-              <div>
-                <p className="font-bold text-gray-900">{orden.mesa ? `Mesa ${orden.mesa.numero}` : 'Para llevar'}</p>
-                {orden.mesa?.zona?.nombre && (
-                  <p className="text-xs text-gray-400">📍 {orden.mesa.zona.nombre}</p>
+            <article key={orden.id} className="bg-white border border-[#E4E1DA] rounded-2xl overflow-hidden">
+              <div className="flex items-center gap-3 px-4 py-3 bg-[#FBFAF7] border-b border-[#ECE9E2]">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xl font-extrabold">{orden.mesa ? `Mesa ${orden.mesa.numero}` : (orden.clienteNombre ? `Para llevar · ${orden.clienteNombre}` : 'Para llevar')}</p>
+                  <p className="text-[13px] text-gray-600 truncate">
+                    {[orden.mesa?.zona?.nombre, orden.mesero?.name, `#${orden.id}`].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+                {!verEntregados && (
+                  <span className={`inline-flex items-center gap-1 text-sm font-extrabold px-2.5 py-1 rounded-lg ${t.cls}`}>
+                    <Icon name="reloj" className="w-4 h-4" /> {t.texto}
+                  </span>
                 )}
               </div>
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-white border border-gray-100">
-                {ESTADO_LABEL[orden.estado] ?? orden.estado}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <p className="text-xs text-gray-500">{orden.mesero?.name ?? '—'} · Abierta {fmtTime(orden.openedAt)}</p>
-              {!verEntregados && pendientes.length > 0 && (
-                <button
-                  type="button"
-                  className="text-xs font-semibold px-2 py-1 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 shrink-0"
-                  disabled={bulkUpdatingOrderIds.has(orden.id)}
-                  onClick={() => handleMarcarTodoEntregado(orden)}
-                >
-                  ✅ Marcar todo entregado a mesero
-                </button>
-              )}
-            </div>
 
-            <div className="space-y-2">
-              {itemsVisibles(orden).map((item) => (
-                <div key={item.id} className="flex items-start justify-between gap-2 text-sm border-t border-gray-100 pt-2">
-                  <div>
-                    <p className="text-base font-semibold text-gray-900">{Number(item.cantidad).toString()}× {item.productoNombre}</p>
-                    {/* Modificadores grandes y resaltados: es lo que el cocinero más necesita leer de un vistazo. */}
+              <ul className="divide-y divide-[#F0EEE8]">
+                {itemsVisibles(orden).map((item) => (
+                  <li key={item.id} className="px-4 py-3 space-y-2">
+                    <div className="flex items-start gap-3">
+                      <span className="text-xl font-extrabold w-8 shrink-0">{Number(item.cantidad).toString()}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-lg font-bold leading-snug">{item.productoNombre}</p>
+                        {item.comensal && <p className="text-[13px] text-gray-600">Comensal {item.comensal.numero}</p>}
+                      </div>
+                      <span className={`text-xs font-bold px-2 py-1 rounded-md whitespace-nowrap ${ITEM_ESTADO[item.estado]?.cls ?? 'bg-[#F1EFEA] text-gray-700'}`}>
+                        {itemEstadoLabel(item, orden)}
+                      </span>
+                    </div>
+                    {/* Modificadores y notas grandes: es lo que el cocinero más necesita leer de un vistazo. */}
                     {(item.modificadores ?? []).length > 0 && (
-                      <ul className="mt-1 space-y-1">
+                      <ul className="ml-11 space-y-1">
                         {item.modificadores.map((m) => (
-                          <li key={m.id} className="text-lg font-bold leading-tight text-red-700 bg-yellow-100 border-l-4 border-red-500 rounded px-2 py-1">
-                            {m.grupoNombre && <span className="font-semibold text-gray-700">{m.grupoNombre}: </span>}
-                            {m.nombre}
+                          <li key={m.id} className="text-lg font-extrabold leading-tight text-[#6B4100] bg-[#FBF0DC] rounded-lg px-2.5 py-1">
+                            {m.grupoNombre && <span className="font-semibold text-gray-700">{m.grupoNombre}: </span>}{m.nombre}
                           </li>
                         ))}
                       </ul>
                     )}
-                    {item.comensal && <p className="text-xs text-gray-400 mt-1">Comensal {item.comensal.numero}</p>}
                     {item.observaciones && (
-                      <p className="mt-1 text-lg font-bold leading-tight text-red-700 bg-yellow-100 border-l-4 border-red-500 rounded px-2 py-1">
+                      <p className="ml-11 text-lg font-extrabold leading-tight text-red-800 bg-red-50 rounded-lg px-2.5 py-1">
                         <span className="font-semibold text-gray-700">Nota: </span>{item.observaciones}
                       </p>
                     )}
-                  </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ITEM_ESTADO_STYLE[item.estado] ?? 'bg-gray-100 text-gray-500'}`}>
-                      {itemEstadoLabel(item, orden)}
-                    </span>
-                    {verEntregados && item.entregadoCocinaAt && (
-                      <span className="text-xs text-gray-500">a las {fmtTime(item.entregadoCocinaAt)}</span>
-                    )}
+                    {verEntregados && item.entregadoCocinaAt && <p className="ml-11 text-[13px] text-gray-600">Entregado a las {fmtTime(item.entregadoCocinaAt)}</p>}
                     {pendienteCocina(item) && (
-                      <button
-                        type="button"
-                        className="text-xs font-semibold px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-40"
-                        disabled={updatingIds.has(item.id)}
-                        onClick={() => handleMarcarEntregado(orden, item)}
-                      >
-                        Entregado a mesero
-                      </button>
+                      <div className="ml-11">
+                        <button type="button" disabled={updatingIds.has(item.id)} onClick={() => handleMarcarEntregado(orden, item)}
+                          className="min-h-[44px] px-4 rounded-xl border border-purple-300 bg-purple-50 text-purple-800 text-sm font-bold hover:bg-purple-100 disabled:opacity-40">
+                          Entregado a mesero
+                        </button>
+                      </div>
                     )}
-                  </div>
+                  </li>
+                ))}
+              </ul>
+
+              {!verEntregados && pendientes.length > 1 && (
+                <div className="px-4 py-3 border-t border-[#ECE9E2]">
+                  <button type="button" disabled={bulkUpdatingOrderIds.has(orden.id)} onClick={() => handleMarcarTodoEntregado(orden)}
+                    className="btn-primary w-full min-h-[48px] text-base">
+                    {bulkUpdatingOrderIds.has(orden.id) ? '...' : `Todo listo · entregar ${pendientes.length} al mesero`}
+                  </button>
                 </div>
-              ))}
-            </div>
-          </div>
+              )}
+            </article>
           )
         })}
       </div>

@@ -74,6 +74,7 @@ export default function StoreInfo() {
         redesSociales: info.redesSociales || '',
         notasAdicionales: info.notasAdicionales || '',
         costoEnvioDomicilio: info.costoEnvioDomicilio != null ? String(info.costoEnvioDomicilio) : '',
+        blindCashCount: info.tienda?.blindCashCount ?? false,
       })
     }).finally(() => setLoading(false))
   }, [tiendaId])
@@ -117,7 +118,7 @@ export default function StoreInfo() {
     setMessage('')
     try {
       await updateTiendaInfo(tiendaId, { ...form, costoEnvioDomicilio: envio ? Number(envio) : null })
-      patchTienda({ name: form.name })
+      patchTienda({ name: form.name, blindCashCount: !!form.blindCashCount })
       setMessage('Datos guardados')
     } catch (err) {
       const data = err.response?.data?.data
@@ -180,7 +181,7 @@ export default function StoreInfo() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Datos de la tienda</h1>
+      <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900 mb-1">Datos de la tienda</h1>
       <p className="text-gray-500 text-sm mb-6">
         Información fiscal y de contacto de <span className="font-medium">{user?.tienda?.name}</span>. Solo la puede
         editar el administrador de esta tienda.
@@ -245,6 +246,22 @@ export default function StoreInfo() {
             Se suma a las órdenes para llevar marcadas como "Envío a domicilio". Déjalo vacío o en 0 si no cobras envío.
           </p>
           {fieldErrors.costoEnvioDomicilio && <p className="text-red-600 text-xs mt-1">{fieldErrors.costoEnvioDomicilio}</p>}
+        </div>
+
+        <div className="border-t border-gray-100 pt-4">
+          <p className="text-sm font-semibold text-gray-800 mb-2">Corte de caja</p>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" className="mt-1 w-4 h-4" checked={!!form.blindCashCount}
+              onChange={(e) => setForm({ ...form, blindCashCount: e.target.checked })} />
+            <span>
+              <span className="block text-sm font-semibold text-gray-800">Conteo ciego al cerrar corte</span>
+              <span className="block text-xs text-gray-600 mt-0.5">
+                El cajero no ve el efectivo esperado ni sus cobros en efectivo mientras su corte está abierto: cuenta el
+                efectivo, cierra y solo entonces ve si cuadró. Así no puede ajustar su conteo para que coincida. Los
+                administradores y supervisores siempre ven todo.
+              </span>
+            </span>
+          </label>
         </div>
 
         {error && (

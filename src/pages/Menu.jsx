@@ -471,7 +471,7 @@ export default function Menu() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Menú</h2>
+      <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900 mb-6">Menú</h1>
 
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <div className="flex flex-wrap gap-3">

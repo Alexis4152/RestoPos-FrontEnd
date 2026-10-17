@@ -161,7 +161,7 @@ export default function Categories() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Categorías</h2>
+        <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900">Categorías</h1>
         <button className="btn-primary" onClick={openNew}>+ Nueva categoría</button>
       </div>
 

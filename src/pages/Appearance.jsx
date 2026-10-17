@@ -50,7 +50,7 @@ export default function Appearance() {
 
   return (
     <div className="max-w-xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Apariencia</h1>
+      <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900 mb-1">Apariencia</h1>
       <p className="text-gray-500 text-sm mb-6">
         Elige el color de marca de <span className="font-medium">{user?.tienda?.name}</span>. Se usa en botones,
         menú activo y el fondo del sidebar de todos los usuarios de tu tienda.

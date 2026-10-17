@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { etiquetaEntrega, etiquetaCobro } from '../components/EntregaSeguimiento'
 import { useNavigate } from 'react-router-dom'
-import { getTakeawayOrders, openOrder, getDeliveryFee } from '../api/ordenes'
+import { getTakeawayOrders, openOrder, getDeliveryFee, acceptWebOrder, cancelOrder } from '../api/ordenes'
+import Icon from '../components/Icon'
 import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
 import { useEscapeKey } from '../hooks/useEscapeKey'
@@ -9,22 +10,31 @@ import { useEscapeKey } from '../hooks/useEscapeKey'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '—'
 
-const ESTADO_STYLE = {
-  ABIERTA: 'bg-blue-50 border-blue-200 text-blue-700',
-  EN_PROCESO: 'bg-orange-50 border-orange-200 text-orange-700',
-  LISTA: 'bg-green-50 border-green-200 text-green-700',
-  PENDIENTE_PAGO: 'bg-gray-100 border-gray-200 text-gray-500',
+const LISTO = ['LISTO', 'ENTREGADO_MESERO', 'ENTREGADO']
+const PAGO_LABEL = { EFECTIVO: 'Efectivo', TARJETA: 'Tarjeta', TRANSFERENCIA: 'Transferencia' }
+
+/** Etapa del pedido en el tablero: por aceptar → en preparación → listo → en camino (domicilio). */
+function etapa(o) {
+  if (o.pendienteAceptar) return 'ACEPTAR'
+  if (o.tipoEntrega === 'DOMICILIO' && o.enCaminoAt) return 'CAMINO'
+  const items = (o.items ?? []).filter((i) => !i.cargoExtra && i.estado !== 'CANCELADO')
+  if (items.length > 0 && items.every((i) => LISTO.includes(i.estado))) return 'LISTO'
+  return 'PREP'
 }
-const ESTADO_LABEL = {
-  ABIERTA: 'Abierta', EN_PROCESO: 'En proceso', LISTA: 'Lista', PENDIENTE_PAGO: 'Cuenta pedida',
-}
-// Badge de estado (color sólido), igual que en Mesas, para que se lea de lejos.
-const ESTADO_BADGE = {
-  ABIERTA: 'bg-blue-600 text-white',
-  EN_PROCESO: 'bg-orange-500 text-white',
-  LISTA: 'bg-green-600 text-white',
-  PENDIENTE_PAGO: 'bg-gray-500 text-white',
-}
+const COLUMNAS = [
+  { key: 'ACEPTAR', titulo: 'Por aceptar', dot: 'bg-red-700' },
+  { key: 'PREP', titulo: 'En preparación', dot: 'bg-[#24519E]' },
+  { key: 'LISTO', titulo: 'Listo para entregar', dot: 'bg-[#C77700]' },
+  { key: 'CAMINO', titulo: 'En camino', dot: 'bg-purple-600' },
+]
+const FILTROS = [
+  { key: 'todos', label: 'Todos', pasa: () => true },
+  { key: 'recoger', label: 'Recoger', pasa: (o) => o.tipoEntrega !== 'DOMICILIO' },
+  { key: 'domicilio', label: 'Domicilio', pasa: (o) => o.tipoEntrega === 'DOMICILIO' },
+  { key: 'web', label: 'Página web', pasa: (o) => o.origen === 'WEB' },
+]
+/** Paso del repartidor (0 sin repartidor … 3 entregado) para la barrita de 4 segmentos. */
+const pasoEntrega = (o) => (o.entregadaAt ? 3 : o.enCaminoAt ? 2 : o.repartidor ? 1 : 0)
 
 /**
  * Tablero "Para llevar": las órdenes sin mesa activas en este momento, una tarjeta por
@@ -49,6 +59,10 @@ export default function Takeaway() {
   // Costo de envío configurado por el admin; null = la tienda no cobra envío (no se ofrece la casilla).
   const [deliveryFee, setDeliveryFee] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [filtro, setFiltro] = useState('todos')
+  const [busyId, setBusyId] = useState(null)
+  const [rechazando, setRechazando] = useState(null) // pedido web que se rechaza (motivo)
+  const [motivo, setMotivo] = useState('')
 
   function load() {
     getTakeawayOrders().then((r) => setOrders(r.data.data ?? [])).catch(() => setOrders([]))
@@ -69,8 +83,31 @@ export default function Takeaway() {
 
   // Cierra con ESC el modal de nueva orden, descartando lo capturado — mismo efecto que "Cancelar".
   useEscapeKey(() => {
-    setShowNewModal(false)
-  }, !!showNewModal)
+    if (rechazando) setRechazando(null)
+    else setShowNewModal(false)
+  }, !!(showNewModal || rechazando))
+
+  async function aceptar(o) {
+    setBusyId(o.id)
+    try {
+      await acceptWebOrder(o.id)
+      notify(`Pedido #${o.id} aceptado — ya está en cocina`, 'success')
+      load()
+    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo aceptar el pedido', 'error') }
+    finally { setBusyId(null) }
+  }
+
+  async function confirmarRechazo() {
+    const o = rechazando
+    setRechazando(null)
+    setBusyId(o.id)
+    try {
+      await cancelOrder(o.id, motivo.trim() || 'Pedido rechazado')
+      notify(`Pedido #${o.id} rechazado`, 'success')
+      load()
+    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo rechazar el pedido', 'error') }
+    finally { setBusyId(null) }
+  }
 
   async function handleNewOrder(e) {
     e.preventDefault()
@@ -99,48 +136,61 @@ export default function Takeaway() {
     } finally { setLoading(false) }
   }
 
+  const filtroActual = FILTROS.find((f) => f.key === filtro) ?? FILTROS[0]
+  const visibles = orders.filter(filtroActual.pasa)
+
   return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Para llevar</h2>
-        <button className="btn-primary" onClick={openNewModal}>
-          + Nueva orden para llevar
+    <div className="space-y-5">
+      <header className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[220px]">
+          <h1 className="text-[28px] font-extrabold tracking-tight">Para llevar y domicilio</h1>
+          <p className="text-sm text-gray-600">Pedidos de caja y de la página web, por etapa</p>
+        </div>
+        <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={openNewModal}>
+          <Icon name="mas" className="w-4 h-4" /> Nuevo pedido
         </button>
+      </header>
+
+      <div className="flex flex-wrap gap-2" aria-label="Filtrar pedidos">
+        {FILTROS.map((f) => (
+          <button key={f.key} type="button" aria-pressed={filtro === f.key} onClick={() => setFiltro(f.key)}
+            className={`chip ${filtro === f.key ? 'chip-on' : ''}`}>
+            {f.label} <span className="opacity-70">{orders.filter(f.pasa).length}</span>
+          </button>
+        ))}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        {orders.map((orden) => (
-          <div key={orden.id} className={`card border-2 cursor-pointer hover:shadow-md transition-shadow ${ESTADO_STYLE[orden.estado] ?? ''}`}
-            onClick={() => navigate(`/orders/${orden.id}`)}>
-            <p className="text-lg font-bold">Orden #{orden.id}</p>
-            {orden.origen === 'WEB' && (
-              <p className={`inline-block mt-1 mr-1 px-2 py-0.5 rounded-md text-xs font-extrabold uppercase tracking-wide ${
-                orden.pendienteAceptar ? 'bg-blue-600 text-white animate-pulse' : 'bg-blue-100 text-blue-800'}`}>
-                🌐 {orden.pendienteAceptar ? 'Web · por aceptar' : 'Pedido web'}
-              </p>
-            )}
-            <p className={`inline-block mt-1 px-2 py-0.5 rounded-md text-sm font-extrabold uppercase tracking-wide ${ESTADO_BADGE[orden.estado] ?? 'bg-gray-200 text-gray-700'}`}>
-              {ESTADO_LABEL[orden.estado] ?? orden.estado}
-            </p>
-            {orden.clienteNombre && <p className="text-sm font-semibold truncate mt-2" title={orden.clienteNombre}>👤 {orden.clienteNombre}</p>}
-            {orden.clienteTelefono && <p className="text-xs opacity-80">📞 {orden.clienteTelefono}</p>}
-            {orden.tipoEntrega && <p className="text-xs mt-1 font-semibold">{orden.tipoEntrega === 'DOMICILIO' ? '🛵 A domicilio' : '🛍️ Para recoger'}</p>}
-            {orden.tipoEntrega === 'DOMICILIO' && (
-              <div className="flex flex-wrap gap-1 mt-1">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${etiquetaEntrega(orden).cls}`}>{etiquetaEntrega(orden).texto}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${etiquetaCobro(orden).cls}`}>{etiquetaCobro(orden).texto}</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5 items-start">
+        {COLUMNAS.map((col) => {
+          const lista = visibles.filter((o) => etapa(o) === col.key)
+          return (
+            <section key={col.key} aria-label={col.titulo} className="bg-[#ECEAE4] rounded-2xl p-3.5 space-y-3">
+              <div className="flex items-center gap-2 px-1">
+                <span className={`w-2.5 h-2.5 rounded-full ${col.dot}`} aria-hidden="true" />
+                <h2 className="text-[15px] font-extrabold">{col.titulo}</h2>
+                <span className="ml-auto text-[13px] font-extrabold text-gray-700">{lista.length}</span>
               </div>
-            )}
-            <p className="text-sm mt-2 text-gray-800">
-              Tomó la orden: <span className="font-bold">{orden.mesero?.name ?? (orden.pendienteAceptar ? 'nadie aún' : '—')}</span>
-            </p>
-            <p className="text-xs opacity-70">Abierta {fmtTime(orden.openedAt)}</p>
-            {orden.direccion && <p className="text-xs opacity-70 mt-1 truncate" title={orden.direccion}>📍 {orden.direccion}</p>}
-            <p className="text-xs opacity-70 mt-2">Total: {fmt(orden.total)}</p>
-          </div>
-        ))}
-        {orders.length === 0 && <p className="text-gray-400 col-span-full text-center py-8">Sin órdenes para llevar activas</p>}
+              {lista.length === 0 && <p className="text-[13px] text-gray-600 text-center py-4">Nada por aquí</p>}
+              {lista.map((o) => <TarjetaPedido key={o.id} o={o} busy={busyId === o.id} onAbrir={() => navigate(`/orders/${o.id}`)}
+                onAceptar={() => aceptar(o)} onRechazar={() => { setMotivo('No podemos atender tu pedido en este momento'); setRechazando(o) }} />)}
+            </section>
+          )
+        })}
       </div>
+
+      {rechazando && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setRechazando(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-extrabold">Rechazar pedido #{rechazando.id}</h3>
+            <label htmlFor="motivo-rechazo" className="block text-xs font-semibold text-gray-700 mt-4 mb-1">Motivo (el cliente lo ve en su página)</label>
+            <textarea id="motivo-rechazo" className="input" rows={3} maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+            <div className="flex gap-2 justify-end mt-4">
+              <button type="button" className="btn-secondary" onClick={() => setRechazando(null)}>Volver</button>
+              <button type="button" className="btn-danger" onClick={confirmarRechazo}>Rechazar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showNewModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowNewModal(false)}>
@@ -181,5 +231,59 @@ export default function Takeaway() {
         </div>
       )}
     </div>
+  )
+}
+
+/** Tarjeta de un pedido en el tablero: datos clave, avance de cocina, paso del repartidor y cobro. */
+function TarjetaPedido({ o, busy, onAbrir, onAceptar, onRechazar }) {
+  const items = (o.items ?? []).filter((i) => !i.cargoExtra && i.estado !== 'CANCELADO')
+  const piezas = items.reduce((s, i) => s + Number(i.cantidad), 0)
+  const listos = items.filter((i) => LISTO.includes(i.estado)).reduce((s, i) => s + Number(i.cantidad), 0)
+  const resumen = items.slice(0, 3).map((i) => `${Number(i.cantidad) > 1 ? `${Number(i.cantidad)} × ` : ''}${i.productoNombre}`).join(', ')
+    + (items.length > 3 ? ` y ${items.length - 3} más` : '')
+  const domicilio = o.tipoEntrega === 'DOMICILIO'
+  const paso = pasoEntrega(o)
+  const cobro = etiquetaCobro(o)
+  return (
+    <article className="bg-white border border-[#E4E1DA] rounded-2xl">
+      <button type="button" onClick={onAbrir} className="w-full text-left p-3.5 space-y-2.5 rounded-2xl">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-base font-extrabold truncate">#{o.id} · {o.clienteNombre ?? 'Sin nombre'}</span>
+          <span className="text-xs text-gray-600 whitespace-nowrap">{fmtTime(o.openedAt)}</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{o.origen === 'WEB' ? 'Web' : 'Caja'}</span>
+          <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{domicilio ? 'Domicilio' : 'Recoger'}</span>
+          {o.metodoPago && <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{PAGO_LABEL[o.metodoPago] ?? o.metodoPago}</span>}
+        </div>
+        <p className="text-sm text-gray-700">{resumen || 'Sin productos todavía'}</p>
+        {!o.pendienteAceptar && piezas > 0 && listos < piezas && (
+          <div className="space-y-1">
+            <div className="h-1.5 rounded-full bg-[#ECE9E2] overflow-hidden" aria-hidden="true">
+              <div className="h-full bg-[#24519E]" style={{ width: `${Math.round((listos * 100) / piezas)}%` }} />
+            </div>
+            <p className="text-xs text-gray-600">{listos} de {piezas} listos</p>
+          </div>
+        )}
+        {domicilio && !o.pendienteAceptar && (
+          <div className="rounded-xl bg-[#F7F6F2] p-2.5 space-y-1.5">
+            <div className="grid grid-cols-4 gap-1" aria-hidden="true">
+              {[0, 1, 2, 3].map((i) => <span key={i} className={`h-1.5 rounded-full ${i <= paso ? 'bg-purple-600' : 'bg-[#DCD8CF]'}`} />)}
+            </div>
+            <p className="text-[13px] font-bold">{etiquetaEntrega(o).texto}</p>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-2">
+          <span className={`text-xs font-extrabold px-2 py-1 rounded-md ${cobro.cls}`}>{cobro.texto}</span>
+          <span className="text-base font-extrabold">{fmt(o.total)}</span>
+        </div>
+      </button>
+      {o.pendienteAceptar && (
+        <div className="flex gap-2 px-3.5 pb-3.5">
+          <button type="button" className="btn-primary flex-1 min-h-[44px]" disabled={busy} onClick={onAceptar}>Aceptar</button>
+          <button type="button" className="btn-secondary flex-1 min-h-[44px]" disabled={busy} onClick={onRechazar}>Rechazar</button>
+        </div>
+      )}
+    </article>
   )
 }

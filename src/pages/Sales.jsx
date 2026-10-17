@@ -109,7 +109,7 @@ export default function Sales() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Ventas</h2>
+      <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900 mb-6">Ventas</h1>
 
       <form onSubmit={handleApplyFilters} className="card mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
         <div>

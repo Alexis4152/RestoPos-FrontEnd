@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getDeliveries, getDeliveryTransferInfo, takeDelivery, releaseDelivery, deliverOrder, startDelivery } from '../api/deliveries'
-import { getOpenCashCut, openCashCut, getCashCutSummary, closeCashCut } from '../api/cashCuts'
+import { getOpenCashCut } from '../api/cashCuts'
+import MyCashTab from './cashcuts/MyCashTab'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import { playChime } from '../utils/sound'
@@ -47,7 +48,9 @@ const listoEnCocina = (o) => (o.items ?? [])
  * "Lo llevo yo" para apartarlos, "Voy en camino" en cuanto el restaurante se lo entrega (desde
  * ahí el cliente lo ve "En camino") y "Entregar" para marcarlos como
  * entregados cobrando lo que falte en efectivo (con cambio) o por transferencia a la cuenta de
- * la tienda. El cobro cae en el corte de caja del repartidor, así que antes debe iniciar turno.
+ * la tienda. El cobro cae en el corte de caja del repartidor, así que antes debe abrir su caja
+ * ("Mi caja": la misma del punto de venta — elige caja, la recibe contando el efectivo y al
+ * terminar la cierra con arqueo).
  */
 export default function Deliveries() {
   const { user } = useAuth()
@@ -56,11 +59,11 @@ export default function Deliveries() {
   const [loaded, setLoaded] = useState(false)
   const [tab, setTab] = useState('mias')
   const [cashCut, setCashCut] = useState(undefined) // undefined = cargando, null = sin turno
-  const [fondo, setFondo] = useState('')
+  // Panel "Mi caja" (abrir, movimientos y cierre con arqueo); abierto solo si no tiene caja.
+  const [verCaja, setVerCaja] = useState(false)
   const [busyId, setBusyId] = useState(null)
   const [cobro, setCobro] = useState(null) // orden que se está entregando
-  const [cierre, setCierre] = useState(null) // resumen del turno al cerrarlo
-  useEscapeKey(() => { if (cierre) setCierre(null); else setCobro(null) }, !!(cobro || cierre))
+  useEscapeKey(() => setCobro(null), !!cobro)
   const seenRef = useRef(null)
 
   function load() {
@@ -80,7 +83,11 @@ export default function Deliveries() {
       .finally(() => setLoaded(true))
   }
   function loadCut() {
-    getOpenCashCut().then((r) => setCashCut(r.data.data ?? null)).catch(() => setCashCut(null))
+    getOpenCashCut().then((r) => {
+      const cut = r.data.data ?? null
+      setCashCut(cut)
+      if (!cut) setVerCaja(true)
+    }).catch(() => setCashCut(null))
   }
 
   useEffect(() => {
@@ -94,32 +101,6 @@ export default function Deliveries() {
   const disponibles = orders.filter((o) => !o.repartidor)
   const deOtros = orders.filter((o) => o.repartidor && o.repartidor.id !== myId)
   const lista = tab === 'mias' ? mias : disponibles
-
-  async function iniciarTurno(e) {
-    e.preventDefault()
-    try {
-      await openCashCut({ amount: Number(fondo || 0), notes: 'Turno de repartidor' })
-      notify('Turno iniciado', 'success')
-      loadCut()
-    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo iniciar el turno', 'error') }
-  }
-
-  // Cierre del turno desde aquí mismo (el repartidor ya no necesita entrar a "Cortes de Caja"):
-  // muestra lo cobrado en efectivo y transferencia, y cierra su corte.
-  async function abrirCierre() {
-    try {
-      const r = await getCashCutSummary(cashCut.id)
-      setCierre(r.data.data)
-    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo obtener el resumen del turno', 'error') }
-  }
-  async function confirmarCierre() {
-    try {
-      await closeCashCut(cashCut.id, { expenses: 0, notes: 'Cierre de turno de repartidor' })
-      notify('Turno cerrado. Entrega el efectivo en caja.', 'success')
-      setCierre(null)
-      loadCut()
-    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo cerrar el turno', 'error') }
-  }
 
   async function tomar(o) {
     setBusyId(o.id)
@@ -155,25 +136,36 @@ export default function Deliveries() {
     <div className="max-w-3xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <h2 className="text-2xl font-bold text-gray-900">🛵 Entregas</h2>
-        {cashCut && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700">Turno abierto</span>
-            <button type="button" onClick={abrirCierre} className="text-xs font-semibold px-2.5 py-1 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50">Cerrar turno</button>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {cashCut && (
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700">
+              Caja abierta{cashCut.cashRegister?.name ? ` · ${cashCut.cashRegister.name}` : ''}
+            </span>
+          )}
+          <button type="button" onClick={() => setVerCaja((v) => !v)} aria-expanded={verCaja}
+            className="text-xs font-semibold px-2.5 py-1 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50">
+            {verCaja ? 'Ocultar mi caja' : 'Mi caja'}
+          </button>
+        </div>
       </div>
 
       {cashCut === null && (
-        <form onSubmit={iniciarTurno} className="card border-2 border-orange-300 bg-orange-50 mb-4">
-          <p className="font-bold text-orange-900">Inicia tu turno para poder cobrar</p>
-          <p className="text-sm text-orange-800 mt-1">Lo que cobres en efectivo o transferencia queda en tu corte de caja. Al terminar, ciérralo en "Cortes de Caja" y entrega el efectivo.</p>
-          <div className="flex flex-wrap items-end gap-2 mt-3">
-            <label className="text-sm text-gray-700">Efectivo para cambio (opcional)
-              <input className="input mt-1 !w-40" type="number" min="0" step="0.01" placeholder="0.00" value={fondo} onChange={(e) => setFondo(e.target.value)} />
-            </label>
-            <button className="btn-primary">Iniciar turno</button>
-          </div>
-        </form>
+        <p className="card border-2 border-orange-300 bg-orange-50 mb-4 text-sm text-orange-900">
+          <b>Abre tu caja para poder cobrar.</b> Lo que cobres en efectivo o transferencia queda en tu corte; al
+          terminar, ciérralo contando el efectivo y entrégalo en el restaurante.
+        </p>
+      )}
+
+      {/* Mi caja: el mismo flujo del punto de venta (abrir recibiendo la caja, movimientos, cerrar con arqueo). */}
+      {verCaja && (
+        <section aria-label="Mi caja" className="card mb-4">
+          {mias.length > 0 && cashCut && (
+            <p className="mb-3 text-sm text-orange-800 bg-orange-50 rounded-lg px-3 py-2">
+              Todavía llevas {mias.length} pedido{mias.length === 1 ? '' : 's'}: entrégalo{mias.length === 1 ? '' : 's'} o suéltalo{mias.length === 1 ? '' : 's'} antes de cerrar tu caja.
+            </p>
+          )}
+          <MyCashTab onChanged={loadCut} />
+        </section>
       )}
 
       <div className="flex gap-2 mb-4">
@@ -276,33 +268,6 @@ export default function Deliveries() {
         <p className="text-xs text-gray-400 mt-4">
           En camino con otros repartidores: {deOtros.map((o) => `#${o.id} (${o.repartidor.name})`).join(', ')}
         </p>
-      )}
-
-      {cierre && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center" onClick={() => setCierre(null)}>
-          <div className="bg-white w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-5" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-xl font-bold">Cerrar turno</h3>
-            {mias.length > 0 && (
-              <p className="mt-2 text-sm text-orange-800 bg-orange-50 rounded-lg px-3 py-2">
-                Todavía llevas {mias.length} pedido{mias.length === 1 ? '' : 's'}. Entrégalo{mias.length === 1 ? '' : 's'} o suéltalo{mias.length === 1 ? '' : 's'} antes de cerrar.
-              </p>
-            )}
-            <div className="mt-4 space-y-1.5 text-sm">
-              <div className="flex justify-between"><span>Efectivo inicial</span><span>{fmt(cierre.openingAmount)}</span></div>
-              <div className="flex justify-between"><span>Cobrado en efectivo</span><span className="font-semibold">{fmt(cierre.cashSales)}</span></div>
-              <div className="flex justify-between"><span>Cobrado por transferencia</span><span className="font-semibold">{fmt(cierre.transferSales)}</span></div>
-              <div className="flex justify-between"><span>Entregas cobradas</span><span>{cierre.totalTransactions}</span></div>
-            </div>
-            <div className="mt-4 rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-center">
-              <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">Efectivo a entregar en caja</p>
-              <p className="font-bold text-green-700 text-2xl mt-0.5">{fmt(Number(cierre.openingAmount ?? 0) + Number(cierre.cashSales ?? 0))}</p>
-            </div>
-            <div className="flex gap-2 mt-5">
-              <button type="button" className="btn-secondary flex-1" onClick={() => setCierre(null)}>Cancelar</button>
-              <button type="button" className="btn-primary flex-1 disabled:opacity-40" disabled={mias.length > 0} onClick={confirmarCierre}>Cerrar turno</button>
-            </div>
-          </div>
-        </div>
       )}
 
       {cobro && (

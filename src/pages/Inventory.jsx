@@ -484,7 +484,7 @@ export default function Inventory() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Inventario</h2>
+        <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900">Inventario</h1>
         <div className="flex flex-wrap gap-2">
           {isAdmin && <button className="btn-secondary text-sm" onClick={handleDownloadTemplate}>⬇️ Plantilla de carga masiva</button>}
           {isSuperAdmin && <button className="btn-secondary text-sm" onClick={openBulkImport}>📤 Carga masiva</button>}

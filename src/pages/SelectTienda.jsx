@@ -2,11 +2,15 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
-import { getTiendas, createTienda, updateTienda, deactivateTienda } from '../api/tiendas'
+import { getTiendas, createTienda, updateTienda, deactivateTienda, getTiendasResumen } from '../api/tiendas'
 import { getUsers } from '../api/users'
 import defaultLogo from '../assets/logo.png'
 import { resolveMediaUrl } from '../utils/media'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import Icon from '../components/Icon'
+
+const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
+const iniciales = (nombre = '') => nombre.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?'
 
 const emptyForm = { name: '', supervisorId: '' }
 
@@ -26,7 +30,7 @@ const emptyForm = { name: '', supervisorId: '' }
  * sobre cuál tienda actuar en cualquier momento.
  */
 export default function SelectTienda() {
-  const { user, isSuperAdmin, selectTienda } = useAuth()
+  const { user, isSuperAdmin, selectTienda, logout } = useAuth()
   const { notify, confirmDialog } = useNotify()
   const navigate = useNavigate()
 
@@ -38,12 +42,18 @@ export default function SelectTienda() {
   const [form, setForm] = useState(emptyForm)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  // Resumen en vivo por tienda ({ [tiendaId]: { mesasOcupadas, mesasTotal, porAceptar, ventasHoy, corteAbierto } }).
+  const [resumen, setResumen] = useState({})
+  const [busqueda, setBusqueda] = useState('')
 
   function load() {
     setLoading(true)
     getTiendas()
       .then((r) => setTiendas(r.data.data ?? []))
       .finally(() => setLoading(false))
+    getTiendasResumen()
+      .then((r) => setResumen(Object.fromEntries((r.data.data ?? []).map((x) => [x.tiendaId, x]))))
+      .catch(() => setResumen({}))
     // Solo un SUPER_ADMIN puede asignar un supervisor al crear/editar una tienda.
     if (isSuperAdmin) {
       getUsers().then((r) => {
@@ -119,67 +129,123 @@ export default function SelectTienda() {
     }
   }
 
+  const q = busqueda.trim().toLowerCase()
+  const visibles = tiendas.filter((t) => !q || t.name.toLowerCase().includes(q))
+  const activas = tiendas.filter((t) => t.isActive).length
+
   return (
-    <div className="min-h-screen bg-gray-50 flex items-start justify-center py-10 px-4">
-      <div className="w-full max-w-4xl">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Tiendas</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              {user?.tienda ? 'Elige otra tienda para actuar sobre ella.' : 'Elige una tienda para continuar.'}
+    <div className="min-h-screen bg-[#F4F3EF]">
+      <header className="flex flex-wrap items-center gap-3 px-4 sm:px-8 py-3 bg-[#FBFAF7] border-b border-[#E4E1DA]">
+        <img src={defaultLogo} alt="" className="w-9 h-9 rounded-lg object-cover" />
+        <span className="font-extrabold flex-1">RestoPOS</span>
+        <div className="flex items-center gap-2.5">
+          <span className="w-9 h-9 rounded-full bg-purple-100 text-purple-800 flex items-center justify-center text-xs font-extrabold">{iniciales(user?.name)}</span>
+          <div className="leading-tight">
+            <p className="text-sm font-bold">{user?.name}</p>
+            <p className="text-xs text-gray-600">{isSuperAdmin ? 'Super admin' : 'Supervisor'}</p>
+          </div>
+        </div>
+        <button type="button" onClick={() => { logout(); navigate('/login') }}
+          className="ml-2 min-h-[40px] px-3 rounded-xl text-sm font-bold text-red-700 hover:bg-red-50 inline-flex items-center gap-1.5">
+          <Icon name="salir" className="w-4 h-4" /> Cerrar sesión
+        </button>
+      </header>
+
+      <main className="max-w-[1180px] mx-auto px-4 sm:px-6 py-8 space-y-5">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-[260px]">
+            <h1 className="text-[28px] font-extrabold tracking-tight">¿En qué tienda vas a trabajar?</h1>
+            <p className="text-[15px] text-gray-600 mt-1">
+              {isSuperAdmin
+                ? `Ves todas las tiendas de la plataforma (${activas} activa${activas === 1 ? '' : 's'}).`
+                : `Tienes ${activas} tienda${activas === 1 ? '' : 's'} a tu cargo. Puedes cambiar de tienda desde el menú cuando quieras.`}
             </p>
           </div>
-          <button className="btn-primary" onClick={openNew}>+ Nueva tienda</button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          <label className="flex items-center gap-2 min-h-[44px] px-3.5 rounded-xl border border-[#D9D5CC] bg-white flex-[1_1_260px] max-w-[420px]">
+            <Icon name="buscar" className="w-[18px] h-[18px] text-gray-600" />
+            <span className="sr-only">Buscar tienda</span>
+            <input type="search" placeholder="Buscar tienda" value={busqueda} onChange={(e) => setBusqueda(e.target.value)}
+              className="flex-1 min-w-0 bg-transparent outline-none text-[15px]" />
+          </label>
+          <span className="flex-1" />
+          <button type="button" className="btn-primary inline-flex items-center gap-2 min-h-[44px]" onClick={openNew}>
+            <Icon name="mas" className="w-4 h-4" strokeWidth={2} /> Nueva tienda
+          </button>
         </div>
 
         {loading ? (
-          <p className="text-gray-400 text-sm">Cargando tiendas...</p>
+          <p className="text-gray-600 text-sm">Cargando tiendas...</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {tiendas.map((t) => {
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-4">
+            {visibles.map((t) => {
               const isCurrent = user?.tienda?.id === t.id
+              const r = resumen[t.id]
               return (
-                <div
-                  key={t.id}
-                  onClick={() => handleSelect(t)}
-                  className={`card cursor-pointer hover:shadow-md transition-shadow relative ${!t.isActive ? 'opacity-50' : ''} ${isCurrent ? 'ring-2 ring-purple-500' : ''}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <img src={resolveMediaUrl(t.logoPath) || defaultLogo} alt={t.name} className="w-12 h-12 rounded-full object-cover shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-gray-900 truncate">{t.name}</p>
-                      {t.supervisor && <p className="text-xs text-gray-500 truncate">Supervisor: {t.supervisor.name}</p>}
-                      <span className={`inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded-full ${
-                        isCurrent ? 'bg-purple-100 text-purple-700'
-                          : t.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                      }`}>
-                        {isCurrent ? 'Actuando aquí ahora' : t.isActive ? 'Activa' : 'Inactiva'}
-                      </span>
+                <article key={t.id} className={`bg-white rounded-2xl ${isCurrent ? 'border-2 border-purple-600' : 'border border-[#E4E1DA] hover:border-purple-300'} ${!t.isActive ? 'opacity-60' : ''}`}>
+                  <button type="button" disabled={!t.isActive} onClick={() => handleSelect(t)}
+                    className="w-full text-left p-5 space-y-4 rounded-2xl disabled:cursor-not-allowed">
+                    <div className="flex items-center gap-3.5">
+                      <img src={resolveMediaUrl(t.logoPath) || defaultLogo} alt="" className="w-12 h-12 rounded-xl object-cover border border-[#E4E1DA] shrink-0"
+                        style={t.primaryColor ? { borderColor: t.primaryColor } : undefined} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-lg font-extrabold truncate">{t.name}</p>
+                        <p className="text-[13px] text-gray-600 truncate">
+                          {isCurrent ? 'Estás trabajando aquí' : t.supervisor ? `Supervisor: ${t.supervisor.name}` : t.isActive ? 'Activa' : 'Inactiva'}
+                        </p>
+                      </div>
+                      {t.isActive && r && (
+                        <span className={`text-xs font-extrabold px-2.5 py-1 rounded-lg whitespace-nowrap ${r.corteAbierto ? 'bg-[#E7F3EC] text-[#22603C]' : 'bg-[#F1EFEA] text-gray-600'}`}>
+                          {r.corteAbierto ? 'Corte abierto' : 'Sin corte'}
+                        </span>
+                      )}
+                      {!t.isActive && <span className="text-xs font-extrabold px-2.5 py-1 rounded-lg bg-[#F1EFEA] text-gray-600">Inactiva</span>}
                     </div>
-                  </div>
-                  <div className="flex gap-3 mt-3 pt-3 border-t border-gray-100 text-xs">
-                    <button className="text-blue-600 hover:underline" onClick={(e) => openEdit(e, t)}>Editar</button>
                     {t.isActive && (
-                      <button className="text-red-500 hover:underline" onClick={(e) => handleDeactivate(e, t)}>Desactivar</button>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="rounded-xl bg-[#F7F6F2] px-3 py-2.5">
+                          <p className="text-xs font-semibold text-gray-600">Mesas ocupadas</p>
+                          <p className="text-xl font-extrabold">{r ? `${r.mesasOcupadas} / ${r.mesasTotal}` : '—'}</p>
+                        </div>
+                        <div className="rounded-xl bg-[#F7F6F2] px-3 py-2.5">
+                          <p className="text-xs font-semibold text-gray-600">Por aceptar</p>
+                          <p className={`text-xl font-extrabold ${r?.porAceptar > 0 ? 'text-red-700' : ''}`}>{r ? r.porAceptar : '—'}</p>
+                        </div>
+                        <div className="rounded-xl bg-[#F7F6F2] px-3 py-2.5">
+                          <p className="text-xs font-semibold text-gray-600">Ventas de hoy</p>
+                          <p className="text-xl font-extrabold">{r ? fmt(r.ventasHoy) : '—'}</p>
+                        </div>
+                      </div>
+                    )}
+                    {t.isActive && (
+                      <span className="inline-flex items-center gap-1.5 text-sm font-extrabold text-purple-700">
+                        {isCurrent ? 'Seguir en esta tienda' : 'Entrar a la tienda'} <Icon name="adelante" className="w-4 h-4" strokeWidth={2} />
+                      </span>
+                    )}
+                  </button>
+                  <div className="flex gap-1 px-3 pb-3 -mt-1">
+                    <button type="button" className="min-h-[36px] px-3 rounded-lg text-[13px] font-semibold text-gray-700 hover:bg-[#F1EFEA] inline-flex items-center gap-1.5" onClick={(e) => openEdit(e, t)}>
+                      <Icon name="editar" className="w-4 h-4" /> Editar
+                    </button>
+                    {t.isActive && (
+                      <button type="button" className="min-h-[36px] px-3 rounded-lg text-[13px] font-semibold text-red-700 hover:bg-red-50 inline-flex items-center gap-1.5" onClick={(e) => handleDeactivate(e, t)}>
+                        <Icon name="borrar" className="w-4 h-4" /> Desactivar
+                      </button>
                     )}
                   </div>
-                </div>
+                </article>
               )
             })}
-
-            <button
-              onClick={openNew}
-              className="card border-dashed border-2 border-gray-300 bg-transparent shadow-none flex items-center justify-center text-gray-400 hover:text-purple-600 hover:border-purple-300 min-h-[104px]"
-            >
-              ➕ Nueva tienda
-            </button>
-
-            {tiendas.length === 0 && (
-              <p className="col-span-full text-center text-gray-400 py-8">Todavía no hay tiendas registradas</p>
+            {visibles.length === 0 && (
+              <p className="col-span-full text-center text-gray-600 py-10">
+                {tiendas.length === 0 ? 'Todavía no hay tiendas registradas' : `Ninguna tienda coincide con "${busqueda}"`}
+              </p>
             )}
           </div>
         )}
-      </div>
+      </main>
 
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>

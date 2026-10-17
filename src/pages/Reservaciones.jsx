@@ -7,6 +7,7 @@ import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import NecesidadesEspeciales from '../components/NecesidadesEspeciales'
+import Icon, { Persona } from '../components/Icon'
 import { ESTADO_RESERVA, necesidades, fechaLarga, horaCorta, ymd, sumarDias } from '../utils/reservaciones'
 
 /**
@@ -60,46 +61,38 @@ export default function Reservaciones() {
   const esHoy = fecha === ymd()
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Reservaciones</h1>
-          <p className="text-sm text-gray-500">Las de la página web llegan "por confirmar". Las que capturas aquí quedan confirmadas.</p>
+    <div className="space-y-5">
+      <header className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[220px]">
+          <h1 className="text-[28px] font-extrabold tracking-tight">Reservaciones</h1>
+          <p className="text-sm text-gray-600">Las de la página web llegan por confirmar; las que capturas aquí quedan confirmadas</p>
         </div>
-        <button className="btn-primary" onClick={() => setNueva(true)}>+ Nueva reservación</button>
-      </div>
+        <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={() => setNueva(true)}>
+          <Icon name="mas" className="w-4 h-4" strokeWidth={2} /> Nueva reservación
+        </button>
+      </header>
 
-      {pendientes.length > 0 && (
-        <section className="card border-2 border-yellow-300 bg-yellow-50/60">
-          <h2 className="font-bold text-yellow-900 mb-3">⏳ Por confirmar ({pendientes.length})</h2>
-          <div className="space-y-3">
-            {pendientes.map((r) => (
-              <TarjetaStaff key={r.id} r={r} conFecha busy={busyId === r.id}
-                onConfirmar={() => setAsignando(r)}
-                onRechazar={() => setConMotivo({ r, accion: 'rechazar' })} />
-            ))}
+      <div className="flex flex-wrap gap-5 items-start">
+        <section aria-label="Agenda del día" className="flex-[999_1_560px] min-w-0 space-y-3.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="w-11 h-11 rounded-xl border border-[#D9D5CC] bg-white flex items-center justify-center" aria-label="Día anterior"
+              onClick={() => setFecha(sumarDias(fecha, -1))}><Icon name="atras" className="w-5 h-5" strokeWidth={2} /></button>
+            <label htmlFor="fecha-agenda" className="sr-only">Fecha</label>
+            <input id="fecha-agenda" type="date" className="input !w-auto" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} />
+            <button type="button" className="w-11 h-11 rounded-xl border border-[#D9D5CC] bg-white flex items-center justify-center" aria-label="Día siguiente"
+              onClick={() => setFecha(sumarDias(fecha, 1))}><Icon name="adelante" className="w-5 h-5" strokeWidth={2} /></button>
+            {!esHoy && <button type="button" className="btn-secondary" onClick={() => setFecha(ymd())}>Hoy</button>}
+            <p className="text-lg font-extrabold capitalize ml-1">{esHoy ? 'Hoy, ' : ''}{fechaLarga(`${fecha}T12:00:00`)}</p>
           </div>
-        </section>
-      )}
-
-      <section>
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <button className="btn-secondary !px-3" aria-label="Día anterior" onClick={() => setFecha(sumarDias(fecha, -1))}>‹</button>
-          <input type="date" className="input !w-auto" value={fecha} onChange={(e) => e.target.value && setFecha(e.target.value)} />
-          <button className="btn-secondary !px-3" aria-label="Día siguiente" onClick={() => setFecha(sumarDias(fecha, 1))}>›</button>
-          {!esHoy && <button className="btn-secondary" onClick={() => setFecha(ymd())}>Hoy</button>}
-          <p className="font-semibold text-gray-800 capitalize ml-1">{esHoy ? 'Hoy, ' : ''}{fechaLarga(`${fecha}T12:00:00`)}</p>
-        </div>
-        {resumen.reservas > 0 && (
-          <div className="flex flex-wrap gap-2 mb-4 text-sm">
-            <span className="px-3 py-1 rounded-full bg-purple-100 text-purple-800 font-semibold">📅 {resumen.reservas} reservación{resumen.reservas === 1 ? '' : 'es'}</span>
-            <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-800 font-semibold">👥 {resumen.personas} personas</span>
-            {resumen.periqueras > 0 && <span className="px-3 py-1 rounded-full bg-orange-100 text-orange-800 font-semibold">🪑 {resumen.periqueras} periquera{resumen.periqueras === 1 ? '' : 's'}</span>}
-            {resumen.accesibles > 0 && <span className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 font-semibold">♿ {resumen.accesibles} mesa{resumen.accesibles === 1 ? '' : 's'} accesible{resumen.accesibles === 1 ? '' : 's'}</span>}
-          </div>
-        )}
-        {delDia.length === 0 && <p className="text-gray-400 text-center py-10">Sin reservaciones este día.</p>}
-        <div className="space-y-3">
+          {resumen.reservas > 0 && (
+            <div className="flex flex-wrap gap-1.5 text-[13px]">
+              <span className="px-2.5 py-1.5 rounded-lg bg-white border border-[#E4E1DA]"><b>{resumen.reservas}</b> reservación{resumen.reservas === 1 ? '' : 'es'}</span>
+              <span className="px-2.5 py-1.5 rounded-lg bg-white border border-[#E4E1DA]"><b>{resumen.personas}</b> personas</span>
+              {resumen.periqueras > 0 && <span className="px-2.5 py-1.5 rounded-lg bg-white border border-[#E4E1DA]"><b>{resumen.periqueras}</b> periquera{resumen.periqueras === 1 ? '' : 's'}</span>}
+              {resumen.accesibles > 0 && <span className="px-2.5 py-1.5 rounded-lg bg-white border border-[#E4E1DA]"><b>{resumen.accesibles}</b> mesa{resumen.accesibles === 1 ? '' : 's'} accesible{resumen.accesibles === 1 ? '' : 's'}</span>}
+            </div>
+          )}
+          {delDia.length === 0 && <p className="text-gray-600 text-center py-12">Sin reservaciones este día.</p>}
           {delDia.map((r) => (
             <TarjetaStaff key={r.id} r={r} busy={busyId === r.id}
               onConfirmar={() => setAsignando(r)}
@@ -107,8 +100,21 @@ export default function Reservaciones() {
               onCancelar={() => setConMotivo({ r, accion: 'cancelar' })}
               onLlego={(llego) => accion(r, () => markReservacionLlegada(r.id, llego), llego ? `${r.nombre} llegó` : null)} />
           ))}
-        </div>
-      </section>
+        </section>
+
+        <aside aria-label="Por confirmar" className={`flex-[1_1_320px] min-w-0 bg-white rounded-2xl p-4 space-y-3 ${pendientes.length > 0 ? 'border-2 border-[#E2B76B]' : 'border border-[#E4E1DA]'}`}>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-extrabold">Por confirmar</h2>
+            <span className="px-2 py-0.5 rounded-lg bg-[#FBF0DC] text-[#6B4100] text-[13px] font-extrabold">{pendientes.length}</span>
+          </div>
+          {pendientes.length === 0 && <p className="text-sm text-gray-600 py-2">No hay reservaciones por confirmar.</p>}
+          {pendientes.map((r) => (
+            <TarjetaStaff key={r.id} r={r} conFecha compacta busy={busyId === r.id}
+              onConfirmar={() => setAsignando(r)}
+              onRechazar={() => setConMotivo({ r, accion: 'rechazar' })} />
+          ))}
+        </aside>
+      </div>
 
       {asignando && (
         <ModalMesa r={asignando} mesas={mesas} onClose={() => setAsignando(null)}
@@ -135,61 +141,66 @@ export default function Reservaciones() {
   )
 }
 
-function TarjetaStaff({ r, conFecha, busy, onConfirmar, onRechazar, onCancelar, onLlego }) {
+function TarjetaStaff({ r, conFecha, compacta, busy, onConfirmar, onRechazar, onCancelar, onLlego }) {
   const est = ESTADO_RESERVA[r.estado] ?? { staff: r.estado, cls: '' }
   const chips = necesidades(r)
   const inactiva = ['RECHAZADA', 'CANCELADA', 'NO_LLEGO'].includes(r.estado)
   const chica = r.mesaCapacidad && r.mesaCapacidad < r.personas
+  const btn = 'min-h-[44px] px-4 rounded-xl text-sm font-bold disabled:opacity-40'
   return (
-    <article className={`card !p-4 flex flex-col sm:flex-row gap-4 ${inactiva ? 'opacity-60' : ''}`}>
-      <div className="sm:w-28 shrink-0">
-        <p className="text-2xl font-extrabold text-gray-900">{horaCorta(r.fechaHora)}</p>
-        {conFecha && <p className="text-xs text-gray-500 capitalize">{fechaLarga(r.fechaHora)}</p>}
-        <span className={`inline-block mt-1 px-2 py-0.5 rounded-md border text-xs font-semibold ${est.cls}`}>{est.staff}</span>
+    <article className={`bg-white border border-[#E4E1DA] rounded-2xl p-4 flex flex-wrap gap-4 ${inactiva ? 'opacity-60' : ''} ${compacta ? '!bg-[#FBFAF7]' : ''}`}>
+      <div className={compacta ? 'w-full flex items-center gap-3' : 'w-24 shrink-0'}>
+        <p className="text-2xl font-extrabold">{horaCorta(r.fechaHora)}</p>
+        {conFecha && <p className="text-[13px] text-gray-600 capitalize">{fechaLarga(r.fechaHora)}</p>}
+        <span className={`inline-block ${compacta ? 'ml-auto' : 'mt-1'} px-2 py-0.5 rounded-md border text-xs font-bold ${est.cls}`}>{est.staff}</span>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-bold text-gray-900">
-          {r.nombre} <span className="font-normal text-gray-600">· 👥 {r.personas}</span>
-          {r.clienteRegistrado && <span className="ml-2 text-xs font-medium text-purple-700">⭐ Cliente registrado</span>}
-          {r.origen === 'PERSONAL' && <span className="ml-2 text-xs font-medium text-gray-500">📞 Capturada por {r.atendidaPor ?? 'el personal'}</span>}
+      <div className="flex-[1_1_240px] min-w-0 space-y-1.5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <p className="text-base font-extrabold">{r.nombre}</p>
+          <span className="inline-flex items-center text-gray-700" aria-label={`${r.personas} personas`}>
+            {Array.from({ length: Math.min(r.personas, 8) }, (_, i) => <Persona key={i} className="w-4 h-4" />)}
+            <span className="ml-1.5 text-[13px] font-bold">{r.personas} persona{r.personas === 1 ? '' : 's'}</span>
+          </span>
+        </div>
+        <p className="text-[13px] text-gray-600">
+          <a href={`tel:${r.telefono}`} className="text-purple-700 hover:underline">{r.telefono}</a>
+          {r.email && <span> · {r.email}</span>}
+          {r.clienteRegistrado && <span> · cliente registrado</span>}
+          {r.origen === 'PERSONAL' && <span> · capturada por {r.atendidaPor ?? 'el personal'}</span>}
         </p>
-        <p className="text-sm text-gray-600">
-          <a href={`tel:${r.telefono}`} className="hover:underline">📞 {r.telefono}</a>
-          {r.email && <span className="ml-3">✉️ {r.email}</span>}
-        </p>
-        <p className="text-sm mt-1">
+        <p className="text-sm">
           {r.mesa
-            ? <span className={`font-semibold ${chica ? 'text-orange-700' : 'text-gray-800'}`}>🍽️ Mesa {r.mesa}{r.mesaCapacidad ? ` (${r.mesaCapacidad} lugares)` : ''}{chica ? ' — chica para el grupo' : ''}</span>
-            : <span className="text-gray-500">Sin mesa asignada</span>}
+            ? <span className={`font-bold ${chica ? 'text-[#7A4A00]' : ''}`}>Mesa {r.mesa}{r.mesaCapacidad ? ` (${r.mesaCapacidad} lugares)` : ''}{chica ? ' — chica para el grupo' : ''}</span>
+            : <span className="text-gray-600">Sin mesa asignada</span>}
           {r.zona && <span className="text-gray-600"> · prefiere {r.zona}</span>}
         </p>
         {chips.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2">
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
             {chips.map((c) => (
-              <span key={c.corto} className="px-2 py-1 rounded-md bg-orange-50 border border-orange-200 text-orange-900 text-sm font-semibold">{c.icono} {c.corto}</span>
+              <span key={c.corto} className="px-2.5 py-1 rounded-lg bg-[#F3EFE6] text-[#4A3F2A] text-[13px] font-bold">{c.icono} {c.corto}</span>
             ))}
           </div>
         )}
-        {r.notas && <p className="text-sm text-gray-700 mt-2 bg-gray-50 rounded-md px-2 py-1">📝 {r.notas}</p>}
-        {r.motivo && inactiva && <p className="text-xs text-red-700 mt-1">{r.motivo}</p>}
+        {r.notas && <p className="text-sm text-gray-800 bg-[#F7F6F2] rounded-lg px-2.5 py-1.5">Nota: {r.notas}</p>}
+        {r.motivo && inactiva && <p className="text-xs text-red-700">{r.motivo}</p>}
       </div>
-      <div className="flex sm:flex-col flex-wrap gap-2 sm:w-40 shrink-0">
+      <div className={`flex flex-wrap gap-2 ${compacta ? 'w-full' : 'sm:flex-col sm:w-40 shrink-0'}`}>
         {r.estado === 'PENDIENTE' && (
           <>
-            <button disabled={busy} onClick={onConfirmar} className="btn-primary text-sm">✓ Confirmar</button>
-            <button disabled={busy} onClick={onRechazar} className="btn-secondary text-sm text-red-600">Rechazar</button>
+            <button type="button" disabled={busy} onClick={onConfirmar} className={`btn-primary flex-1 ${btn}`}>Confirmar</button>
+            <button type="button" disabled={busy} onClick={onRechazar} className={`btn-secondary flex-1 text-red-700 ${btn}`}>Rechazar</button>
           </>
         )}
         {r.estado === 'CONFIRMADA' && onLlego && (
           <>
-            <button disabled={busy} onClick={() => onLlego(true)} className="btn-primary text-sm">✓ Llegó</button>
-            <button disabled={busy} onClick={onConfirmar} className="btn-secondary text-sm">{r.mesa ? 'Cambiar mesa' : 'Asignar mesa'}</button>
-            <button disabled={busy} onClick={() => onLlego(false)} className="btn-secondary text-sm">No llegó</button>
-            <button disabled={busy} onClick={onCancelar} className="btn-secondary text-sm text-red-600">Cancelar</button>
+            <button type="button" disabled={busy} onClick={() => onLlego(true)} className={`btn-primary ${btn}`}>Llegó</button>
+            <button type="button" disabled={busy} onClick={onConfirmar} className={`btn-secondary ${btn}`}>{r.mesa ? 'Cambiar mesa' : 'Asignar mesa'}</button>
+            <button type="button" disabled={busy} onClick={() => onLlego(false)} className={`btn-secondary ${btn}`}>No llegó</button>
+            <button type="button" disabled={busy} onClick={onCancelar} className={`btn-secondary text-red-700 ${btn}`}>Cancelar</button>
           </>
         )}
         {(r.estado === 'LLEGO' || r.estado === 'NO_LLEGO') && onLlego && (
-          <button disabled={busy} onClick={() => onLlego(r.estado !== 'LLEGO')} className="text-xs text-gray-500 hover:underline text-left">
+          <button type="button" disabled={busy} onClick={() => onLlego(r.estado !== 'LLEGO')} className="text-[13px] font-semibold text-gray-600 hover:underline text-left">
             Corregir: marcar {r.estado === 'LLEGO' ? '"no llegó"' : '"llegó"'}
           </button>
         )}
