@@ -6,6 +6,7 @@ import Icon from '../components/Icon'
 import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { TIPOS_PEDIDO, tipoPedido, etiquetaTipoPedido } from '../utils/tipoPedido'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '—'
@@ -29,8 +30,7 @@ const COLUMNAS = [
 ]
 const FILTROS = [
   { key: 'todos', label: 'Todos', pasa: () => true },
-  { key: 'recoger', label: 'Recoger', pasa: (o) => o.tipoEntrega !== 'DOMICILIO' },
-  { key: 'domicilio', label: 'Domicilio', pasa: (o) => o.tipoEntrega === 'DOMICILIO' },
+  ...TIPOS_PEDIDO.map((t) => ({ key: t.key, label: t.label, pasa: (o) => tipoPedido(o.tipoEntrega).key === t.key })),
   { key: 'web', label: 'Página web', pasa: (o) => o.origen === 'WEB' },
 ]
 /** Paso del repartidor (0 sin repartidor … 3 entregado) para la barrita de 4 segmentos. */
@@ -40,11 +40,10 @@ const pasoEntrega = (o) => (o.entregadaAt ? 3 : o.enCaminoAt ? 2 : o.repartidor 
  * Tablero "Para llevar": las órdenes sin mesa activas en este momento, una tarjeta por
  * orden, más antiguas primero. Click en una tarjeta va directo al detalle (la misma
  * pantalla que usan las órdenes de mesa — ver `OrderDetail.jsx`, que oculta comensales y
- * simplifica el cobro a "solo total" cuando la orden no tiene mesa). "+ Nueva orden para
- * llevar" abre un modal para capturar el nombre y teléfono del cliente (obligatorios), la
- * dirección de entrega (opcional) y si es envío a domicilio — que agrega a la orden el
- * costo de envío configurado por el admin en "Datos de la tienda" — antes de abrir la orden
- * sin mesaId y navegar directo a su detalle.
+ * simplifica el cobro a "solo total" cuando la orden no tiene mesa). "Nuevo pedido" abre un
+ * modal donde se elige el tipo (ver utils/tipoPedido.js) y se piden solo sus datos:
+ * para llevar / comer aquí → nombre; para recoger → nombre y teléfono; a domicilio →
+ * nombre, teléfono y dirección (+ el costo de envío configurado en "Datos de la tienda").
  */
 export default function Takeaway() {
   const { notify } = useNotify()
@@ -54,7 +53,7 @@ export default function Takeaway() {
   const [direccion, setDireccion] = useState('')
   const [clienteNombre, setClienteNombre] = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
-  const [domicilio, setDomicilio] = useState(false)
+  const [tipo, setTipo] = useState('PARA_LLEVAR')
   const [fieldErrors, setFieldErrors] = useState({})
   // Costo de envío configurado por el admin; null = la tienda no cobra envío (no se ofrece la casilla).
   const [deliveryFee, setDeliveryFee] = useState(null)
@@ -75,7 +74,7 @@ export default function Takeaway() {
     setDireccion('')
     setClienteNombre('')
     setClienteTelefono('')
-    setDomicilio(false)
+    setTipo('PARA_LLEVAR')
     setFieldErrors({})
     getDeliveryFee().then((r) => setDeliveryFee(r.data.data ?? null)).catch(() => setDeliveryFee(null))
     setShowNewModal(true)
@@ -111,24 +110,30 @@ export default function Takeaway() {
 
   async function handleNewOrder(e) {
     e.preventDefault()
-    // Mismas reglas que OrdenService#abrir: nombre y teléfono obligatorios, dirección
-    // opcional; topes de longitud iguales a las columnas del backend.
+    // Mismas reglas que OrdenService#abrir (según el tipo); topes de longitud iguales a las
+    // columnas del backend.
+    const t = tipoPedido(tipo)
     const errors = {}
     if (!clienteNombre.trim()) errors.clienteNombre = 'El nombre es obligatorio'
     else if (clienteNombre.length > 100) errors.clienteNombre = 'No puede tener más de 100 caracteres'
-    if (!clienteTelefono.trim()) errors.clienteTelefono = 'El teléfono es obligatorio'
-    else if (clienteTelefono.length > 30) errors.clienteTelefono = 'No puede tener más de 30 caracteres'
-    if (direccion.length > 200) errors.direccion = 'No puede tener más de 200 caracteres'
+    if (t.telefono) {
+      if (!clienteTelefono.trim()) errors.clienteTelefono = 'El teléfono es obligatorio'
+      else if (clienteTelefono.length > 30) errors.clienteTelefono = 'No puede tener más de 30 caracteres'
+    }
+    if (t.direccion) {
+      if (!direccion.trim()) errors.direccion = 'La dirección es obligatoria'
+      else if (direccion.length > 200) errors.direccion = 'No puede tener más de 200 caracteres'
+    }
     setFieldErrors(errors)
     if (Object.keys(errors).length > 0) return
     setLoading(true)
     try {
       const res = await openOrder({
         numeroComensales: 1,
+        tipoEntrega: t.key,
         clienteNombre: clienteNombre.trim(),
-        clienteTelefono: clienteTelefono.trim(),
-        direccion: direccion.trim() || undefined,
-        domicilio: deliveryFee != null && domicilio,
+        clienteTelefono: t.telefono ? clienteTelefono.trim() : undefined,
+        direccion: t.direccion ? direccion.trim() : undefined,
       })
       navigate(`/orders/${res.data.data.id}`)
     } catch (err) {
@@ -194,33 +199,54 @@ export default function Takeaway() {
 
       {showNewModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowNewModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">Nueva orden para llevar</h3>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold mb-4">Nuevo pedido</h3>
             <form onSubmit={handleNewOrder} className="space-y-3">
+              <fieldset>
+                <legend className="text-xs font-medium text-gray-600 mb-1.5">Tipo de pedido</legend>
+                <div className="grid grid-cols-2 gap-2">
+                  {TIPOS_PEDIDO.map((op) => {
+                    const sinEnvio = op.key === 'DOMICILIO' && deliveryFee == null
+                    return (
+                      <button key={op.key} type="button" aria-pressed={tipo === op.key} disabled={sinEnvio}
+                        onClick={() => { setTipo(op.key); setFieldErrors({}) }}
+                        className={`min-h-[56px] rounded-xl border-2 px-3 py-2 text-left disabled:opacity-50 disabled:cursor-not-allowed ${tipo === op.key ? 'border-purple-600 bg-purple-50' : 'border-[#E4E1DA] hover:bg-gray-50'}`}>
+                        <span className="block text-sm font-bold">{op.label}</span>
+                        <span className="block text-[11px] text-gray-600">
+                          {sinEnvio ? 'Configura el costo de envío en Datos de la tienda' : op.hint}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </fieldset>
               <div>
                 <label className="text-xs font-medium text-gray-600">Nombre del cliente <span className="text-red-500">*</span></label>
                 <input className="input" autoFocus placeholder="Ej. Juan Pérez" value={clienteNombre}
                   onChange={(e) => { setClienteNombre(e.target.value); setFieldErrors((f) => ({ ...f, clienteNombre: '' })) }} />
                 {fieldErrors.clienteNombre && <p className="text-red-600 text-xs mt-1">{fieldErrors.clienteNombre}</p>}
               </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600">Teléfono <span className="text-red-500">*</span></label>
-                <input className="input" type="tel" placeholder="Ej. 55 1234 5678" value={clienteTelefono}
-                  onChange={(e) => { setClienteTelefono(e.target.value); setFieldErrors((f) => ({ ...f, clienteTelefono: '' })) }} />
-                {fieldErrors.clienteTelefono && <p className="text-red-600 text-xs mt-1">{fieldErrors.clienteTelefono}</p>}
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600">Dirección de entrega <span className="font-normal text-gray-400">(opcional)</span></label>
-                <input className="input" placeholder="Ej. Calle Falsa 123, Col. Centro" value={direccion}
-                  onChange={(e) => { setDireccion(e.target.value); setFieldErrors((f) => ({ ...f, direccion: '' })) }} />
-                {fieldErrors.direccion && <p className="text-red-600 text-xs mt-1">{fieldErrors.direccion}</p>}
-              </div>
-              {deliveryFee != null && (
-                <label className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 cursor-pointer hover:bg-gray-50">
-                  <input type="checkbox" className="w-4 h-4" checked={domicilio} onChange={(e) => setDomicilio(e.target.checked)} />
-                  <span className="text-sm text-gray-700 flex-1">🛵 Envío a domicilio</span>
-                  <span className="text-sm font-semibold text-gray-900">+{fmt(deliveryFee)}</span>
-                </label>
+              {tipoPedido(tipo).telefono && (
+                <div>
+                  <label className="text-xs font-medium text-gray-600">Teléfono <span className="text-red-500">*</span></label>
+                  <input className="input" type="tel" placeholder="Ej. 55 1234 5678" value={clienteTelefono}
+                    onChange={(e) => { setClienteTelefono(e.target.value); setFieldErrors((f) => ({ ...f, clienteTelefono: '' })) }} />
+                  {fieldErrors.clienteTelefono && <p className="text-red-600 text-xs mt-1">{fieldErrors.clienteTelefono}</p>}
+                </div>
+              )}
+              {tipoPedido(tipo).direccion && (
+                <>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600">Dirección de entrega <span className="text-red-500">*</span></label>
+                    <input className="input" placeholder="Ej. Calle Falsa 123, Col. Centro" value={direccion}
+                      onChange={(e) => { setDireccion(e.target.value); setFieldErrors((f) => ({ ...f, direccion: '' })) }} />
+                    {fieldErrors.direccion && <p className="text-red-600 text-xs mt-1">{fieldErrors.direccion}</p>}
+                  </div>
+                  <p className="flex justify-between rounded-lg bg-[#F7F6F2] px-3 py-2 text-sm">
+                    <span className="text-gray-700">Costo de envío (se agrega a la orden)</span>
+                    <span className="font-semibold">{fmt(deliveryFee)}</span>
+                  </p>
+                </>
               )}
               <div className="flex gap-2 justify-end pt-2">
                 <button type="button" className="btn-secondary" onClick={() => setShowNewModal(false)}>Cancelar</button>
@@ -242,6 +268,7 @@ function TarjetaPedido({ o, busy, onAbrir, onAceptar, onRechazar }) {
   const resumen = items.slice(0, 3).map((i) => `${Number(i.cantidad) > 1 ? `${Number(i.cantidad)} × ` : ''}${i.productoNombre}`).join(', ')
     + (items.length > 3 ? ` y ${items.length - 3} más` : '')
   const domicilio = o.tipoEntrega === 'DOMICILIO'
+  const tipoLabel = etiquetaTipoPedido(o)
   const paso = pasoEntrega(o)
   const cobro = etiquetaCobro(o)
   return (
@@ -253,7 +280,7 @@ function TarjetaPedido({ o, busy, onAbrir, onAceptar, onRechazar }) {
         </div>
         <div className="flex flex-wrap gap-1.5">
           <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{o.origen === 'WEB' ? 'Web' : 'Caja'}</span>
-          <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{domicilio ? 'Domicilio' : 'Recoger'}</span>
+          <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{tipoLabel}</span>
           {o.metodoPago && <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{PAGO_LABEL[o.metodoPago] ?? o.metodoPago}</span>}
         </div>
         <p className="text-sm text-gray-700">{resumen || 'Sin productos todavía'}</p>

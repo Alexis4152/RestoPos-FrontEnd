@@ -20,6 +20,24 @@
   --brand-sidebar-border: #0d1b3d;
 }
 
+/* Modo oscuro (clase `dark` en <html>, ver utils/themeMode.js). Las clases de color sueltas
+   (bg-white, text-gray-700, border-[#E4E1DA]...) se cubren en styles/dark.css (generado);
+   aquí van los componentes con @apply, que el generador no ve. */
+html.dark body { background-color: #141412; color: #F2F1EE; }
+html.dark .btn-secondary { background-color: #22221F; border-color: #4A4843; color: #E6E4DF; }
+html.dark .btn-secondary:hover { background-color: #2A2926; }
+html.dark .input { background-color: #191917; border-color: #4A4843; color: #F2F1EE; }
+html.dark .input::placeholder { color: #8A877F; }
+html.dark .input:disabled { background-color: #22221F; color: #A29F98; }
+html.dark .card { background-color: #1C1C1A; border-color: #3A3935; }
+html.dark .chip { background-color: #1C1C1A; border-color: #4A4843; color: #D3D1CB; }
+/* Chip activo: en claro es relleno negro; en oscuro, relleno claro con texto oscuro. */
+html.dark .chip-on, html.dark .chip-on:hover { background-color: #ECEAE4; border-color: #ECEAE4; color: #141412; }
+html.dark .chip-on .opacity-70 { color: #3A3935; }
+/* Gráficas (recharts): cuadro del tooltip y textos de los ejes. */
+html.dark .recharts-default-tooltip { background-color: #22221F !important; border-color: #4A4843 !important; color: #F2F1EE; }
+html.dark .recharts-cartesian-axis-tick-value { fill: #A29F98; }
+
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }

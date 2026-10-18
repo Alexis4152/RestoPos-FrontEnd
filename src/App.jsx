@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { NotifyProvider } from './context/NotifyContext'
+import { ModoSync } from './utils/themeMode'
 import PrivateRoute from './components/PrivateRoute'
 import Layout from './components/Layout'
 import Login from './pages/Login'
@@ -104,6 +105,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
+      <ModoSync />
       <AuthProvider>
         <NotifyProvider>
           <AppRoutes />

@@ -122,6 +122,55 @@ export function generateRamp(baseHex) {
   return ramp
 }
 
+// Modo oscuro: la rampa se invierte (los tonos 50-200, que en claro son fondos suaves como
+// "seleccionado", pasan a ser fondos oscuros del mismo matiz; 700-900, que en claro son
+// textos fuertes, pasan a ser claros). El 600 (botones, nav activo) es el color de la
+// tienda, acotado a una luminosidad que se vea sobre fondo oscuro: una marca negra o muy
+// oscura se aclara lo justo, una muy clara se oscurece para que el texto blanco se lea.
+const DARK_LIGHTNESS = { 50: 15, 100: 19, 200: 26, 300: 34, 400: 44, 500: 50, 700: 66, 800: 76, 900: 84 }
+
+/**
+ * Rampa de la marca para modo oscuro (mismo formato que `generateRamp`).
+ * @param {string} baseHex Color primario de la tienda.
+ * @returns {Object<number, string>} `{ 50: 'R G B', ..., 900: 'R G B' }`.
+ */
+export function generateDarkRamp(baseHex) {
+  const { h, s, l } = hexToHsl(baseHex)
+  // Sin saturación (negro/gris): los fondos suaves quedan grises neutros, no de un matiz al azar.
+  const sat = s < 8 ? 0 : s
+  // Marca negra/gris: botón gris oscuro (se distingue del fondo y el texto blanco se lee);
+  // con color, la luminosidad se acota para que destaque sin perder contraste.
+  const base = sat === 0 ? 34 : clamp(l, 42, 56)
+  const ramp = {}
+  for (const key of RAMP_KEYS) {
+    const targetL = key === 600 ? base : DARK_LIGHTNESS[key]
+    const satKey = key <= 200 ? sat * 0.55 : sat
+    ramp[key] = hexToRgbTriplet(hslToHex(h, satKey, targetL))
+  }
+  return ramp
+}
+
+// Color de marca vigente y si va en oscuro — para recalcular la rampa al cambiar de modo
+// sin volver a pedir el color de la tienda (ver setBrandDark).
+let marcaActual = { base: NEXORA_BLUE, sidebarBg: '#050b18', sidebarBorder: '#0d1b3d' }
+let marcaOscura = false
+
+function aplicarMarca() {
+  const { base, sidebarBg, sidebarBorder } = marcaActual
+  applyRampToRoot(marcaOscura ? generateDarkRamp(base) : generateRamp(base), sidebarBg, sidebarBorder)
+}
+
+/**
+ * Cambia la rampa de marca entre la versión clara y la oscura (la llama el modo de pantalla,
+ * ver utils/themeMode.js). No cambia el color elegido por la tienda.
+ * @param {boolean} oscuro true = modo oscuro.
+ */
+export function setBrandDark(oscuro) {
+  if (marcaOscura === oscuro) return
+  marcaOscura = oscuro
+  aplicarMarca()
+}
+
 /**
  * Inyecta una rampa de colores (y los tonos de la barra lateral) como variables CSS
  * en `document.documentElement`, para que el resto de la app (vía clases Tailwind
@@ -147,8 +196,8 @@ function applyRampToRoot(ramp, sidebarBg, sidebarBorder) {
  * SUPER_ADMIN, que no tiene tienda asociada y por lo tanto no tiene un color propio.
  */
 export function applyDefaultBrand() {
-  const ramp = generateRamp(NEXORA_BLUE)
-  applyRampToRoot(ramp, '#050b18', '#0d1b3d')
+  marcaActual = { base: NEXORA_BLUE, sidebarBg: '#050b18', sidebarBorder: '#0d1b3d' }
+  aplicarMarca()
 }
 
 /**
@@ -159,12 +208,10 @@ export function applyDefaultBrand() {
  */
 export function applyTiendaBrand(primaryColor) {
   const base = isValidHex(primaryColor) ? primaryColor : NEXORA_BLUE
-  const ramp = generateRamp(base)
   const { h } = hexToHsl(base)
   // sidebar oscuro derivado del mismo tono, para que se sienta parte de la misma paleta
-  const sidebarBg = hslToHex(h, 45, 6)
-  const sidebarBorder = hslToHex(h, 45, 14)
-  applyRampToRoot(ramp, sidebarBg, sidebarBorder)
+  marcaActual = { base, sidebarBg: hslToHex(h, 45, 6), sidebarBorder: hslToHex(h, 45, 14) }
+  aplicarMarca()
 }
 
 export { NEXORA_BLUE }

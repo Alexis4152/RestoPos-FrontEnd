@@ -4,6 +4,8 @@ import { updateOrderItemStatus } from '../api/ordenes'
 import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
 import Icon from '../components/Icon'
+import { etiquetaTipoPedido } from '../utils/tipoPedido'
+import AgotadosModal from '../components/AgotadosModal'
 
 const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '—'
 
@@ -50,6 +52,8 @@ export default function Kitchen() {
   const { notify } = useNotify()
   const [orders, setOrders] = useState([])
   const [mesaFilter, setMesaFilter] = useState('')
+  // Cocina marca los platillos que ya no hay para preparar (ver AgotadosModal).
+  const [agotadosAbierto, setAgotadosAbierto] = useState(false)
   const [loading, setLoading] = useState(true)
   // Ids de items con la acción "Entregado" en curso, para deshabilitar su botón y no
   // duplicar la petición si el cocinero hace doble clic.
@@ -148,7 +152,11 @@ export default function Kitchen() {
             {verEntregados ? 'Lo que entregaste hoy, lo más reciente primero' : `${conPendientes.length} orden${conPendientes.length === 1 ? '' : 'es'} por preparar, la más antigua primero`}
           </p>
         </div>
+        <button type="button" onClick={() => setAgotadosAbierto(true)} className="btn-secondary min-h-[44px]">
+          ¿Se acabó algo? Agotados
+        </button>
       </header>
+      {agotadosAbierto && <AgotadosModal onClose={() => setAgotadosAbierto(false)} />}
 
       <div className="flex flex-wrap items-center gap-2" aria-label="Filtrar comandas">
         {filtros.map((f) => (
@@ -172,7 +180,7 @@ export default function Kitchen() {
             <article key={orden.id} className="bg-white border border-[#E4E1DA] rounded-2xl overflow-hidden">
               <div className="flex items-center gap-3 px-4 py-3 bg-[#FBFAF7] border-b border-[#ECE9E2]">
                 <div className="flex-1 min-w-0">
-                  <p className="text-xl font-extrabold">{orden.mesa ? `Mesa ${orden.mesa.numero}` : (orden.clienteNombre ? `Para llevar · ${orden.clienteNombre}` : 'Para llevar')}</p>
+                  <p className="text-xl font-extrabold">{orden.mesa ? `Mesa ${orden.mesa.numero}` : [etiquetaTipoPedido(orden), orden.clienteNombre].filter(Boolean).join(' · ')}</p>
                   <p className="text-[13px] text-gray-600 truncate">
                     {[orden.mesa?.zona?.nombre, orden.mesero?.name, `#${orden.id}`].filter(Boolean).join(' · ')}
                   </p>

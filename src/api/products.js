@@ -130,3 +130,9 @@ export const bulkImportProducts = (file) => {
   return api.post('/products/bulk-import', form, { headers: { 'Content-Type': 'multipart/form-data' } })
 }
 
+
+/**
+ * Marca un platillo como agotado (`disponible = false`) o de nuevo disponible. Lo puede usar
+ * el mesero desde la orden, no solo el admin.
+ */
+export const setProductAvailable = (id, disponible) => api.patch(`/products/${id}/disponible`, { disponible })

@@ -517,13 +517,13 @@ export default function Tables() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-extrabold">Unir una mesa a la mesa {unirA.numero}</h3>
             <p className="text-sm text-gray-600 mt-1">
-              Una mesa libre queda ocupada por esta orden. Si la mesa ya tiene su orden, sus productos y comensales pasan aquí.
+              Solo mesas de la misma zona. Una mesa libre queda ocupada por esta orden; si ya tiene su orden, sus productos y comensales pasan aquí.
             </p>
             <div className="mt-4 space-y-4">
-              {zonas.map((z) => {
+              {zonas.filter((z) => String(z.id) === String(unirA.zona?.id)).map((z) => {
                 const opciones = mesasDe(z.id).filter((m) => m.id !== unirA.id && m.estado !== 'FUERA_DE_SERVICIO'
                   && m.ordenActiva?.id !== unirA.ordenActiva?.id)
-                if (opciones.length === 0) return null
+                if (opciones.length === 0) return <p key={z.id} className="text-sm text-gray-700 py-6 text-center">No hay otras mesas en {z.nombre}.</p>
                 return (
                   <div key={z.id}>
                     <p className="text-xs font-bold uppercase tracking-wider text-gray-600 mb-1.5">{z.nombre}</p>

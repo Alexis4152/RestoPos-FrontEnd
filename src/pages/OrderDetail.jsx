@@ -18,6 +18,8 @@ import { getModificadorGrupos } from '../api/modificadores'
 import { resolveMediaUrl } from '../utils/media'
 import ComprobanteImagen from '../components/ComprobanteImagen'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { etiquetaTipoPedido } from '../utils/tipoPedido'
+import AgotadosModal from '../components/AgotadosModal'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 /** Suma de los extras (modificadores con costo) de UNA unidad de la línea. */
@@ -55,6 +57,9 @@ export default function OrderDetail() {
 
   const [showAddItem, setShowAddItem] = useState(false)
   const [products, setProducts] = useState([])
+  // "Agotados": marcar platillos que ya no hay (ver AgotadosModal); recargaProductos refresca la lista al volver.
+  const [agotadosAbierto, setAgotadosAbierto] = useState(false)
+  const [recargaProductos, setRecargaProductos] = useState(0)
   const [productQuery, setProductQuery] = useState('')
   const [productCat, setProductCat] = useState('')
   const [pickerComensalId, setPickerComensalId] = useState('')
@@ -173,7 +178,7 @@ export default function OrderDetail() {
     // calculado en cada producto como category.availableNow) — ej. items de "Desayuno" fuera
     // de su horario, o una categoría forzada oculta a mano.
     loadProducts.then((r) => setProducts((r.data.data ?? []).filter((p) => p.disponible !== false && p.category?.availableNow !== false)))
-  }, [showAddItem, productQuery, productCat])
+  }, [showAddItem, productQuery, productCat, recargaProductos])
 
   /** Cambia el modo de disponibilidad de una categoría desde el mini-modal, y refleja el cambio en la lista local. */
   async function handleCategoryModeChange(mode) {
@@ -925,7 +930,7 @@ export default function OrderDetail() {
           <p className="text-sm text-gray-600 mt-0.5">
             Orden #{order.id}
             {esMesa && order.mesa.zona?.nombre ? ` · ${order.mesa.zona.nombre}` : ''}
-            {!esMesa ? ` · ${order.tipoEntrega === 'DOMICILIO' ? 'A domicilio' : 'Para recoger'}` : ''}
+            {!esMesa ? ` · ${etiquetaTipoPedido(order)}` : ''}
             {' · '}{order.mesero?.name ?? 'sin mesero'}
             {order.openedAt ? ` · abierta ${new Date(order.openedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}${!isClosed ? ` (${transcurrido})` : ''}` : ''}
           </p>
@@ -1242,11 +1247,12 @@ export default function OrderDetail() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setUnirAbierto(false)}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-extrabold">Unir una mesa a esta orden</h3>
-            <p className="text-sm text-gray-600 mt-1">Una mesa libre queda ocupada por esta orden. Si ya tiene su orden, sus productos y comensales pasan aquí.</p>
+            <p className="text-sm text-gray-600 mt-1">Solo mesas de la misma zona. Una mesa libre queda ocupada por esta orden; si ya tiene su orden, sus productos y comensales pasan aquí.</p>
             {(() => {
-              const opciones = mesasTienda.filter((m) => m.ordenActiva?.id !== order.id && m.estado !== 'FUERA_DE_SERVICIO')
+              const opciones = mesasTienda.filter((m) => m.ordenActiva?.id !== order.id && m.estado !== 'FUERA_DE_SERVICIO'
+                && String(m.zona?.id ?? '') === String(order.mesa?.zona?.id ?? ''))
               const zonasOp = [...new Set(opciones.map((m) => m.zona?.nombre ?? 'Sin zona'))]
-              if (opciones.length === 0) return <p className="text-sm text-gray-700 py-6 text-center">No hay otras mesas.</p>
+              if (opciones.length === 0) return <p className="text-sm text-gray-700 py-6 text-center">No hay otras mesas en {order.mesa?.zona?.nombre ?? 'esta zona'}.</p>
               return (
                 <div className="mt-4 space-y-4">
                   {zonasOp.map((zona) => (
@@ -1313,11 +1319,21 @@ export default function OrderDetail() {
         </div>
       )}
 
+      {agotadosAbierto && (
+        <AgotadosModal onClose={() => setAgotadosAbierto(false)} onChanged={() => setRecargaProductos((n) => n + 1)} />
+      )}
+
       {/* Add item modal */}
       {showAddItem && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowAddItem(false)}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl p-6 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-3">Agregar producto</h3>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <h3 className="text-lg font-bold">Agregar producto</h3>
+              <button type="button" onClick={() => setAgotadosAbierto(true)}
+                className="text-xs font-bold px-3 min-h-[36px] rounded-full border border-[#D9D5CC] text-gray-700 hover:bg-gray-50">
+                ¿Se acabó algo? Agotados
+              </button>
+            </div>
 
             {/* Buscador + comensal, siempre visibles arriba */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">

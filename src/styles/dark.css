@@ -1,0 +1,125 @@
+/* GENERADO por scripts/gen-dark-css.mjs — no editar a mano (npm run gen:dark). */
+/* 121 reglas para el modo oscuro (html.dark). */
+html.dark .bg-\[\#DCD8CF\] { background-color: rgb(61 60 56) }
+html.dark .bg-\[\#E6EDF8\] { background-color: rgb(34 43 58) }
+html.dark .bg-\[\#E7F3EC\] { background-color: rgb(51 50 46) }
+html.dark .bg-\[\#ECE9E2\] { background-color: rgb(51 50 46) }
+html.dark .bg-\[\#ECEAE4\] { background-color: rgb(51 50 46) }
+html.dark .bg-\[\#EEEAF8\] { background-color: rgb(41 36 56) }
+html.dark .bg-\[\#F1EFEA\] { background-color: rgb(42 41 38) }
+html.dark .bg-\[\#F1F8F4\] { background-color: rgb(42 41 38) }
+html.dark .bg-\[\#F3EFE6\] { background-color: rgb(51 50 46) }
+html.dark .bg-\[\#F4F3EF\] { background-color: rgb(20 20 18) }
+html.dark .bg-\[\#F6F3FC\] { background-color: rgb(34 34 31) }
+html.dark .bg-\[\#F7F6F2\] { background-color: rgb(42 41 38) }
+html.dark .bg-\[\#FBF0DC\] { background-color: rgb(60 50 31) }
+html.dark .bg-\[\#FBF7EC\] { background-color: rgb(59 52 32) }
+html.dark .bg-\[\#FBFAF7\] { background-color: rgb(25 25 23) }
+html.dark .bg-amber-100 { background-color: rgb(74 67 38) }
+html.dark .bg-amber-50 { background-color: rgb(50 45 26) }
+html.dark .bg-blue-100 { background-color: rgb(31 44 60) }
+html.dark .bg-blue-50 { background-color: rgb(26 37 50) }
+html.dark .bg-gray-100 { background-color: rgb(38 38 35) }
+html.dark .bg-gray-200 { background-color: rgb(48 47 43) }
+html.dark .bg-gray-300 { background-color: rgb(60 59 54) }
+html.dark .bg-gray-400 { background-color: rgb(85 83 77) }
+html.dark .bg-gray-50 { background-color: rgb(32 32 29) }
+html.dark .bg-gray-900 { background-color: rgb(58 57 53) }
+html.dark .bg-green-100 { background-color: rgb(31 60 41) }
+html.dark .bg-green-50 { background-color: rgb(34 34 31) }
+html.dark .bg-orange-100 { background-color: rgb(74 59 38) }
+html.dark .bg-orange-50 { background-color: rgb(50 40 26) }
+html.dark .bg-red-100 { background-color: rgb(60 31 31) }
+html.dark .bg-red-50 { background-color: rgb(34 34 31) }
+html.dark .bg-white { background-color: rgb(28 28 26) }
+html.dark .bg-white\/10 { background-color: rgb(28 28 26 / 0.1) }
+html.dark .bg-white\/70 { background-color: rgb(28 28 26 / 0.7) }
+html.dark .bg-yellow-100 { background-color: rgb(74 71 38) }
+html.dark .bg-yellow-50 { background-color: rgb(60 58 31) }
+html.dark .border-\[\#8F7AD0\] { border-color: rgb(92 83 121) }
+html.dark .border-\[\#9CCBB0\] { border-color: rgb(89 115 100) }
+html.dark .border-\[\#A9BEE3\] { border-color: rgb(81 96 123) }
+html.dark .border-\[\#D9D5CC\] { border-color: rgb(74 72 67) }
+html.dark .border-\[\#E2B76B\] { border-color: rgb(129 110 75) }
+html.dark .border-\[\#E2DAF5\] { border-color: rgb(60 51 82) }
+html.dark .border-\[\#E4E1DA\] { border-color: rgb(58 57 53) }
+html.dark .border-\[\#EADFC3\] { border-color: rgb(97 88 66) }
+html.dark .border-\[\#ECE9E2\] { border-color: rgb(58 57 53) }
+html.dark .border-\[\#F4F3EF\] { border-color: rgb(46 45 42) }
+html.dark .border-amber-200 { border-color: rgb(131 119 73) }
+html.dark .border-amber-300 { border-color: rgb(131 117 73) }
+html.dark .border-blue-200 { border-color: rgb(59 79 104) }
+html.dark .border-blue-300 { border-color: rgb(59 80 104) }
+html.dark .border-gray-100 { border-color: rgb(44 43 40) }
+html.dark .border-gray-200 { border-color: rgb(54 53 49) }
+html.dark .border-gray-300 { border-color: rgb(69 67 62) }
+html.dark .border-gray-900 { border-color: rgb(174 171 164) }
+html.dark .border-green-200 { border-color: rgb(59 104 75) }
+html.dark .border-green-300 { border-color: rgb(73 131 94) }
+html.dark .border-orange-200 { border-color: rgb(104 83 59) }
+html.dark .border-orange-300 { border-color: rgb(131 103 73) }
+html.dark .border-red-200 { border-color: rgb(85 48 48) }
+html.dark .border-red-300 { border-color: rgb(104 59 59) }
+html.dark .border-yellow-200 { border-color: rgb(131 124 73) }
+html.dark .border-yellow-300 { border-color: rgb(131 121 73) }
+html.dark .disabled\:text-gray-400:disabled { color: rgb(138 135 127) }
+html.dark .divide-\[\#ECE9E2\] > :not([hidden]) ~ :not([hidden]) { border-color: rgb(58 57 53) }
+html.dark .divide-\[\#F0EEE8\] > :not([hidden]) ~ :not([hidden]) { border-color: rgb(58 57 53) }
+html.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) { border-color: rgb(44 43 40) }
+html.dark .divide-gray-50 > :not([hidden]) ~ :not([hidden]) { border-color: rgb(38 38 35) }
+html.dark .hover\:bg-\[\#dbe5f5\]:hover { background-color: rgb(42 53 70) }
+html.dark .hover\:bg-\[\#EFEDE7\]:hover { background-color: rgb(51 50 46) }
+html.dark .hover\:bg-\[\#F1EFEA\]:hover { background-color: rgb(42 41 38) }
+html.dark .hover\:bg-\[\#F7F6F2\]:hover { background-color: rgb(42 41 38) }
+html.dark .hover\:bg-gray-100:hover { background-color: rgb(38 38 35) }
+html.dark .hover\:bg-gray-200:hover { background-color: rgb(48 47 43) }
+html.dark .hover\:bg-gray-50:hover { background-color: rgb(32 32 29) }
+html.dark .hover\:bg-green-50:hover { background-color: rgb(34 34 31) }
+html.dark .hover\:bg-red-50:hover { background-color: rgb(34 34 31) }
+html.dark .hover\:bg-stone-50:hover { background-color: rgb(32 32 29) }
+html.dark .hover\:bg-white\/20:hover { background-color: rgb(28 28 26 / 0.2) }
+html.dark .hover\:bg-white\/70:hover { background-color: rgb(28 28 26 / 0.7) }
+html.dark .hover\:border-gray-900:hover { border-color: rgb(174 171 164) }
+html.dark .hover\:text-gray-600:hover { color: rgb(186 183 176) }
+html.dark .hover\:text-gray-700:hover { color: rgb(211 209 203) }
+html.dark .hover\:text-gray-800:hover { color: rgb(230 228 223) }
+html.dark .hover\:text-gray-900:hover { color: rgb(242 241 238) }
+html.dark .hover\:text-red-600:hover { color: rgb(223 123 123) }
+html.dark .text-\[\#1E4585\] { color: rgb(153 180 224) }
+html.dark .text-\[\#22603C\] { color: rgb(183 225 201) }
+html.dark .text-\[\#4A3F2A\] { color: rgb(216 208 192) }
+html.dark .text-\[\#4B3391\] { color: rgb(175 162 216) }
+html.dark .text-\[\#6B4100\] { color: rgb(237 211 171) }
+html.dark .text-\[\#7A4A00\] { color: rgb(237 211 171) }
+html.dark .text-\[\#B86E00\] { color: rgb(231 197 146) }
+html.dark .text-amber-600 { color: rgb(231 192 146) }
+html.dark .text-amber-800 { color: rgb(231 178 146) }
+html.dark .text-amber-900 { color: rgb(237 195 171) }
+html.dark .text-blue-600 { color: rgb(121 154 225) }
+html.dark .text-blue-700 { color: rgb(121 149 225) }
+html.dark .text-blue-800 { color: rgb(149 168 229) }
+html.dark .text-blue-900 { color: rgb(152 171 225) }
+html.dark .text-gray-300 { color: rgb(106 104 98) }
+html.dark .text-gray-400 { color: rgb(138 135 127) }
+html.dark .text-gray-500 { color: rgb(162 159 152) }
+html.dark .text-gray-600 { color: rgb(186 183 176) }
+html.dark .text-gray-700 { color: rgb(211 209 203) }
+html.dark .text-gray-800 { color: rgb(230 228 223) }
+html.dark .text-gray-900 { color: rgb(242 241 238) }
+html.dark .text-green-600 { color: rgb(146 231 178) }
+html.dark .text-green-700 { color: rgb(173 235 196) }
+html.dark .text-green-800 { color: rgb(176 232 197) }
+html.dark .text-green-900 { color: rgb(177 231 199) }
+html.dark .text-orange-700 { color: rgb(231 171 146) }
+html.dark .text-orange-800 { color: rgb(231 168 146) }
+html.dark .text-orange-900 { color: rgb(236 188 172) }
+html.dark .text-red-500 { color: rgb(225 121 121) }
+html.dark .text-red-600 { color: rgb(223 123 123) }
+html.dark .text-red-700 { color: rgb(230 147 147) }
+html.dark .text-red-800 { color: rgb(228 149 149) }
+html.dark .text-red-900 { color: rgb(224 153 153) }
+html.dark .text-yellow-500 { color: rgb(225 200 121) }
+html.dark .text-yellow-800 { color: rgb(237 206 171) }
+@media (min-width: 1024px) {
+  html.dark .lg\:bg-\[\#F4F3EF\] { background-color: rgb(20 20 18) }
+}

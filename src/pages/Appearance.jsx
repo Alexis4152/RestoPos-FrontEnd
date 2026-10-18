@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { updateTiendaTheme } from '../api/tiendas'
-import { generateRamp, isValidHex, NEXORA_BLUE } from '../utils/theme'
+import { generateRamp, generateDarkRamp, isValidHex, NEXORA_BLUE } from '../utils/theme'
+import { MODOS, useModo } from '../utils/themeMode'
 
 /**
  * Pantalla "Apariencia": permite al administrador de la tienda elegir el color de marca
@@ -12,6 +13,10 @@ import { generateRamp, isValidHex, NEXORA_BLUE } from '../utils/theme'
  * `SUPER_ADMIN`, que no pertenece a ninguna tienda y siempre ve el azul "Nexora" fijo).
  * La visibilidad de la ruta ya se controla a nivel de `PrivateRoute`/menú; este componente
  * no vuelve a chequear el rol.
+ *
+ * También elige el modo de pantalla (claro / oscuro / automático) de ESTE dispositivo y
+ * muestra cómo se ve el color de la tienda en ambos modos (en oscuro la paleta se ajusta
+ * sola para que se lea, ver generateDarkRamp).
  *
  * Al guardar, además de persistir el color en el backend, llama a `patchTienda()` de
  * `AuthContext` para reflejar el cambio de inmediato en el sidebar y el resto de la UI
@@ -27,6 +32,8 @@ export default function Appearance() {
   // Genera la paleta (rampa de tonos claro→oscuro) a partir del color elegido, solo para
   // mostrar la vista previa; si el usuario aún no eligió un hex válido no se calcula nada.
   const previewRamp = isValidHex(color) ? generateRamp(color) : null
+  const previewDark = isValidHex(color) ? generateDarkRamp(color) : null
+  const { modo, setModo } = useModo()
 
   /**
    * Guarda el nuevo color de marca de la tienda en el backend y, si tiene éxito,
@@ -81,6 +88,16 @@ export default function Appearance() {
           </div>
         )}
 
+        {previewRamp && (
+          <div>
+            <p className="text-xs text-gray-500 mb-2">Así se ve en cada modo</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <MuestraModo titulo="Claro" ramp={previewRamp} fondo="#F4F3EF" tarjeta="#FFFFFF" texto="#1F2937" borde="#E4E1DA" />
+              <MuestraModo titulo="Oscuro" ramp={previewDark} fondo="#141412" tarjeta="#1C1C1A" texto="#F2F1EE" borde="#3A3935" />
+            </div>
+          </div>
+        )}
+
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>
         )}
@@ -91,6 +108,42 @@ export default function Appearance() {
         <button className="btn-primary" onClick={handleSave} disabled={saving}>
           {saving ? 'Guardando...' : 'Guardar color'}
         </button>
+      </div>
+
+      <div className="card space-y-3 mt-5">
+        <div>
+          <h2 className="text-base font-extrabold">Modo de pantalla</h2>
+          <p className="text-sm text-gray-600">
+            Se guarda en este dispositivo: cada quien elige el suyo (también desde el botón del encabezado).
+            Automático sigue el modo del sistema. La página web de la tienda siempre se ve en claro.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Modo de pantalla">
+          {MODOS.map((m) => (
+            <button key={m.key} type="button" role="radio" aria-checked={modo === m.key} onClick={() => setModo(m.key)}
+              className={`chip ${modo === m.key ? 'chip-on' : ''}`}>{m.label}</button>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const rgb = (t) => `rgb(${t.split(' ').join(',')})`
+
+/** Mini pantalla con el color de la tienda aplicado: botón, elemento seleccionado y texto de acento. */
+function MuestraModo({ titulo, ramp, fondo, tarjeta, texto, borde }) {
+  return (
+    <div className="rounded-xl p-3" style={{ backgroundColor: fondo, border: `1px solid ${borde}` }}>
+      <p className="text-xs font-bold mb-2" style={{ color: texto }}>{titulo}</p>
+      <div className="rounded-lg p-3 space-y-2" style={{ backgroundColor: tarjeta, border: `1px solid ${borde}` }}>
+        <span className="block text-sm font-bold" style={{ color: rgb(ramp[700]) }}>Mesa 4 · 3 personas</span>
+        <span className="block rounded-lg px-2 py-1.5 text-xs font-semibold" style={{ backgroundColor: rgb(ramp[50]), border: `2px solid ${rgb(ramp[600])}`, color: texto }}>
+          Seleccionado
+        </span>
+        <span className="inline-block rounded-lg px-3 py-1.5 text-xs font-semibold text-white" style={{ backgroundColor: rgb(ramp[600]) }}>
+          Cobrar
+        </span>
       </div>
     </div>
   )

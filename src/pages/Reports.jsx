@@ -96,7 +96,7 @@ export default function Reports() {
           {byDay.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={byDay}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgb(128 128 128 / 0.22)" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
                 <Tooltip formatter={(v) => fmt(v)} />
@@ -112,7 +112,7 @@ export default function Reports() {
           {topProducts.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={topProducts} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgb(128 128 128 / 0.22)" />
                 <XAxis type="number" tick={{ fontSize: 11 }} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={100} />
                 <Tooltip />

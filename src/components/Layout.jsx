@@ -7,6 +7,7 @@ import NotificationCenter from './NotificationCenter'
 import Icon from './Icon'
 import { resolveMediaUrl } from '../utils/media'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { useModo } from '../utils/themeMode'
 
 /**
  * Clase de cada link del menú: claro, con el activo resaltado en el color de marca de la
@@ -260,6 +261,7 @@ export default function Layout({ children }) {
             {new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' })}
             {isPlatformActor && user?.tienda?.name ? ` · ${user.tienda.name}` : ''}
           </span>
+          <BotonModo />
           <NotificationCenter />
         </header>
         <main className="flex-1 overflow-y-auto flex flex-col">
@@ -271,5 +273,20 @@ export default function Layout({ children }) {
       </div>
 
     </div>
+  )
+}
+
+/**
+ * Cambia entre modo claro y oscuro en este dispositivo (el "Automático", que sigue al
+ * sistema, se elige en Apariencia). Va junto a la campana del encabezado.
+ */
+function BotonModo() {
+  const { oscuro, setModo } = useModo()
+  const etiqueta = oscuro ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'
+  return (
+    <button type="button" onClick={() => setModo(oscuro ? 'light' : 'dark')} aria-label={etiqueta} title={etiqueta}
+      className="w-11 h-11 rounded-full flex items-center justify-center text-gray-700 hover:bg-[#EFEDE7]">
+      <Icon name={oscuro ? 'sol' : 'luna'} className="w-5 h-5" />
+    </button>
   )
 }
