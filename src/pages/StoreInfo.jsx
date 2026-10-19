@@ -75,6 +75,7 @@ export default function StoreInfo() {
         notasAdicionales: info.notasAdicionales || '',
         costoEnvioDomicilio: info.costoEnvioDomicilio != null ? String(info.costoEnvioDomicilio) : '',
         blindCashCount: info.tienda?.blindCashCount ?? false,
+        modoToma: info.tienda?.modoToma ?? 'DETALLADO',
       })
     }).finally(() => setLoading(false))
   }, [tiendaId])
@@ -118,7 +119,7 @@ export default function StoreInfo() {
     setMessage('')
     try {
       await updateTiendaInfo(tiendaId, { ...form, costoEnvioDomicilio: envio ? Number(envio) : null })
-      patchTienda({ name: form.name, blindCashCount: !!form.blindCashCount })
+      patchTienda({ name: form.name, blindCashCount: !!form.blindCashCount, modoToma: form.modoToma })
       setMessage('Datos guardados')
     } catch (err) {
       const data = err.response?.data?.data
@@ -247,6 +248,29 @@ export default function StoreInfo() {
           </p>
           {fieldErrors.costoEnvioDomicilio && <p className="text-red-600 text-xs mt-1">{fieldErrors.costoEnvioDomicilio}</p>}
         </div>
+
+        <fieldset className="border-t border-gray-100 pt-4">
+          <legend className="text-sm font-semibold text-gray-800 mb-1">Toma de orden</legend>
+          <p className="text-xs text-gray-600 mb-2">
+            Cómo arrancan los meseros de esta tienda. Cada uno puede cambiarlo en su dispositivo con el interruptor
+            Rápido / Detallado de Mesas; los dos modos trabajan sobre las mismas órdenes.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {[
+              ['RAPIDO', 'Rápido', 'Mis mesas, menú directo, opciones sugeridas y cobrar en un paso. Para servicio con mucho movimiento.'],
+              ['DETALLADO', 'Detallado', 'Plano por zonas, comensal por producto, entregar y luego generar la cuenta. Más control.'],
+            ].map(([key, label, desc]) => (
+              <label key={key} className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer ${form.modoToma === key ? 'border-purple-600 bg-purple-50' : 'border-gray-200'}`}>
+                <input type="radio" name="modoToma" className="mt-1 w-4 h-4" checked={form.modoToma === key}
+                  onChange={() => setForm({ ...form, modoToma: key })} />
+                <span>
+                  <span className="block text-sm font-semibold text-gray-800">{label}</span>
+                  <span className="block text-xs text-gray-600 mt-0.5">{desc}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
 
         <div className="border-t border-gray-100 pt-4">
           <p className="text-sm font-semibold text-gray-800 mb-2">Corte de caja</p>

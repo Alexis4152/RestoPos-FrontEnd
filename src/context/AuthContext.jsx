@@ -41,6 +41,10 @@ function applyBrandFor(userData) {
  *
  * @param {{ children: import('react').ReactNode }} props
  */
+// El login responde `userId` y /auth/me `id`: el usuario en memoria lleva siempre los dos
+// (hay pantallas que usan uno u otro, p. ej. Entregas `userId`, caja y Mis mesas `id`).
+const conId = (u) => (u ? { ...u, id: u.id ?? u.userId, userId: u.userId ?? u.id } : u)
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -50,7 +54,7 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem('pos_token')
     if (stored && token) {
       try {
-        const parsed = JSON.parse(stored)
+        const parsed = conId(JSON.parse(stored))
         setUser(parsed)
         applyBrandFor(parsed)
         // refresca secciones/rol/tienda por si el admin cambió permisos o color desde el último login
@@ -87,7 +91,8 @@ export function AuthProvider({ children }) {
    */
   async function login(email, password) {
     const res = await apiLogin({ email, password })
-    const { token, ...userData } = res.data.data
+    const { token, ...datos } = res.data.data
+    const userData = conId(datos)
     localStorage.setItem('pos_token', token)
     localStorage.setItem('pos_user', JSON.stringify(userData))
     setUser(userData)

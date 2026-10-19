@@ -10,6 +10,9 @@ import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import Icon, { Persona } from '../components/Icon'
+import SelectorModoToma from '../components/SelectorModoToma'
+import MisMesas from './rapido/MisMesas'
+import { useModoToma } from '../utils/modoToma'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 
@@ -86,7 +89,13 @@ function MesaDibujo({ mesa, size = 'w-5 h-5' }) {
  *     panel lateral muestra su detalle y acciones (abrir, ver orden, mover de mesa).
  * La zona vive en la URL para que "atrás" desde una orden regrese al plano correcto.
  */
+/** Mesas: "Mis mesas" en modo rápido, el plano por zonas en modo detallado (ver utils/modoToma.js). */
 export default function Tables() {
+  const { rapido } = useModoToma()
+  return rapido ? <MisMesas /> : <TablesDetallado />
+}
+
+function TablesDetallado() {
   const { isAdmin } = useAuth()
   const { notify, confirmDialog } = useNotify()
   const navigate = useNavigate()
@@ -296,6 +305,7 @@ export default function Tables() {
               <h1 className="text-[28px] font-extrabold tracking-tight">Mesas</h1>
               <p className="text-sm text-gray-600">{tables.length} mesas en {zonas.length} zona{zonas.length === 1 ? '' : 's'}</p>
             </div>
+            <SelectorModoToma />
             {isAdmin && <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={openNewZona}><Icon name="mas" className="w-4 h-4" />Nueva zona</button>}
           </header>
 
@@ -399,6 +409,7 @@ export default function Tables() {
               </nav>
               <h1 className="text-[28px] font-extrabold tracking-tight mt-0.5">{activeZona.nombre}</h1>
             </div>
+            <SelectorModoToma />
             {isAdmin && <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={openNewMesa}><Icon name="mas" className="w-4 h-4" />Nueva mesa</button>}
           </header>
 
@@ -611,7 +622,8 @@ function PanelMesa({ mesa, orden, reservas, isAdmin, comensales, setComensales, 
   const activos = (orden?.items ?? []).filter((i) => i.estado !== 'CANCELADO' && !i.cargoExtra)
   const entregados = activos.filter((i) => i.estado === 'ENTREGADO').reduce((s, i) => s + Number(i.cantidad), 0)
   const porEntregar = activos.filter((i) => i.estado !== 'ENTREGADO').reduce((s, i) => s + Number(i.cantidad), 0)
-  const maxComensales = Math.max(cap, 20)
+  // Límite de personas = lugares de la mesa (los captura el admin); sin capacidad, hasta 20.
+  const maxComensales = mesa.capacidad ? mesa.capacidad : 20
 
   return (
     <>
@@ -674,7 +686,7 @@ function PanelMesa({ mesa, orden, reservas, isAdmin, comensales, setComensales, 
               <button type="button" aria-label="Más comensales" disabled={comensales >= maxComensales} onClick={() => setComensales((c) => Math.min(maxComensales, c + 1))}
                 className="w-11 h-11 rounded-xl border border-[#D9D5CC] bg-white text-xl font-bold disabled:opacity-40">+</button>
             </div>
-            {comensales > cap && <p className="text-xs text-[#7A4A00] mt-1.5">Son más comensales que lugares ({cap}).</p>}
+            {mesa.capacidad && comensales >= mesa.capacidad && <p className="text-xs text-gray-600 mt-1.5">Es el máximo de la mesa. Para más personas, ábrela y une otra mesa.</p>}
           </div>
           <button type="button" className="btn-primary w-full min-h-[44px]" disabled={loading} onClick={onAbrir}>
             {loading ? '...' : `Abrir mesa ${mesa.numero}`}

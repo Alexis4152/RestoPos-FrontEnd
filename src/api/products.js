@@ -136,3 +136,9 @@ export const bulkImportProducts = (file) => {
  * el mesero desde la orden, no solo el admin.
  */
 export const setProductAvailable = (id, disponible) => api.patch(`/products/${id}/disponible`, { disponible })
+
+/**
+ * Modo rápido: `{ opciones: {grupoId: opcionId}, notas: [..] }` — la opción más pedida de cada
+ * grupo obligatorio (solo si domina) y las notas que más se escriben para el platillo.
+ */
+export const getProductSuggestions = (id) => api.get(`/products/${id}/sugerencias`)

@@ -20,6 +20,7 @@ import ComprobanteImagen from '../components/ComprobanteImagen'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { etiquetaTipoPedido } from '../utils/tipoPedido'
 import AgotadosModal from '../components/AgotadosModal'
+import { useModoToma } from '../utils/modoToma'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 /** Suma de los extras (modificadores con costo) de UNA unidad de la línea. */
@@ -48,6 +49,7 @@ export default function OrderDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { isAdmin, isMesero, hasSection } = useAuth()
+  const { rapido } = useModoToma()
   const { notify, confirmDialog } = useNotify()
 
   const [order, setOrder] = useState(null)
@@ -283,9 +285,9 @@ export default function OrderDetail() {
     billableItems.some((i) => i.comensal?.id === c.id)
   )
   // true cuando ya no queda nada propio de ningún comensal por cobrar — todos pagaron lo
-  // suyo por separado y solo falta lo "Compartido". Ahí "Por comensal" y "Personalizada" ya
-  // no tienen sentido (no hay nada que atribuirle a nadie en particular): lo compartido se
-  // cobra siempre en una sola cuenta "Total".
+  // suyo por separado y solo falta lo "Compartido". Ahí "Por comensal" ya no tiene sentido
+  // (no hay nada que atribuirle a nadie): lo compartido se cobra junto ("Total", por default)
+  // o repartido en partes ("Personalizada").
   const onlySharedPending = billableItems.length > 0 && billableItems.every((i) => !i.comensal)
   // Total que se cobraría con "Generar cuenta" > Total: la misma fórmula que usa el backend
   // (CuentaService#crearInternal) — precio unitario real de la línea (subtotal / cantidad,
@@ -875,6 +877,9 @@ export default function OrderDetail() {
     } catch { notify('No se pudieron cargar las mesas', 'error') }
   }
   const unidas = esMesa ? mesasTienda.filter((m) => m.ordenActiva?.id === order.id && m.id !== order.mesa.id) : []
+  // Límite de personas: suma de lugares de la mesa y las unidas (null = alguna sin capacidad, sin límite).
+  const cupoMesas = esMesa && [order.mesa, ...unidas].every((m) => m.capacidad > 0)
+    ? [order.mesa, ...unidas].reduce((s, m) => s + m.capacidad, 0) : null
   async function unirCon(m) {
     if (m.ordenActiva && !(await confirmDialog(
       `La mesa ${m.numero} ya tiene su orden: sus productos y comensales pasan a esta orden y aquella se cierra. ¿Unirlas?`,
@@ -935,6 +940,9 @@ export default function OrderDetail() {
             {order.openedAt ? ` · abierta ${new Date(order.openedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}${!isClosed ? ` (${transcurrido})` : ''}` : ''}
           </p>
         </div>
+        {rapido && !isClosed && esMesa && (
+          <Link to={`/orders/${order.id}`} className="text-sm font-bold text-purple-700 hover:underline">Vista rápida</Link>
+        )}
         {!isClosed && esMesa && (
           <button type="button" className="btn-secondary min-h-[44px] inline-flex items-center gap-2" onClick={abrirMover}>
             <Icon name="mover" className="w-4 h-4" /> Mover de mesa
@@ -978,7 +986,9 @@ export default function OrderDetail() {
               </button>
             ))}
             {esMesa && !isClosed && (
-              <button type="button" onClick={handleAddDiner} className="chip border-dashed text-purple-700">
+              <button type="button" onClick={handleAddDiner} className="chip border-dashed text-purple-700 disabled:opacity-40"
+                disabled={cupoMesas != null && (order.comensales?.length ?? 0) >= cupoMesas}
+                title={cupoMesas != null && (order.comensales?.length ?? 0) >= cupoMesas ? `Las mesas son para ${cupoMesas} personas: une otra mesa para agregar más` : undefined}>
                 <Icon name="mas" className="w-4 h-4" strokeWidth={2} /> Comensal
               </button>
             )}
@@ -1725,7 +1735,7 @@ export default function OrderDetail() {
                 <>
                   <div className="grid grid-cols-3 gap-2">
                     {[['TOTAL', 'Total'], ['POR_COMENSAL', 'Por comensal'], ['PERSONALIZADA', 'Personalizada']].map(([v, label]) => {
-                      const disabled = onlySharedPending && v !== 'TOTAL'
+                      const disabled = onlySharedPending && v === 'POR_COMENSAL'
                       return (
                         <button key={v} type="button" disabled={disabled}
                           className={`py-2 rounded-lg text-xs font-semibold border ${
@@ -1738,7 +1748,7 @@ export default function OrderDetail() {
                   {onlySharedPending && (
                     <p className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
                       Ya solo queda lo <span className="font-medium">Compartido</span> por cobrar — cada comensal ya pagó lo
-                      suyo por separado, así que esto se cobra en una sola cuenta.
+                      suyo. Cóbralo junto en una cuenta (Total) o repártelo eligiendo productos y cantidades (Personalizada).
                     </p>
                   )}
                 </>

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { NotifyProvider } from './context/NotifyContext'
 import { ModoSync } from './utils/themeMode'
@@ -12,6 +12,8 @@ import Dashboard from './pages/Dashboard'
 import Tables from './pages/Tables'
 import Takeaway from './pages/Takeaway'
 import OrderDetail from './pages/OrderDetail'
+import OrdenRapida from './pages/rapido/OrdenRapida'
+import { useModoToma } from './utils/modoToma'
 import Orders from './pages/Orders'
 import Kitchen from './pages/Kitchen'
 import Menu from './pages/Menu'
@@ -70,7 +72,7 @@ function AppRoutes() {
                 <Route path="/reservaciones" element={<PrivateRoute section="TABLES"><Reservaciones /></PrivateRoute>} />
                 <Route path="/takeaway" element={<PrivateRoute section="TAKEAWAY"><Takeaway /></PrivateRoute>} />
                 <Route path="/orders" element={<PrivateRoute section="ORDERS"><Orders /></PrivateRoute>} />
-                <Route path="/orders/:id" element={<PrivateRoute section={['ORDERS', 'TAKEAWAY']}><OrderDetail /></PrivateRoute>} />
+                <Route path="/orders/:id" element={<PrivateRoute section={['ORDERS', 'TAKEAWAY']}><OrdenSegunModo /></PrivateRoute>} />
                 <Route path="/kitchen" element={<PrivateRoute section="KITCHEN"><Kitchen /></PrivateRoute>} />
                 <Route path="/menu" element={<PrivateRoute section="MENU"><Menu /></PrivateRoute>} />
                 <Route path="/inventory" element={<PrivateRoute section="INVENTORY"><Inventory /></PrivateRoute>} />
@@ -113,4 +115,16 @@ export default function App() {
       </AuthProvider>
     </BrowserRouter>
   )
+}
+
+/**
+ * Detalle de una orden según el modo de toma (utils/modoToma.js): en rápido, la pantalla de
+ * Pedir / Lo pedido / Cuenta (que cae a la vista detallada si la orden no es de mesa o ya
+ * cerró); en detallado, o con ?vista=detalle, la de siempre.
+ */
+function OrdenSegunModo() {
+  const { rapido } = useModoToma()
+  const [searchParams] = useSearchParams()
+  const detalle = searchParams.get('vista') === 'detalle'
+  return rapido && !detalle ? <OrdenRapida /> : <OrderDetail />
 }

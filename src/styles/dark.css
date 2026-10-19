@@ -1,5 +1,6 @@
 /* GENERADO por scripts/gen-dark-css.mjs — no editar a mano (npm run gen:dark). */
-/* 121 reglas para el modo oscuro (html.dark). */
+/* 123 reglas para el modo oscuro (html.dark). */
+html.dark .bg-\[\#D9D5CC\] { background-color: rgb(61 60 56) }
 html.dark .bg-\[\#DCD8CF\] { background-color: rgb(61 60 56) }
 html.dark .bg-\[\#E6EDF8\] { background-color: rgb(34 43 58) }
 html.dark .bg-\[\#E7F3EC\] { background-color: rgb(51 50 46) }
@@ -38,6 +39,7 @@ html.dark .bg-yellow-100 { background-color: rgb(74 71 38) }
 html.dark .bg-yellow-50 { background-color: rgb(60 58 31) }
 html.dark .border-\[\#8F7AD0\] { border-color: rgb(92 83 121) }
 html.dark .border-\[\#9CCBB0\] { border-color: rgb(89 115 100) }
+html.dark .border-\[\#A8A398\] { border-color: rgb(105 103 99) }
 html.dark .border-\[\#A9BEE3\] { border-color: rgb(81 96 123) }
 html.dark .border-\[\#D9D5CC\] { border-color: rgb(74 72 67) }
 html.dark .border-\[\#E2B76B\] { border-color: rgb(129 110 75) }
