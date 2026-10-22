@@ -4,7 +4,7 @@ import { updateOrderItem, cancelOrderItem, addOrderItem } from '../../api/ordene
 import { useNotify } from '../../context/NotifyContext'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { gruposActivos } from './OpcionesSheet'
-import GruposModificadores from '../../components/GruposModificadores'
+import { GruposModificadoresAbiertos } from '../../components/GruposModificadores'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const ENTREGADO = ['ENTREGADO_MESERO', 'ENTREGADO']
@@ -129,7 +129,7 @@ export default function EditarLineaSheet({ ordenId, item, comensales, onCerrar, 
           </div>
         </div>
 
-        <GruposModificadores grupos={grupos} sel={sel} onToggle={tocar} disabled={!puedeOpciones} />
+        <GruposModificadoresAbiertos grupos={grupos} sel={sel} onToggle={tocar} disabled={!puedeOpciones} />
 
         {!entregado && (
           <div>

@@ -4,7 +4,7 @@ const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency:
 
 /**
  * Grupos de modificadores en acordeón — el mismo comportamiento en la página web, el punto
- * de venta (detallado y rápido) y al editar un producto ya pedido:
+ * de venta detallado. El modo rápido usa GruposModificadoresAbiertos (todo a la vista):
  *  - todos empiezan cerrados; el encabezado dice lo elegido o "Elige una opción";
  *  - tocar un grupo lo abre y cierra el que estuviera abierto (solo uno a la vez);
  *  - en un grupo de una sola opción, al elegir se cierra solo; los de varias se quedan
@@ -71,6 +71,44 @@ export default function GruposModificadores({ grupos, sel, onToggle, nota, disab
               </div>
             )}
           </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * Variante del modo rápido: TODOS los grupos a la vista de una vez (sin acordeón), con las
+ * opciones como botones grandes de un toque — el mesero elige sin abrir ni cerrar nada.
+ * Mismas props que GruposModificadores.
+ */
+export function GruposModificadoresAbiertos({ grupos, sel, onToggle, nota, disabled = false }) {
+  return (
+    <div className="space-y-4">
+      {grupos.map((g) => {
+        const falta = g.obligatorio && (sel[g.id] ?? []).length === 0
+        return (
+          <fieldset key={g.id} className="space-y-1.5" disabled={disabled}>
+            <legend className="text-sm font-extrabold">
+              {g.nombre}{' '}
+              <span className={`font-semibold ${falta ? 'text-red-700' : 'text-gray-600'}`}>
+                · {g.tipo === 'UNICO' ? 'elige 1' : 'puedes elegir varias'}{g.obligatorio ? '' : ' (opcional)'}
+              </span>
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              {g.opciones.map((o) => {
+                const on = (sel[g.id] ?? []).includes(o.id)
+                const extra = nota?.(g, o)
+                return (
+                  <button key={o.id} type="button" aria-pressed={on} onClick={() => onToggle(g, o.id)}
+                    className={`min-h-[44px] px-4 rounded-full text-sm font-bold border disabled:opacity-50 ${on ? 'border-2 border-purple-600 bg-purple-50 text-purple-800' : 'border-[#D9D5CC] bg-white text-gray-700'}`}>
+                    {o.nombre}{Number(o.precioExtra) > 0 ? ` +${fmt(o.precioExtra)}` : ''}
+                    {extra && <span className="ml-1.5 text-[11px] font-semibold text-gray-600">{extra}</span>}
+                  </button>
+                )
+              })}
+            </div>
+          </fieldset>
         )
       })}
     </div>

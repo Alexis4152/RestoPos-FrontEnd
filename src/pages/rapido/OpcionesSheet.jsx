@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getProductSuggestions } from '../../api/products'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
-import GruposModificadores from '../../components/GruposModificadores'
+import { GruposModificadoresAbiertos } from '../../components/GruposModificadores'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
@@ -91,7 +91,7 @@ export default function OpcionesSheet({ producto, anterior, onAgregar, onCerrar 
           <p className="-mt-2 text-sm text-gray-600">Ya viene con lo que más se pide. Si así va, solo toca Agregar.</p>
         )}
 
-        <GruposModificadores grupos={grupos} sel={sel} onToggle={tocar}
+        <GruposModificadoresAbiertos grupos={grupos} sel={sel} onToggle={tocar}
           nota={(g, o) => (sugeridas[g.id] === o.id ? 'lo más pedido' : null)} />
 
         <div className="space-y-1.5">
