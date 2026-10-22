@@ -3,6 +3,7 @@ import { getCashRegisters } from '../../api/cashRegisters'
 import { getPendingShortageTotal, getShortagePayments, getShortages, payShortage } from '../../api/shortages'
 import { useNotify } from '../../context/NotifyContext'
 import { resolveMediaUrl } from '../../utils/media'
+import { filaClick, FILA_CLICK } from '../../utils/filaClick'
 import { AmountField, Modal, Pagination, ReceiptInput, SummaryRow, fmt, fmtDate, toAmount, MAX_AMOUNT } from './common'
 
 export const SHORTAGE_METHOD_LABELS = {
@@ -68,7 +69,8 @@ export default function ShortagesTab({ onChanged }) {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {rows.map((s) => (
-                <tr key={s.id} className="align-top">
+                <tr key={s.id} {...filaClick(Number(s.paidAmount) > 0 ? () => setHistory(s) : null)}
+                  className={`align-top ${Number(s.paidAmount) > 0 ? `${FILA_CLICK} hover:bg-gray-50` : ''}`}>
                   <td className="px-4 py-2 font-medium">
                     {s.person?.name}
                     {s.status === 'PARTIAL' && <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-semibold">Con abonos</span>}

@@ -6,10 +6,11 @@ import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import { resolveMediaUrl } from '../utils/media'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { filaClick, FILA_CLICK } from '../utils/filaClick'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
-const emptyForm = { name: '', description: '', price: '', disponible: true, categoryId: '' }
+const emptyForm = { name: '', description: '', price: '', disponible: true, categoryId: '', controlaInventario: false }
 
 /**
  * Página "Menú": administración de categorías y platillos/productos de la tienda.
@@ -106,7 +107,8 @@ export default function Menu() {
     setEditProduct(p)
     setForm({
       name: p.name, description: p.description ?? '', price: p.price,
-      disponible: p.disponible !== false, categoryId: p.category?.id ?? ''
+      disponible: p.disponible !== false, categoryId: p.category?.id ?? '',
+      controlaInventario: !!p.controlaInventario,
     })
     setError('')
     setFieldErrors({})
@@ -498,11 +500,17 @@ export default function Menu() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {filtered.map((p) => (
-              <tr key={p.id} className="hover:bg-gray-50">
+              <tr key={p.id} {...filaClick(isAdmin ? () => openEdit(p) : null)} className={`${isAdmin ? FILA_CLICK : ''} hover:bg-gray-50`}>
                 <td className="px-4 py-3 font-medium text-gray-900">
                   <div className="flex items-center gap-2">
                     {p.imageUrl && <img src={resolveMediaUrl(p.imageUrl)} alt="" className="w-8 h-8 rounded object-cover" />}
                     {p.name}
+                    {p.controlaInventario && (
+                      <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${p.stock <= 0 ? 'bg-red-50 text-red-700' : 'bg-[#E6EDF8] text-[#1E4585]'}`}
+                        title="Se descuenta al venderse. En 0 no se puede vender y en la página web sale No disponible">
+                        {p.stock <= 0 ? 'Sin inventario' : `Inventario · quedan ${p.stock}`}
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="px-4 py-3 text-gray-500">{p.category?.name}</td>
@@ -570,6 +578,13 @@ export default function Menu() {
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input type="checkbox" checked={form.disponible} onChange={(e) => setForm({ ...form, disponible: e.target.checked })} />
                 Disponible para pedirse
+              </label>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" className="mt-1" checked={!!form.controlaInventario} onChange={(e) => setForm({ ...form, controlaInventario: e.target.checked })} />
+                <span>
+                  <span className="block text-sm text-gray-700">Lleva inventario</span>
+                  <span className="block text-xs text-gray-500">Para lo que se compra y se cuenta (refrescos, cervezas). Solo estos aparecen en Inventario y en las alertas de stock bajo.</span>
+                </span>
               </label>
 
               {/* Disponible desde "Nuevo platillo" (no solo al editar): la foto se elige aquí

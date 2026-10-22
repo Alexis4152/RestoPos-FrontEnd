@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getDeliveries, getDeliveryTransferInfo, takeDelivery, releaseDelivery, deliverOrder, startDelivery } from '../api/deliveries'
-import { getOpenCashCut } from '../api/cashCuts'
-import MyCashTab from './cashcuts/MyCashTab'
+import { getDeliveries, getDeliveryTransferInfo, takeDelivery, releaseDelivery, deliverOrder, startDelivery, getDeliveryHistory } from '../api/deliveries'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import { playChime } from '../utils/sound'
@@ -46,11 +44,11 @@ const listoEnCocina = (o) => (o.items ?? [])
  * Pantalla "Entregas" del repartidor (sección DELIVERY), pensada para usarse en el celular:
  * envíos a domicilio pendientes (de la página web o capturados en "Para llevar" con envío),
  * "Lo llevo yo" para apartarlos, "Voy en camino" en cuanto el restaurante se lo entrega (desde
- * ahí el cliente lo ve "En camino") y "Entregar" para marcarlos como
- * entregados cobrando lo que falte en efectivo (con cambio) o por transferencia a la cuenta de
- * la tienda. El cobro cae en el corte de caja del repartidor, así que antes debe abrir su caja
- * ("Mi caja": la misma del punto de venta — elige caja, la recibe contando el efectivo y al
- * terminar la cierra con arqueo).
+ * ahí el cliente lo ve "En camino") y "Entregar" para marcarlos como entregados diciendo cómo
+ * pagó el cliente (efectivo con cuánto, o transferencia). El repartidor NO maneja caja: el
+ * dinero lo entrega en el restaurante y la caja lo cobra en su propio corte ("Dinero por
+ * recibir de repartidores" en Para llevar). "Historial": sus entregas y si la caja ya recibió
+ * el dinero de cada una.
  */
 export default function Deliveries() {
   const { user } = useAuth()
@@ -58,12 +56,14 @@ export default function Deliveries() {
   const [orders, setOrders] = useState([])
   const [loaded, setLoaded] = useState(false)
   const [tab, setTab] = useState('mias')
-  const [cashCut, setCashCut] = useState(undefined) // undefined = cargando, null = sin turno
-  // Panel "Mi caja" (abrir, movimientos y cierre con arqueo); abierto solo si no tiene caja.
-  const [verCaja, setVerCaja] = useState(false)
+  // Historial: sus entregas (por default los últimos 7 días); también da lo que trae por entregar en caja.
+  const [historial, setHistorial] = useState([])
+  const [rango, setRango] = useState({ desde: '', hasta: '' })
   const [busyId, setBusyId] = useState(null)
   const [cobro, setCobro] = useState(null) // orden que se está entregando
-  useEscapeKey(() => setCobro(null), !!cobro)
+  const [soltando, setSoltando] = useState(null) // orden que se suelta (pide el motivo)
+  const [motivo, setMotivo] = useState('')
+  useEscapeKey(() => { if (soltando) setSoltando(null); else setCobro(null) }, !!(cobro || soltando))
   const seenRef = useRef(null)
 
   function load() {
@@ -82,25 +82,25 @@ export default function Deliveries() {
       .catch(() => {})
       .finally(() => setLoaded(true))
   }
-  function loadCut() {
-    getOpenCashCut().then((r) => {
-      const cut = r.data.data ?? null
-      setCashCut(cut)
-      if (!cut) setVerCaja(true)
-    }).catch(() => setCashCut(null))
+  function loadHistorial() {
+    getDeliveryHistory({ desde: rango.desde || undefined, hasta: rango.hasta || undefined })
+      .then((r) => setHistorial(r.data.data ?? [])).catch(() => setHistorial([]))
   }
 
-  useEffect(() => {
-    load()
-    loadCut()
-  }, [])
-  useLiveRefresh(load, { filtro: (e) => e.name === 'orden' })
+  useEffect(() => { load() }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadHistorial() }, [rango.desde, rango.hasta])
+  useLiveRefresh(() => { load(); loadHistorial() }, { filtro: (e) => e.name === 'orden' })
+
+  // Lo entregado que la caja todavía no recibe: el dinero lo trae él.
+  const porEntregar = historial.filter((o) => o.estado !== 'PAGADA' && o.estado !== 'CANCELADA')
+  const efectivoPorEntregar = porEntregar.reduce((s, o) => s + efectivoDe(o), 0)
 
   const myId = user?.userId
   const mias = orders.filter((o) => o.repartidor?.id === myId)
   const disponibles = orders.filter((o) => !o.repartidor)
   const deOtros = orders.filter((o) => o.repartidor && o.repartidor.id !== myId)
-  const lista = tab === 'mias' ? mias : disponibles
+  const lista = tab === 'mias' ? mias : tab === 'disponibles' ? disponibles : []
 
   async function tomar(o) {
     setBusyId(o.id)
@@ -123,10 +123,15 @@ export default function Deliveries() {
     finally { setBusyId(null) }
   }
 
-  async function soltar(o) {
+  // Soltar pide el motivo; se puede aunque ya vayas en camino: el pedido vuelve a estar
+  // disponible para otro repartidor y el cliente ve que se le busca otro.
+  async function soltar() {
+    const o = soltando
     setBusyId(o.id)
     try {
-      await releaseDelivery(o.id)
+      await releaseDelivery(o.id, motivo.trim())
+      setSoltando(null)
+      notify('Pedido liberado: ya lo puede tomar otro repartidor', 'success')
       load()
     } catch (err) { notify(err.response?.data?.message ?? 'No se pudo soltar el pedido', 'error') }
     finally { setBusyId(null) }
@@ -136,36 +141,15 @@ export default function Deliveries() {
     <div className="max-w-3xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <h2 className="text-2xl font-bold text-gray-900">🛵 Entregas</h2>
-        <div className="flex items-center gap-2">
-          {cashCut && (
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700">
-              Caja abierta{cashCut.cashRegister?.name ? ` · ${cashCut.cashRegister.name}` : ''}
-            </span>
-          )}
-          <button type="button" onClick={() => setVerCaja((v) => !v)} aria-expanded={verCaja}
-            className="text-xs font-semibold px-2.5 py-1 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50">
-            {verCaja ? 'Ocultar mi caja' : 'Mi caja'}
-          </button>
-        </div>
       </div>
 
-      {cashCut === null && (
-        <p className="card border-2 border-orange-300 bg-orange-50 mb-4 text-sm text-orange-900">
-          <b>Abre tu caja para poder cobrar.</b> Lo que cobres en efectivo o transferencia queda en tu corte; al
-          terminar, ciérralo contando el efectivo y entrégalo en el restaurante.
+      {porEntregar.length > 0 && (
+        <p className="mb-4 rounded-xl border-2 border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
+          {efectivoPorEntregar > 0
+            ? <>Traes <b>{fmt(efectivoPorEntregar)}</b> en efectivo para entregar en caja</>
+            : <>Tienes entregas por reportar en caja</>}
+          {' '}({porEntregar.length} pedido{porEntregar.length === 1 ? '' : 's'}). Cuando lo entregues, la caja lo marca como recibido.
         </p>
-      )}
-
-      {/* Mi caja: el mismo flujo del punto de venta (abrir recibiendo la caja, movimientos, cerrar con arqueo). */}
-      {verCaja && (
-        <section aria-label="Mi caja" className="card mb-4">
-          {mias.length > 0 && cashCut && (
-            <p className="mb-3 text-sm text-orange-800 bg-orange-50 rounded-lg px-3 py-2">
-              Todavía llevas {mias.length} pedido{mias.length === 1 ? '' : 's'}: entrégalo{mias.length === 1 ? '' : 's'} o suéltalo{mias.length === 1 ? '' : 's'} antes de cerrar tu caja.
-            </p>
-          )}
-          <MyCashTab onChanged={loadCut} />
-        </section>
       )}
 
       <div className="flex gap-2 mb-4">
@@ -177,9 +161,56 @@ export default function Deliveries() {
           className={`flex-1 py-2.5 rounded-xl text-sm font-bold border-2 ${tab === 'disponibles' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200'}`}>
           Por tomar ({disponibles.length})
         </button>
+        <button onClick={() => setTab('historial')}
+          className={`flex-1 py-2.5 rounded-xl text-sm font-bold border-2 ${tab === 'historial' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-700 border-gray-200'}`}>
+          Historial
+        </button>
       </div>
 
-      {loaded && lista.length === 0 && (
+      {tab === 'historial' && (
+        <section aria-label="Historial de entregas" className="space-y-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="text-xs font-semibold text-gray-600">Desde
+              <input type="date" className="input mt-1" value={rango.desde} onChange={(e) => setRango((r) => ({ ...r, desde: e.target.value }))} />
+            </label>
+            <label className="text-xs font-semibold text-gray-600">Hasta
+              <input type="date" className="input mt-1" value={rango.hasta} onChange={(e) => setRango((r) => ({ ...r, hasta: e.target.value }))} />
+            </label>
+            {(rango.desde || rango.hasta) && (
+              <button type="button" className="text-sm font-semibold text-purple-700 hover:underline mb-2" onClick={() => setRango({ desde: '', hasta: '' })}>Últimos 7 días</button>
+            )}
+          </div>
+          <p className="text-sm text-gray-600">
+            {historial.length} entrega{historial.length === 1 ? '' : 's'} · {fmt(historial.reduce((s, o) => s + Number(o.total ?? 0), 0))} en total
+          </p>
+          {historial.length === 0 && <p className="text-center text-gray-400 py-10">Sin entregas en estas fechas.</p>}
+          {historial.map((o) => {
+            const recibido = o.estado === 'PAGADA'
+            return (
+              <div key={o.id} className="card border border-gray-100 !p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-bold text-gray-900">#{o.id} · {o.clienteNombre ?? 'Cliente'}</p>
+                    <p className="text-xs text-gray-500">
+                      Entregado {new Date(o.entregadaAt).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                      {o.metodoPago ? ` · ${PAGO_PREF[o.metodoPago] ?? o.metodoPago}` : ''}
+                    </p>
+                    {o.direccion && <p className="text-xs text-gray-500 truncate">📍 {o.direccion}</p>}
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-extrabold">{fmt(o.total)}</p>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${recibido ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
+                      {recibido ? 'Entregado en caja' : 'Por entregar en caja'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </section>
+      )}
+
+      {loaded && tab !== 'historial' && lista.length === 0 && (
         <p className="text-center text-gray-400 py-12">
           {tab === 'mias' ? 'No llevas ningún pedido. Revisa "Por tomar".' : 'No hay pedidos a domicilio por tomar.'}
         </p>
@@ -222,6 +253,11 @@ export default function Deliveries() {
                 <a className="block mt-1 text-sm text-blue-700 hover:underline" href={`tel:${o.clienteTelefono}`}>📞 {o.clienteTelefono}</a>
               )}
               {o.metodoPago && !pagado && <p className="text-sm text-gray-600 mt-1">El cliente dijo que paga con: <span className="font-semibold">{PAGO_PREF[o.metodoPago] ?? o.metodoPago}</span></p>}
+              {o.metodoPago === 'EFECTIVO' && !pagado && o.pagaCon != null && (
+                <p className="text-sm mt-1 rounded-lg bg-green-50 text-green-800 px-2.5 py-1.5">
+                  💵 Paga con <b>{fmt(o.pagaCon)}</b>{Number(o.pagaCon) > Number(o.total) ? <> · lleva <b>{fmt(Number(o.pagaCon) - Number(o.total))}</b> de cambio</> : ' (exacto)'}
+                </p>
+              )}
               {esTransferWeb(o) && !pagado && !o.comprobantePath && (
                 <p className="text-xs font-semibold text-orange-700 mt-1">⏳ El cliente aún no sube el comprobante de su transferencia</p>
               )}
@@ -249,13 +285,11 @@ export default function Deliveries() {
                     ) : (
                       <button disabled={busyId === o.id} onClick={() => setCobro(o)}
                         className="flex-1 rounded-xl bg-green-600 py-2.5 font-bold text-white hover:bg-green-700 disabled:opacity-40">
-                        ✅ {pagado ? 'Marcar entregado' : 'Entregar y cobrar'}
+                        ✅ Entregar
                       </button>
                     )}
-                    {!o.enCaminoAt && (
-                      <button disabled={busyId === o.id} onClick={() => soltar(o)}
-                        className="rounded-xl border border-gray-300 px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50">Soltar</button>
-                    )}
+                    <button disabled={busyId === o.id} onClick={() => { setMotivo(''); setSoltando(o) }}
+                      className="rounded-xl border border-gray-300 px-3 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50">Soltar</button>
                   </>
                 )}
               </div>
@@ -270,9 +304,44 @@ export default function Deliveries() {
         </p>
       )}
 
+      {soltando && (
+        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4" onClick={() => setSoltando(null)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="soltar-titulo" onClick={(e) => e.stopPropagation()}
+            className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl p-5 space-y-3">
+            <h3 id="soltar-titulo" className="text-lg font-extrabold">Soltar el pedido #{soltando.id}</h3>
+            {soltando.enCaminoAt && (
+              <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">
+                <b>Ya vas en camino con este pedido.</b> Si lo sueltas, el cliente verá que le estamos buscando otro repartidor y
+                quien lo tome tendrá que pasar por la comida. ¿Seguro que no puedes llevarlo?
+              </p>
+            )}
+            <p className="text-sm text-gray-600">
+              Vuelve a quedar disponible para otro repartidor y la caja recibe el aviso con tu motivo.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {['Se ponchó la llanta', 'Falla de la moto', 'Emergencia personal', 'No encuentro la dirección', 'Tengo demasiados pedidos'].map((m) => (
+                <button key={m} type="button" aria-pressed={motivo === m} onClick={() => setMotivo(m)}
+                  className={`min-h-[40px] px-3 rounded-full text-sm font-semibold border ${motivo === m ? 'bg-gray-900 border-gray-900 text-white' : 'border-gray-300 bg-white text-gray-700'}`}>
+                  {m}
+                </button>
+              ))}
+            </div>
+            <label htmlFor="motivo-soltar" className="block text-sm font-semibold text-gray-700">Motivo <span className="text-red-600">*</span></label>
+            <textarea id="motivo-soltar" className="input" rows={2} maxLength={100} placeholder="¿Por qué lo sueltas?"
+              value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+            <div className="flex gap-2 justify-end">
+              <button type="button" className="btn-secondary" onClick={() => setSoltando(null)}>Volver</button>
+              <button type="button" className="btn-danger" disabled={motivo.trim().length < 3 || busyId === soltando.id} onClick={soltar}>
+                {soltando.enCaminoAt ? 'Sí, soltar pedido' : 'Soltar pedido'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {cobro && (
-        <CobroModal orden={cobro} turnoAbierto={!!cashCut} onClose={() => setCobro(null)}
-          onDone={() => { setCobro(null); load(); loadCut() }} />
+        <CobroModal orden={cobro} onClose={() => setCobro(null)}
+          onDone={() => { setCobro(null); load(); loadHistorial() }} />
       )}
     </div>
   )
@@ -305,15 +374,23 @@ function EfectivoRecibido({ label, recibido, setRecibido, recibidoExcede, cambio
   )
 }
 
+/** Efectivo que el repartidor trae de un pedido entregado (todo, o solo el envío si la transferencia no lo incluyó). */
+function efectivoDe(o) {
+  if (o.metodoPago === 'EFECTIVO') return Number(o.total ?? 0)
+  if (o.metodoPago === 'TRANSFERENCIA') return envioEnEfectivo(o)
+  return 0
+}
+
 /**
- * Modal de entrega: si falta pagar, cobra en efectivo (con cambio) o transferencia. En pedidos
- * web la transferencia se comprueba con la foto que sube el cliente; en los de caja, con folio.
+ * Modal de entrega: si falta pagar, el repartidor dice cómo pagó el cliente (efectivo con
+ * cuánto, para el cambio, o transferencia). No cobra en caja: el dinero lo entrega en el
+ * restaurante. En pedidos web la transferencia se comprueba con la foto del cliente.
  */
-function CobroModal({ orden, turnoAbierto, onClose, onDone }) {
+function CobroModal({ orden, onClose, onDone }) {
   const { notify } = useNotify()
   const pagado = orden.estado === 'PAGADA'
   const [metodo, setMetodo] = useState(orden.metodoPago === 'TRANSFERENCIA' ? 'TRANSFER' : 'CASH')
-  const [recibido, setRecibido] = useState('')
+  const [recibido, setRecibido] = useState(orden.pagaCon != null ? String(Number(orden.pagaCon)) : '')
   const [referencia, setReferencia] = useState('')
   const [banco, setBanco] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -336,7 +413,7 @@ function CobroModal({ orden, turnoAbierto, onClose, onDone }) {
   const cambio = pideEfectivo && recibidoNum != null && !Number.isNaN(recibidoNum) ? recibidoNum - montoEfectivo : null
   const recibidoExcede = pideEfectivo && recibidoNum != null && recibidoNum > 9999999999.99
   const faltaEfectivo = pideEfectivo && (cambio === null || cambio < 0)
-  const bloqueado = saving || (!pagado && (!turnoAbierto || faltaEfectivo || recibidoExcede || sinComprobante))
+  const bloqueado = saving || (!pagado && (faltaEfectivo || recibidoExcede || sinComprobante))
 
   async function confirmar() {
     setSaving(true)
@@ -346,7 +423,8 @@ function CobroModal({ orden, turnoAbierto, onClose, onDone }) {
         recibido: pideEfectivo ? recibidoNum : undefined,
         referencia: metodo === 'TRANSFER' && !transferWeb ? referencia.trim() || undefined : undefined,
       })
-      notify(`Pedido #${orden.id} entregado${pagado ? '' : ' y cobrado'}`, 'success')
+      notify(pagado ? `Pedido #${orden.id} entregado`
+        : `Pedido #${orden.id} entregado. ${montoEfectivo > 0 ? `Lleva ${fmt(montoEfectivo)} en efectivo a la caja.` : 'Avisa en caja que se pagó por transferencia.'}`, 'success')
       onDone()
     } catch (err) {
       notify(err.response?.data?.message ?? 'No se pudo marcar como entregado', 'error')
@@ -368,9 +446,6 @@ function CobroModal({ orden, turnoAbierto, onClose, onDone }) {
 
         {!pagado && (
           <>
-            {!turnoAbierto && (
-              <p className="mt-3 text-sm text-orange-800 bg-orange-50 rounded-lg px-3 py-2">Primero inicia tu turno (arriba en Entregas) para poder cobrar.</p>
-            )}
             <div className="grid grid-cols-2 gap-2 mt-4">
               {[['CASH', '💵 Efectivo'], ['TRANSFER', '🏦 Transferencia']].map(([k, label]) => (
                 <button key={k} type="button" onClick={() => setMetodo(k)}
@@ -378,7 +453,7 @@ function CobroModal({ orden, turnoAbierto, onClose, onDone }) {
               ))}
             </div>
             <div className="mt-4 rounded-xl bg-gray-50 px-4 py-3 text-center">
-              <p className="text-xs font-semibold text-gray-500 uppercase">Total a cobrar</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase">Total del pedido</p>
               <p className="text-3xl font-extrabold text-gray-900">{fmt(total)}</p>
             </div>
 
@@ -436,11 +511,10 @@ function CobroModal({ orden, turnoAbierto, onClose, onDone }) {
           <button type="button" disabled={bloqueado} onClick={confirmar}
             className="btn-primary flex-1 disabled:opacity-40 disabled:cursor-not-allowed"
             title={pagado ? undefined
-              : !turnoAbierto ? 'Inicia tu turno para poder cobrar'
               : sinComprobante ? 'El cliente todavía no sube el comprobante de su transferencia'
               : recibidoExcede ? 'El monto capturado es excesivamente grande'
               : faltaEfectivo ? 'Captura cuánto pagó el cliente en efectivo' : undefined}>
-            {saving ? 'Procesando...' : pagado ? 'Confirmar entrega' : 'Cobrar'}
+            {saving ? 'Procesando...' : 'Confirmar entrega'}
           </button>
         </div>
       </div>

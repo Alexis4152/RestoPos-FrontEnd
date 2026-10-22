@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { createAccount, getTicketPdf } from '../../api/cuentas'
 import { createPayment } from '../../api/pagos'
-import { printAccountTicket } from '../../utils/printer'
+import { printAccountTicket, printCuentaPorPagar } from '../../utils/printer'
 import { useNotify } from '../../context/NotifyContext'
+import { useAuth } from '../../context/AuthContext'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const r2 = (n) => Math.round(Number(n) * 100) / 100
 const METODOS = [['CASH', 'Efectivo'], ['CARD', 'Tarjeta'], ['TRANSFER', 'Transferencia']]
-const PROPINAS = [0, 10, 15]
 const EN_COCINA = ['PENDIENTE', 'PREPARANDO', 'LISTO', 'ENTREGADO_MESERO']
 
 /** Billetes rápidos para el efectivo: exacto y los siguientes montos redondos que cubren el total. */
@@ -56,8 +56,14 @@ export function CobroExitoso({ cobro }) {
  */
 export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio, onCobrada }) {
   const { notify } = useNotify()
+  // Cobrar = sección CASH_CUTS (cajero/admin). El mesero imprime la cuenta y el cliente paga en caja.
+  const puedeCobrar = useAuth().hasSection('CASH_CUTS')
   const [metodo, setMetodo] = useState('CASH')
-  const [propinaPct, setPropinaPct] = useState(0)
+  // Propina: igual que en la vista detallada (sin propina, monto fijo $ u otro %), más 10% y
+  // 15% de un toque. propinaModo: 'NONE' | '10' | '15' | 'MONTO' | 'PORCENTAJE'.
+  const [propinaModo, setPropinaModo] = useState('NONE')
+  const [propinaValor, setPropinaValor] = useState('')
+  const propinaTipo = propinaModo === '10' || propinaModo === '15' ? 'PORCENTAJE' : propinaModo
   const [recibido, setRecibido] = useState(null) // null = exacto
   const [otroMonto, setOtroMonto] = useState('')
   const [referencia, setReferencia] = useState('')
@@ -80,7 +86,15 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
     importe: r2((Number(i.subtotal) / Number(i.cantidad)) * restante(i)),
   }))
   const subtotal = cuentaLista ? Number(cuentaLista.total) : r2(lineas.reduce((s, l) => s + l.importe, 0))
-  const propina = r2((subtotal * propinaPct) / 100)
+  const propinaNum = propinaModo === '10' || propinaModo === '15' ? Number(propinaModo)
+    : propinaValor === '' ? null : Number(propinaValor)
+  const propinaExcede = propinaNum != null && !Number.isNaN(propinaNum)
+    && (propinaTipo === 'PORCENTAJE' ? propinaNum > 100 : propinaNum > 9999999999.99)
+  const propinaNegativa = propinaNum != null && propinaNum < 0
+  const propinaInvalida = propinaExcede || propinaNegativa || (propinaNum != null && Number.isNaN(propinaNum))
+  // Misma fórmula que el backend (PagoService): porcentaje sobre el subtotal, redondeado a centavos.
+  const propina = propinaTipo === 'NONE' || propinaNum == null || propinaInvalida ? 0
+    : propinaTipo === 'PORCENTAJE' ? Math.round(subtotal * propinaNum) / 100 : r2(propinaNum)
   const total = r2(subtotal + propina)
   const recibidoNum = metodo === 'CASH' ? (recibido === 'otro' ? Number(otroMonto) || 0 : recibido ?? total) : total
   const cambio = metodo === 'CASH' ? r2(recibidoNum - total) : 0
@@ -99,7 +113,8 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
         monto: r2(Number(cuenta.total) + propina),
         recibido: metodo === 'CASH' ? recibidoNum : undefined,
         referencia: metodo === 'TRANSFER' && referencia.trim() ? referencia.trim() : undefined,
-        propinaMonto: propina > 0 ? propina : undefined,
+        propinaPorcentaje: propina > 0 && propinaTipo === 'PORCENTAJE' ? propinaNum : undefined,
+        propinaMonto: propina > 0 && propinaTipo === 'MONTO' ? propina : undefined,
       })
       imprimir(cuenta.id).catch(() => notify('No se pudo imprimir el ticket', 'error'))
       onCobrada?.({
@@ -117,8 +132,8 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
     setBusy(true)
     try {
       const r = await createAccount(order.id, { tipo: 'TOTAL', marcarEntregados: true })
-      await imprimir(r.data.data.id)
-      notify('Cuenta impresa', 'success')
+      await printCuentaPorPagar(r.data.data.id)
+      notify('Cuenta impresa: entrégale su copia al cliente para que pague en caja', 'success')
       onCambio?.()
     } catch (err) {
       notify(err.response?.data?.message ?? 'No se pudo generar la cuenta', 'error')
@@ -135,6 +150,41 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
   }
   if (!cuentaLista && porCobrar.length === 0) {
     return <p className="bg-white border border-[#E4E1DA] rounded-2xl p-5 text-sm text-gray-700">No hay nada por cobrar todavía.</p>
+  }
+
+  if (!puedeCobrar) {
+    return (
+      <div className="space-y-3">
+        {sinEntregar.length > 0 && !cuentaLista && (
+          <p className="rounded-2xl bg-[#F1EFEA] px-4 py-3 text-sm text-gray-700">
+            {piezasSinEntregar} platillo{piezasSinEntregar === 1 ? '' : 's'} sin marcar como entregado{piezasSinEntregar === 1 ? '' : 's'}: al generar la cuenta se marcan solos.
+          </p>
+        )}
+        <section className="bg-white border border-[#E4E1DA] rounded-2xl p-4 space-y-2 text-sm">
+          {cuentaLista ? (
+            <p className="text-gray-700">Cuenta {cuentaLista.ticketFolio ?? `#${cuentaLista.id}`} generada · el cliente paga en caja.</p>
+          ) : lineas.map((l) => (
+            <div key={l.id} className="flex justify-between gap-3"><span>{l.cantidad} × {l.nombre}</span><span className="font-bold">{fmt(l.importe)}</span></div>
+          ))}
+          <div className="border-t border-[#ECE9E2] pt-2.5 flex justify-between items-baseline">
+            <span className="font-extrabold">Total</span><span className="text-2xl font-extrabold">{fmt(subtotal)}</span>
+          </div>
+        </section>
+        <p className="rounded-2xl bg-[#E6EDF8] px-4 py-3 text-sm text-[#1E4585]">
+          Se imprimen 2 copias: entrégale la <b>copia cliente</b>; con ella paga en caja (la propina se agrega al pagar).
+        </p>
+        <button type="button" disabled={busy}
+          onClick={cuentaLista
+            ? () => printCuentaPorPagar(cuentaLista.id).catch(() => notify('No se pudo imprimir', 'error'))
+            : soloImprimir}
+          className="w-full min-h-[56px] rounded-2xl bg-gray-900 text-white text-base font-extrabold disabled:opacity-50">
+          {busy ? 'Generando…' : cuentaLista ? 'Reimprimir cuenta' : `Imprimir cuenta ${fmt(subtotal)}`}
+        </button>
+        {!cuentaLista && (
+          <Link to={vistaDetallada} className="block text-center min-h-[40px] text-sm font-bold text-purple-700 hover:underline">Dividir la cuenta (vista detallada)</Link>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -162,15 +212,37 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
         ) : lineas.map((l) => (
           <div key={l.id} className="flex justify-between gap-3"><span>{l.cantidad} × {l.nombre}</span><span className="font-bold">{fmt(l.importe)}</span></div>
         ))}
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          <span className="text-gray-600 font-semibold">Propina</span>
-          {PROPINAS.map((p) => (
-            <button key={p} type="button" aria-pressed={propinaPct === p} onClick={() => setPropinaPct(p)}
-              className={`min-h-[36px] px-3 rounded-full text-[13px] font-bold border ${propinaPct === p ? 'bg-gray-900 border-gray-900 text-white' : 'border-[#D9D5CC] bg-white text-gray-700'}`}>
-              {p === 0 ? 'Sin' : `${p}%`}
-            </button>
-          ))}
-          {propina > 0 && <span className="ml-auto font-bold">{fmt(propina)}</span>}
+        <div className="border border-[#ECE9E2] rounded-xl p-3 space-y-2 mt-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-gray-600 font-semibold">Propina (opcional)</span>
+            <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Tipo de propina">
+              {[['NONE', 'Sin propina'], ['10', '10%'], ['15', '15%'], ['MONTO', '$'], ['PORCENTAJE', 'Otro %']].map(([v, label]) => (
+                <button key={v} type="button" role="radio" aria-checked={propinaModo === v}
+                  onClick={() => { setPropinaModo(v); setPropinaValor('') }}
+                  className={`min-h-[36px] min-w-[44px] px-3 rounded-lg text-[13px] font-bold border ${propinaModo === v ? 'bg-purple-600 border-purple-600 text-white' : 'border-[#D9D5CC] bg-white text-gray-700'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {(propinaModo === '10' || propinaModo === '15') && propina > 0 && (
+            <p className="text-xs text-gray-600">Propina ({propinaModo}%): <span className="font-bold text-gray-800">{fmt(propina)}</span></p>
+          )}
+          {(propinaModo === 'MONTO' || propinaModo === 'PORCENTAJE') && (
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor="propina-valor" className="sr-only">{propinaTipo === 'PORCENTAJE' ? 'Porcentaje de propina' : 'Monto de propina'}</label>
+              <input id="propina-valor" className="input !w-28" type="number" min="0" step="0.01" inputMode="decimal" autoFocus
+                placeholder={propinaTipo === 'PORCENTAJE' ? 'Ej. 10' : 'Ej. 20.00'}
+                value={propinaValor} onChange={(e) => setPropinaValor(e.target.value)} />
+              {propinaExcede ? (
+                <p className="text-xs text-red-600">{propinaTipo === 'PORCENTAJE' ? 'El porcentaje no puede exceder 100' : 'El número es excesivamente grande'}</p>
+              ) : propinaNegativa ? (
+                <p className="text-xs text-red-600">La propina no puede ser negativa</p>
+              ) : propina > 0 && (
+                <p className="text-xs text-gray-600">Propina: <span className="font-bold text-gray-800">{fmt(propina)}</span></p>
+              )}
+            </div>
+          )}
         </div>
         <div className="border-t border-[#ECE9E2] pt-2.5 flex justify-between items-baseline">
           <span className="font-extrabold">Total</span><span className="text-2xl font-extrabold">{fmt(total)}</span>
@@ -220,7 +292,7 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
         )}
       </section>
 
-      <button type="button" disabled={busy || faltaEfectivo} onClick={cobrar}
+      <button type="button" disabled={busy || faltaEfectivo || propinaInvalida} onClick={cobrar}
         className="w-full min-h-[56px] rounded-2xl bg-gray-900 text-white text-base font-extrabold disabled:opacity-50 disabled:cursor-not-allowed">
         {busy ? 'Cobrando…' : `Cobrar ${fmt(total)} y liberar mesa`}
       </button>

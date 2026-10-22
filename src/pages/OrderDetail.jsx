@@ -10,7 +10,7 @@ import { createPayment } from '../api/pagos'
 import { getCategories, updateCategoryAvailabilityMode } from '../api/categories'
 import { searchProducts, getTopSellingProducts } from '../api/products'
 import { getOpenCashCut } from '../api/cashCuts'
-import { printAccountTicket } from '../utils/printer'
+import { printAccountTicket, printCuentaPorPagar } from '../utils/printer'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
@@ -20,7 +20,9 @@ import ComprobanteImagen from '../components/ComprobanteImagen'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { etiquetaTipoPedido } from '../utils/tipoPedido'
 import AgotadosModal from '../components/AgotadosModal'
+import GruposModificadores from '../components/GruposModificadores'
 import { useModoToma } from '../utils/modoToma'
+import { recibirDineroEntrega } from '../api/deliveries'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 /** Suma de los extras (modificadores con costo) de UNA unidad de la línea. */
@@ -45,6 +47,18 @@ const toDisplayTime = (t) => (t ? t.slice(0, 5) : '')
  * Se usa tanto para órdenes de mesa (llegando desde el tablero de Mesas) como para
  * órdenes para llevar / consultadas desde el historial de Órdenes.
  */
+// "Por enviar a cocina" de cada orden, guardado en este dispositivo (ver OrderDetail#porEnviar).
+const clavePorEnviar = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ?? [])].sort().join('.'), l.observaciones ?? ''].join('|')
+function leerPorEnviar(id) {
+  try { return JSON.parse(localStorage.getItem(`restopos-por-enviar-${id}`) || '[]') } catch { return [] }
+}
+function guardarPorEnviar(id, lineas) {
+  try {
+    if (lineas.length) localStorage.setItem(`restopos-por-enviar-${id}`, JSON.stringify(lineas))
+    else localStorage.removeItem(`restopos-por-enviar-${id}`)
+  } catch { /* sin almacenamiento */ }
+}
+
 export default function OrderDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -72,6 +86,13 @@ export default function OrderDetail() {
   // llamadas (una por producto pendiente) y no duplicar la acción con un doble clic.
   const [marcandoTodo, setMarcandoTodo] = useState(false)
   const [cart, setCart] = useState({}) // { [productoId]: { cantidad, observaciones } }
+  // "Por enviar a cocina": lo agregado se junta aquí y solo llega a cocina al tocar "Enviar a
+  // cocina" (antes no). Se guarda por orden en este dispositivo para no perderlo si se sale.
+  const [porEnviar, setPorEnviar] = useState(() => leerPorEnviar(id))
+  const [enviando, setEnviando] = useState(false)
+  const [recibiendo, setRecibiendo] = useState(false)
+  // Productos vistos en el selector (id -> producto): el carrito solo guarda ids y cantidades.
+  const productosVistos = useRef({})
 
   // Selector de modificadores: se abre, apilado sobre showAddItem, al "personalizar" un
   // producto que tiene grupos de modificadores (ej. "Término de cocción", "Extras") — esos
@@ -80,10 +101,6 @@ export default function OrderDetail() {
   const [modSelections, setModSelections] = useState({}) // { [grupoId]: [opcionId, ...] }
   const [modNota, setModNota] = useState('')
   const [modCantidad, setModCantidad] = useState(1) // piezas iguales con esa personalización
-  // Acordeón: qué grupos están desplegados — todos cerrados al abrir el selector, para que un
-  // producto con varios grupos (ej. sabores + extras + aparte) no se vea como una lista enorme
-  // de un jalón. Se despliegan por separado al tocar cada uno.
-  const [modExpandedGrupos, setModExpandedGrupos] = useState(() => new Set())
 
   // Filtro de la tabla de "Productos": 'ALL' (todos), 'SHARED' (solo lo Compartido, sin
   // comensal asignado), 'CANCELLED_ALL' (todo lo cancelado de cualquier comensal) o el id de
@@ -166,10 +183,14 @@ export default function OrderDetail() {
     load()
     setItemFilter('ALL')
     setPickerComensalId('')
+    setPorEnviar(leerPorEnviar(id))
   }, [id])
+  useEffect(() => { guardarPorEnviar(id, porEnviar) }, [id, porEnviar])
   useEffect(() => { getCategories().then((r) => setCategories(r.data.data ?? [])) }, [])
   // Silencioso a propósito: "no hay corte abierto" es un estado normal, no un error.
-  useEffect(() => { getOpenCashCut().then((r) => setCashCut(r.data.data)).catch(() => {}) }, [])
+  // Cobrar = tener la sección CASH_CUTS (cajero/admin). El mesero solo genera e imprime la cuenta.
+  const puedeCobrar = hasSection('CASH_CUTS')
+  useEffect(() => { if (puedeCobrar) getOpenCashCut().then((r) => setCashCut(r.data.data)).catch(() => {}) }, [puedeCobrar])
   useEffect(() => {
     if (!showAddItem) return
     const loadProducts = productQuery
@@ -179,7 +200,11 @@ export default function OrderDetail() {
     // disponible EN ESTE MOMENTO (ver Category#isAvailableNow en el backend, ya viene
     // calculado en cada producto como category.availableNow) — ej. items de "Desayuno" fuera
     // de su horario, o una categoría forzada oculta a mano.
-    loadProducts.then((r) => setProducts((r.data.data ?? []).filter((p) => p.disponible !== false && p.category?.availableNow !== false)))
+    loadProducts.then((r) => {
+      const lista = (r.data.data ?? []).filter((p) => p.disponible !== false && p.category?.availableNow !== false)
+      lista.forEach((p) => { productosVistos.current[p.id] = p })
+      setProducts(lista)
+    })
   }, [showAddItem, productQuery, productCat, recargaProductos])
 
   /** Cambia el modo de disponibilidad de una categoría desde el mini-modal, y refleja el cambio en la lista local. */
@@ -382,7 +407,6 @@ export default function OrderDetail() {
     setModSelections(initial)
     setModNota('')
     setModCantidad(1)
-    setModExpandedGrupos(new Set())
     setModPicker(p)
   }
 
@@ -397,24 +421,6 @@ export default function OrderDetail() {
     })
   }
 
-  function toggleModGrupoExpanded(grupoId) {
-    setModExpandedGrupos((s) => {
-      const next = new Set(s)
-      if (next.has(grupoId)) next.delete(grupoId)
-      else next.add(grupoId)
-      return next
-    })
-  }
-
-  /** Resumen de lo ya elegido en un grupo, para mostrarlo en su encabezado mientras está
-   *  cerrado (ej. "Pollo" o "Queso, Crema") — así no hace falta desplegarlo para ver qué se
-   *  seleccionó. */
-  function modGrupoResumen(g) {
-    const ids = modSelections[g.id] ?? []
-    if (ids.length === 0) return null
-    return g.opciones.filter((o) => ids.includes(o.id)).map((o) => o.nombre).join(', ')
-  }
-
   const modGrupos = modPicker ? productModGrupos(modPicker) : []
   const modOpcionIds = Object.values(modSelections).flat()
   const modExtrasTotal = modGrupos
@@ -424,44 +430,68 @@ export default function OrderDetail() {
   const modTotal = modPicker ? Number(modPicker.price) + modExtrasTotal : 0
   const modFaltaObligatorio = modGrupos.some((g) => g.obligatorio && (modSelections[g.id]?.length ?? 0) === 0)
 
-  async function handleConfirmModPicker() {
-    if (modFaltaObligatorio) return
-    setLoading(true)
-    try {
-      await addOrderItem(id, {
-        productoId: modPicker.id,
-        comensalId: pickerComensalId ? Number(pickerComensalId) : null,
-        cantidad: modCantidad,
-        observaciones: modNota.trim() || undefined,
-        modificadorOpcionIds: modOpcionIds,
-      })
-      setModPicker(null)
-      load()
-      notify(modCantidad > 1 ? `${modCantidad} productos agregados` : 'Producto agregado', 'success')
-    } catch (err) {
-      notify(err.response?.data?.message ?? 'Error al agregar', 'error')
-    } finally {
-      setLoading(false)
-    }
+  /** Suma una línea a "Por enviar a cocina" (la junta con una igual: mismo producto, persona, opciones y nota). */
+  function agregarPorEnviar(linea) {
+    const k = clavePorEnviar(linea)
+    setPorEnviar((c) => {
+      const i = c.findIndex((x) => clavePorEnviar(x) === k)
+      if (i >= 0) return c.map((x, j) => (j === i ? { ...x, cantidad: x.cantidad + linea.cantidad } : x))
+      return [...c, linea]
+    })
   }
 
-  async function handleConfirmAddItems() {
-    setLoading(true)
+  function handleConfirmModPicker() {
+    if (modFaltaObligatorio) return
+    agregarPorEnviar({
+      productoId: modPicker.id, nombre: modPicker.name, precio: modTotal, cantidad: modCantidad,
+      comensalId: pickerComensalId ? Number(pickerComensalId) : null,
+      observaciones: modNota.trim(), opcionIds: modOpcionIds,
+      resumen: modGrupos.flatMap((g) => g.opciones).filter((o) => modOpcionIds.includes(o.id)).map((o) => o.nombre).join(' · '),
+    })
+    setModPicker(null)
+    notify(`${modPicker.name}: listo para enviar a cocina`, 'success')
+  }
+
+  function handleConfirmAddItems() {
+    for (const [productoId, { cantidad, observaciones }] of Object.entries(cart)) {
+      if (cantidad <= 0) continue
+      const p = productosVistos.current[productoId]
+      agregarPorEnviar({
+        productoId: Number(productoId), nombre: p?.name ?? 'Producto', precio: Number(p?.price ?? 0), cantidad,
+        comensalId: pickerComensalId ? Number(pickerComensalId) : null,
+        observaciones: (observaciones || '').trim(), opcionIds: [], resumen: '',
+      })
+    }
+    setShowAddItem(false)
+    setCart({})
+  }
+
+  const cambiarPorEnviar = (k, delta) => setPorEnviar((c) => c
+    .map((x) => (clavePorEnviar(x) === k ? { ...x, cantidad: x.cantidad + delta } : x))
+    .filter((x) => x.cantidad > 0))
+
+  /** Manda a cocina todo lo de "Por enviar". Si algo falla, lo ya enviado sale de la lista y el resto se queda. */
+  async function enviarACocina() {
+    setEnviando(true)
+    let pendientes = [...porEnviar]
     try {
-      for (const [productoId, { cantidad, observaciones }] of Object.entries(cart)) {
-        if (cantidad <= 0) continue
+      while (pendientes.length) {
+        const l = pendientes[0]
         await addOrderItem(id, {
-          productoId: Number(productoId),
-          comensalId: pickerComensalId ? Number(pickerComensalId) : null,
-          cantidad,
-          observaciones: observaciones || undefined,
+          productoId: l.productoId, comensalId: l.comensalId ?? null, cantidad: l.cantidad,
+          observaciones: l.observaciones || undefined,
+          modificadorOpcionIds: l.opcionIds?.length ? l.opcionIds : undefined,
         })
+        pendientes = pendientes.slice(1)
       }
-      setShowAddItem(false)
-      setCart({})
+      notify('Enviado a cocina', 'success')
+    } catch (err) {
+      notify(`${err.response?.data?.message ?? 'No se pudo enviar'}${pendientes.length < porEnviar.length ? ' (lo anterior sí se envió)' : ''}`, 'error')
+    } finally {
+      setPorEnviar(pendientes)
+      setEnviando(false)
       load()
-    } catch (err) { notify(err.response?.data?.message ?? 'Error al agregar') }
-    finally { setLoading(false) }
+    }
   }
 
   // ── Editar producto ya agregado ──────────────────────────────────────
@@ -669,11 +699,13 @@ export default function OrderDetail() {
       if (accountTipo === 'PERSONALIZADA') {
         payload.items = Object.entries(customSelection).map(([ordenDetalleId, cantidad]) => ({ ordenDetalleId: Number(ordenDetalleId), cantidad }))
       }
-      await createAccount(id, payload)
+      const r = await createAccount(id, payload)
       setShowAccount(false)
       setAccountComensal('')
       setCustomSelection({})
       load()
+      // Quien no cobra imprime de una vez la cuenta para el cliente (paga en caja con ella).
+      if (!puedeCobrar) imprimirCuenta(r.data.data.id)
     } catch (err) { notify(err.response?.data?.message ?? 'Error al generar la cuenta') }
     finally { setLoading(false) }
   }
@@ -691,14 +723,25 @@ export default function OrderDetail() {
     ))) return
     setLoading(true)
     try {
-      await Promise.all(comensalesConPendiente.map((c) => createAccount(id, { tipo: 'POR_COMENSAL', comensalId: c.id })))
+      const creadas = await Promise.all(comensalesConPendiente.map((c) => createAccount(id, { tipo: 'POR_COMENSAL', comensalId: c.id })))
       setShowAccount(false)
       load()
       notify('Cuentas generadas correctamente', 'success')
+      if (!puedeCobrar) for (const r of creadas) await imprimirCuenta(r.data.data.id)
     } catch (err) {
       notify(err.response?.data?.message ?? 'Error al generar las cuentas', 'error')
     } finally {
       setLoading(false)
+    }
+  }
+
+  /** Imprime la cuenta por pagar en 2 copias (cliente / comercio). Nunca bloquea el flujo. */
+  async function imprimirCuenta(cuentaId) {
+    try {
+      await printCuentaPorPagar(cuentaId)
+      notify('Cuenta impresa: entrégale su copia al cliente para que pague en caja', 'success')
+    } catch {
+      notify('No se pudo imprimir la cuenta', 'error')
     }
   }
 
@@ -844,6 +887,8 @@ export default function OrderDetail() {
 
   // ── Vista ────────────────────────────────────────────────────────────
   const esMesa = !!order.mesa
+  // Envío a domicilio que el repartidor ya sacó ("Voy en camino") o entregó: no admite más productos.
+  const salioAEntregar = order.tipoEntrega === 'DOMICILIO' && !!(order.enCaminoAt || order.entregadaAt)
   const minutos = order.openedAt ? Math.max(0, Math.round((Date.now() - new Date(order.openedAt).getTime()) / 60000)) : null
   const transcurrido = minutos == null ? '' : minutos < 60 ? `${minutos} min` : `${Math.floor(minutos / 60)} h ${String(minutos % 60).padStart(2, '0')}`
   const piezasDe = (pred) => (order.items ?? []).filter((i) => i.estado !== 'CANCELADO' && !i.cargoExtra && pred(i))
@@ -957,11 +1002,62 @@ export default function OrderDetail() {
           <button type="button" className="btn-secondary min-h-[44px] text-red-700" onClick={handleCancelOrder}>Cancelar orden</button>
         )}
         {!isClosed && (
-          <button type="button" className="btn-primary min-h-[44px] inline-flex items-center gap-2" onClick={openAddItem}>
+          // A domicilio que ya salió con el repartidor: ya no se le agrega nada (sería otro pedido).
+          <button type="button" className="btn-primary min-h-[44px] inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={openAddItem} disabled={salioAEntregar}
+            title={salioAEntregar ? 'Ya va en camino: para agregar algo más, haz un pedido nuevo' : undefined}>
             <Icon name="mas" className="w-4 h-4" strokeWidth={2} /> Agregar productos
           </button>
         )}
       </header>
+
+      {!isClosed && salioAEntregar && !order.entregadaAt && (
+        <p className="rounded-2xl bg-[#EEEAF8] px-4 py-3 text-sm text-[#4B3391]">
+          <b>Ya va en camino con el repartidor.</b> No se le pueden agregar productos; si el cliente quiere algo más, haz un pedido nuevo.
+        </p>
+      )}
+
+      {!isClosed && porEnviar.length > 0 && (
+        <section aria-label="Por enviar a cocina" className="bg-[#FBF0DC] border border-[#E2B76B] rounded-2xl p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-extrabold text-[#6B4100] flex-1">
+              Por enviar a cocina · {porEnviar.reduce((n, l) => n + l.cantidad, 0)}
+            </h2>
+            <span className="text-[13px] text-[#6B4100]">Cocina aún no lo ve</span>
+          </div>
+          <ul className="bg-white rounded-xl border border-[#EADFC3] divide-y divide-[#F0EEE8]">
+            {porEnviar.map((l) => {
+              const k = clavePorEnviar(l)
+              const c = (order.comensales ?? []).find((x) => x.id === l.comensalId)
+              return (
+                <li key={k} className="flex items-center gap-3 px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold truncate">{l.nombre}</p>
+                    <p className="text-xs text-gray-600 truncate">
+                      {[c ? `Comensal ${c.numero}${c.nombre ? ` (${c.nombre})` : ''}` : esMesa ? 'Compartido' : null, l.resumen, l.observaciones].filter(Boolean).join(' · ')}
+                    </p>
+                  </div>
+                  <span className="text-sm font-bold">{fmt(l.precio * l.cantidad)}</span>
+                  <div className="flex items-center rounded-xl border border-[#D9D5CC]">
+                    <button type="button" aria-label={`Quitar uno de ${l.nombre}`} onClick={() => cambiarPorEnviar(k, -1)} className="w-10 h-10 text-lg font-extrabold">−</button>
+                    <span className="w-6 text-center text-sm font-extrabold">{l.cantidad}</span>
+                    <button type="button" aria-label={`Agregar uno de ${l.nombre}`} onClick={() => cambiarPorEnviar(k, 1)} className="w-10 h-10 text-lg font-extrabold">+</button>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" className="btn-secondary min-h-[44px]" disabled={enviando}
+              onClick={async () => { if (await confirmDialog('¿Descartar lo que no se ha enviado a cocina?', { confirmText: 'Descartar' })) setPorEnviar([]) }}>
+              Descartar
+            </button>
+            <button type="button" className="btn-primary min-h-[44px]" disabled={enviando} onClick={enviarACocina}>
+              {enviando ? 'Enviando…' : `Enviar a cocina · ${fmt(porEnviar.reduce((sum, l) => sum + l.precio * l.cantidad, 0))}`}
+            </button>
+          </div>
+        </section>
+      )}
 
       <div className="flex flex-wrap gap-5 items-start">
         {/* ── Productos ── */}
@@ -1090,16 +1186,36 @@ export default function OrderDetail() {
             {!isClosed && billableItems.length > 0 && !cobraRepartidor && (
               <button type="button" className="btn-primary w-full min-h-[44px]" disabled={nadaEntregado}
                 title={nadaEntregado ? `Primero marca los productos como ${entregadoLabel.toLowerCase()}` : undefined}
-                onClick={() => {
+                onClick={async () => {
+                  if (porEnviar.length > 0 && !(await confirmDialog(
+                    `Hay ${porEnviar.reduce((n, l) => n + l.cantidad, 0)} producto(s) sin enviar a cocina: no entran en la cuenta. ¿Generarla de todos modos?`,
+                    { confirmText: 'Generar cuenta', danger: false }))) return
                   if (!order.mesa || onlySharedPending) setAccountTipo('TOTAL')
                   setShowAccount(true)
                 }}>
                 Generar cuenta
               </button>
             )}
-            {!isClosed && cobraRepartidor && (
+            {!isClosed && order.tipoEntrega === 'DOMICILIO' && order.entregadaAt && puedeCobrar ? (
+              // Entregado: el dinero lo trae el repartidor y se cobra aquí, en el corte de quien lo recibe.
+              <div className="rounded-xl bg-[#FBF0DC] px-3.5 py-3 text-[13px] text-[#6B4100] space-y-2">
+                <p>
+                  <b>{order.repartidor?.name ?? 'El repartidor'} ya lo entregó</b>: cobró {fmt(order.total)}
+                  {order.metodoPago ? ` (${PAGO_TXT[order.metodoPago] ?? order.metodoPago})` : ''}. Recíbele el dinero.
+                </p>
+                <button type="button" className="btn-primary w-full min-h-[44px]" disabled={recibiendo}
+                  onClick={async () => {
+                    setRecibiendo(true)
+                    try { await recibirDineroEntrega(order.id); notify('Dinero recibido: el pedido quedó cobrado', 'success'); load() }
+                    catch (err) { notify(err.response?.data?.message ?? 'No se pudo registrar', 'error') }
+                    finally { setRecibiendo(false) }
+                  }}>
+                  {recibiendo ? '...' : `Recibir ${fmt(order.total)} de ${order.repartidor?.name ?? 'el repartidor'}`}
+                </button>
+              </div>
+            ) : !isClosed && cobraRepartidor && (
               <div className="rounded-xl bg-[#E6EDF8] px-3.5 py-3 text-[13px] text-[#1E4585]">
-                <b>Lo cobra el repartidor</b> al entregarlo{order.metodoPago ? ` (${PAGO_TXT[order.metodoPago] ?? order.metodoPago})` : ''}. No se genera cuenta en caja.
+                <b>Lo trae el repartidor</b> al entregarlo{order.metodoPago ? ` (${PAGO_TXT[order.metodoPago] ?? order.metodoPago})` : ''}. Al regresar, la caja le recibe el dinero.
               </div>
             )}
 
@@ -1119,8 +1235,16 @@ export default function OrderDetail() {
                   </div>
                   <p className="mt-1 text-gray-700">Total <b>{fmt(c.total)}</b> · Pagado {fmt(c.totalPagado)}</p>
                   <div className="mt-3 space-y-2">
-                    {c.estado === 'PENDIENTE' && hasSection('CASH_CUTS') && (
+                    {c.estado === 'PENDIENTE' && puedeCobrar && (
                       <button type="button" className="btn-primary w-full min-h-[40px]" onClick={() => openPayModal(c)}>Registrar pago</button>
+                    )}
+                    {c.estado === 'PENDIENTE' && !puedeCobrar && (
+                      <p className="text-xs text-gray-600">El cliente paga en caja con su ticket.</p>
+                    )}
+                    {c.estado === 'PENDIENTE' && (
+                      <button type="button" className={`${puedeCobrar ? 'btn-secondary' : 'btn-primary'} w-full min-h-[40px]`} onClick={() => imprimirCuenta(c.id)}>
+                        Imprimir cuenta (2 copias)
+                      </button>
                     )}
                     {c.estado === 'PENDIENTE' && (isAdmin || isMesero) && (
                       <button type="button" className="btn-secondary w-full min-h-[40px] text-red-700" onClick={() => handleCancelAccount(c)}>Cancelar cuenta</button>
@@ -1191,6 +1315,9 @@ export default function OrderDetail() {
               <p className="text-sm font-semibold text-[#1E4585]">
                 Pedido web · {order.tipoEntrega === 'DOMICILIO' ? 'A domicilio' : 'Para recoger'}
                 {order.metodoPago && <> · paga con {PAGO_TXT[order.metodoPago] ?? order.metodoPago}</>}
+                {order.metodoPago === 'EFECTIVO' && order.pagaCon != null && (
+                  <> · con {fmt(order.pagaCon)}{Number(order.pagaCon) > Number(order.total) ? ` (cambio ${fmt(Number(order.pagaCon) - Number(order.total))})` : ' (exacto)'}</>
+                )}
               </p>
             )}
             {order.origen === 'WEB' && order.metodoPago === 'TRANSFERENCIA' && order.tipoEntrega !== 'DOMICILIO' && (
@@ -1401,14 +1528,16 @@ export default function OrderDetail() {
                 return (
                   // Toda la tarjeta es clicable: con opciones abre "Personalizar"; sin opciones suma una pieza.
                   <div key={p.id} role="button" tabIndex={0}
-                    onClick={() => (personalizable ? openModPicker(p) : incrementCartItem(p.id))}
+                    onClick={() => { if (!p.sinInventario) (personalizable ? openModPicker(p) : incrementCartItem(p.id)) }}
+                    aria-disabled={p.sinInventario || undefined}
                     onKeyDown={(e) => {
                       if (e.key !== 'Enter' && e.key !== ' ') return
                       e.preventDefault()
+                      if (p.sinInventario) return
                       if (personalizable) openModPicker(p)
                       else incrementCartItem(p.id)
                     }}
-                    className={`border rounded-lg overflow-hidden flex shadow-sm cursor-pointer transition-colors hover:border-purple-300 hover:bg-purple-50/40 ${
+                    className={`border rounded-lg overflow-hidden flex shadow-sm transition-colors ${p.sinInventario ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-purple-300 hover:bg-purple-50/40'} ${
                       qty > 0 ? 'min-h-24 border-purple-300' : 'h-24 border-gray-100'}`}>
                     {p.imageUrl ? (
                       // Si la foto no carga se deja el recuadro gris (sin el texto roto del navegador).
@@ -1427,7 +1556,9 @@ export default function OrderDetail() {
                           <span className="text-sm font-bold text-purple-700 shrink-0">{fmt(p.price)}</span>
                         </div>
                         <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                          {personalizable ? (
+                          {p.sinInventario ? (
+                            <span className="text-[11px] font-bold text-red-700">Sin inventario</span>
+                          ) : personalizable ? (
                             <button type="button" title="Personalizar y agregar" aria-label={`Personalizar ${p.name}`}
                               className="w-6 h-6 rounded-full bg-purple-600 text-white font-bold hover:bg-purple-700"
                               onClick={() => openModPicker(p)}>+</button>
@@ -1551,26 +1682,7 @@ export default function OrderDetail() {
 
               {editGrupos.length > 0 && (
                 <div className="space-y-3">
-                  {editGrupos.map((g) => (
-                    <div key={g.id}>
-                      <p className="text-sm font-semibold text-gray-700 mb-1.5">
-                        {g.nombre} {g.obligatorio && <span className="text-red-500">*</span>}
-                        {g.tipo !== 'UNICO' && <span className="text-xs font-normal text-gray-400"> (varias)</span>}
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {g.opciones.map((o) => {
-                          const selected = (editSelections[g.id] ?? []).includes(o.id)
-                          return (
-                            <button key={o.id} type="button" disabled={editModsBloqueados}
-                              className={`px-3 py-1.5 rounded-full text-sm font-semibold border disabled:opacity-50 disabled:cursor-not-allowed ${
-                                selected ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-200'}`}
-                              onClick={() => toggleEditOpcion(g, o.id)}
-                            >{o.nombre}{Number(o.precioExtra) > 0 ? ` (+${fmt(o.precioExtra)})` : ''}</button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ))}
+                  <GruposModificadores grupos={editGrupos} sel={editSelections} onToggle={toggleEditOpcion} disabled={editModsBloqueados} />
                   {editFaltaObligatorio && <p className="text-xs text-red-600">Falta elegir una opción obligatoria</p>}
                 </div>
               )}
@@ -1622,69 +1734,7 @@ export default function OrderDetail() {
             </div>
 
             <div className="p-5 space-y-3">
-              {modGrupos.map((g) => {
-                const expanded = modExpandedGrupos.has(g.id)
-                const resumen = modGrupoResumen(g)
-                const falta = g.obligatorio && (modSelections[g.id]?.length ?? 0) === 0
-                return (
-                  <div key={g.id} className="border border-gray-100 rounded-lg overflow-hidden">
-                    <button type="button" onClick={() => toggleModGrupoExpanded(g.id)}
-                      className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-gray-50">
-                      <span className="text-sm font-semibold text-gray-700 flex items-center gap-1">
-                        {g.nombre} {g.obligatorio && <span className="text-red-500">*</span>}
-                      </span>
-                      <span className="flex items-center gap-2 text-xs shrink-0 ml-2">
-                        {resumen ? (
-                          <span className="text-purple-700 font-medium truncate max-w-[140px]">{resumen}</span>
-                        ) : falta ? (
-                          <span className="text-red-600">Elige una opción</span>
-                        ) : (
-                          <span className="text-gray-400">Sin elegir</span>
-                        )}
-                        <span className="text-gray-400">{expanded ? '▾' : '▸'}</span>
-                      </span>
-                    </button>
-                    {expanded && (
-                      <div className="px-3 pb-3 pt-1 border-t border-gray-100">
-                        {g.tipo === 'UNICO' ? (
-                          <div className="flex flex-wrap gap-2">
-                            {g.opciones.map((o) => {
-                              const selected = (modSelections[g.id] ?? []).includes(o.id)
-                              return (
-                                <button key={o.id} type="button"
-                                  className={`px-3 py-2 rounded-full text-sm font-semibold border ${
-                                    selected ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-200'}`}
-                                  onClick={() => toggleModOpcion(g, o.id)}
-                                >{o.nombre}{Number(o.precioExtra) > 0 ? ` (+${fmt(o.precioExtra)})` : ''}</button>
-                              )
-                            })}
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-2">
-                            {g.opciones.map((o) => {
-                              const selected = (modSelections[g.id] ?? []).includes(o.id)
-                              return (
-                                <button key={o.id} type="button"
-                                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left ${
-                                    selected ? 'border-purple-600 bg-purple-50' : 'border-gray-200 bg-white'}`}
-                                  onClick={() => toggleModOpcion(g, o.id)}
-                                >
-                                  <span className={`w-5 h-5 rounded flex items-center justify-center text-xs font-bold shrink-0 ${
-                                    selected ? 'bg-purple-600 text-white' : 'border border-gray-300'}`}>{selected ? '✓' : ''}</span>
-                                  <span className="flex-1 text-sm text-gray-800 font-medium">{o.nombre}</span>
-                                  <span className="text-sm text-gray-500 font-semibold">
-                                    {Number(o.precioExtra) > 0 ? `+${fmt(o.precioExtra)}` : '$0.00'}
-                                  </span>
-                                </button>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
+              <GruposModificadores grupos={modGrupos} sel={modSelections} onToggle={toggleModOpcion} />
 
               <div>
                 <label className="text-xs font-medium text-gray-600">Notas para cocina (opcional)</label>

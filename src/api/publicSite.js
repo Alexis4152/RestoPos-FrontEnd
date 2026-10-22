@@ -54,7 +54,7 @@ export const uploadComprobanteCliente = (slug, token, id, file, incluyeEnvio) =>
 
 // ── Cuentas de cliente ───────────────────────────────────────────────────────────
 
-/** Registro: { nombre, telefono, direccion, email, password } → { token, cliente }. */
+/** Registro: { nombre, telefono, calle, colonia, codigoPostal, email, password } → { token, cliente }. */
 export const registerCliente = (slug, data) => publicApi.post(`${base(slug)}/clientes/registro`, data)
 
 /** Login de cliente → { token, cliente }, o data null si ese correo no es de ningún cliente. */
@@ -133,3 +133,17 @@ export const getMisReservaciones = (slug, clienteToken) =>
 /** "Volver a pedir": platillos de un pedido propio listos para el carrito ({ lineas, noDisponibles, cambiaron }). */
 export const getRepetirPedido = (slug, clienteToken, ordenId) =>
   publicApi.get(`${base(slug)}/clientes/me/pedidos/${ordenId}/repetir`, clienteHeaders(clienteToken))
+
+/** El cliente cambia personas o necesidades de su reservación (hasta las horas que fija el restaurante). */
+export const modificarReservacion = (slug, token, data) => publicApi.put(`${base(slug)}/reservaciones/${encodeURIComponent(token)}`, data)
+
+/** "Llegaré un poco más tarde": minutos 15/30/45/60 (0 = llego a tiempo). */
+export const avisarRetrasoReservacion = (slug, token, minutos) =>
+  publicApi.post(`${base(slug)}/reservaciones/${encodeURIComponent(token)}/retraso`, { minutos })
+
+/** Pedido anticipado para la reservación: { items, notas }. Entra a cocina cuando llegan. */
+export const preordenarReservacion = (slug, token, data) =>
+  publicApi.post(`${base(slug)}/reservaciones/${encodeURIComponent(token)}/pedido`, data)
+
+export const cancelarPreordenReservacion = (slug, token) =>
+  publicApi.post(`${base(slug)}/reservaciones/${encodeURIComponent(token)}/pedido/cancelar`)

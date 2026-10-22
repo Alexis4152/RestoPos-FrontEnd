@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getOrders } from '../api/ordenes'
+import { filaClick, FILA_CLICK } from '../utils/filaClick'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—'
@@ -9,7 +10,7 @@ const PAGE_SIZES = [10, 20, 50, 100]
 const EMPTY_FILTERS = { from: '', to: '', estado: '' }
 const ESTADOS = ['ABIERTA', 'EN_PROCESO', 'LISTA', 'PENDIENTE_PAGO', 'PAGADA', 'CANCELADA']
 
-/** Historial paginado de órdenes, con filtros por fecha y estado. */
+/** Historial paginado de órdenes, con filtros por fecha y estado. Las pendientes de pago van primero (las ordena el backend). */
 export default function Orders() {
   const navigate = useNavigate()
   const [filters, setFilters] = useState(EMPTY_FILTERS)
@@ -86,9 +87,10 @@ export default function Orders() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {orders.map((o) => (
-                <tr key={o.id} className="hover:bg-gray-50">
+                <tr key={o.id} {...filaClick(() => navigate(`/orders/${o.id}`))}
+                  className={`${FILA_CLICK} ${o.estado === 'PENDIENTE_PAGO' ? 'bg-[#FBF0DC] hover:bg-[#F6E6C6]' : 'hover:bg-gray-50'}`}>
                   <td className="px-4 py-3 text-gray-400 font-mono text-xs">#{o.id}</td>
-                  <td className="px-4 py-3 text-gray-700">{o.mesa ? `Mesa ${o.mesa.numero}` : 'Para llevar'}</td>
+                  <td className="px-4 py-3 text-gray-700">{o.mesa ? `Mesa ${o.mesa.numero}` : o.tipoEntrega === 'RESERVACION' ? 'Reservación (pedido anticipado)' : 'Para llevar'}</td>
                   <td className="px-4 py-3 text-gray-700">{o.mesero?.name ?? '—'}</td>
                   <td className="px-4 py-3 text-gray-600">{fmtDate(o.openedAt)}</td>
                   <td className="px-4 py-3 font-semibold text-gray-900">{fmt(o.total)}</td>

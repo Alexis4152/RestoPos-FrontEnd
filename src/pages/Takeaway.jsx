@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react'
 import { etiquetaEntrega, etiquetaCobro } from '../components/EntregaSeguimiento'
 import { useNavigate } from 'react-router-dom'
 import { getTakeawayOrders, openOrder, getDeliveryFee, acceptWebOrder, cancelOrder } from '../api/ordenes'
+import { getDeliveriesPorRecibir, recibirDineroEntrega } from '../api/deliveries'
 import Icon from '../components/Icon'
 import { useNotify } from '../context/NotifyContext'
+import { useAuth } from '../context/AuthContext'
 import { useLiveRefresh } from '../utils/liveEvents'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { TIPOS_PEDIDO, tipoPedido, etiquetaTipoPedido } from '../utils/tipoPedido'
+import CamposDireccion, { validarDireccion, direccionPayload } from '../components/CamposDireccion'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '—'
@@ -48,9 +51,12 @@ const pasoEntrega = (o) => (o.entregadaAt ? 3 : o.enCaminoAt ? 2 : o.repartidor 
 export default function Takeaway() {
   const { notify } = useNotify()
   const navigate = useNavigate()
+  const puedeCobrar = useAuth().hasSection('CASH_CUTS')
   const [orders, setOrders] = useState([])
+  const [porRecibir, setPorRecibir] = useState([])
+  const [recibiendo, setRecibiendo] = useState(false)
   const [showNewModal, setShowNewModal] = useState(false)
-  const [direccion, setDireccion] = useState('')
+  const [direccion, setDireccion] = useState({ calle: '', colonia: '', codigoPostal: '' })
   const [clienteNombre, setClienteNombre] = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
   const [tipo, setTipo] = useState('PARA_LLEVAR')
@@ -65,13 +71,27 @@ export default function Takeaway() {
 
   function load() {
     getTakeawayOrders().then((r) => setOrders(r.data.data ?? [])).catch(() => setOrders([]))
+    if (puedeCobrar) getDeliveriesPorRecibir().then((r) => setPorRecibir(r.data.data ?? [])).catch(() => setPorRecibir([]))
+  }
+
+  // Dinero que traen los repartidores de envíos ya entregados: la caja lo recibe aquí y se
+  // cobra en el corte de quien lo recibe.
+  async function recibir(lista) {
+    setRecibiendo(true)
+    let ok = 0
+    try {
+      for (const o of lista) { await recibirDineroEntrega(o.id); ok++ }
+      notify(ok === 1 ? `Pedido #${lista[0].id}: dinero recibido` : `${ok} pedidos recibidos`, 'success')
+    } catch (err) {
+      notify(err.response?.data?.message ?? 'No se pudo registrar', 'error')
+    } finally { setRecibiendo(false); load() }
   }
   // Tiempo real: los pedidos de la página web (y cualquier cambio) llegan en cuanto se guardan.
   useEffect(() => { load() }, [])
   useLiveRefresh(load, { filtro: (e) => e.name === 'orden' })
 
   function openNewModal() {
-    setDireccion('')
+    setDireccion({ calle: '', colonia: '', codigoPostal: '' })
     setClienteNombre('')
     setClienteTelefono('')
     setTipo('PARA_LLEVAR')
@@ -120,10 +140,7 @@ export default function Takeaway() {
       if (!clienteTelefono.trim()) errors.clienteTelefono = 'El teléfono es obligatorio'
       else if (clienteTelefono.length > 30) errors.clienteTelefono = 'No puede tener más de 30 caracteres'
     }
-    if (t.direccion) {
-      if (!direccion.trim()) errors.direccion = 'La dirección es obligatoria'
-      else if (direccion.length > 200) errors.direccion = 'No puede tener más de 200 caracteres'
-    }
+    if (t.direccion) Object.assign(errors, validarDireccion(direccion))
     setFieldErrors(errors)
     if (Object.keys(errors).length > 0) return
     setLoading(true)
@@ -133,7 +150,7 @@ export default function Takeaway() {
         tipoEntrega: t.key,
         clienteNombre: clienteNombre.trim(),
         clienteTelefono: t.telefono ? clienteTelefono.trim() : undefined,
-        direccion: t.direccion ? direccion.trim() : undefined,
+        ...(t.direccion ? direccionPayload(direccion) : {}),
       })
       navigate(`/orders/${res.data.data.id}`)
     } catch (err) {
@@ -142,7 +159,9 @@ export default function Takeaway() {
   }
 
   const filtroActual = FILTROS.find((f) => f.key === filtro) ?? FILTROS[0]
-  const visibles = orders.filter(filtroActual.pasa)
+  // Los envíos ya entregados (por recibir el dinero) salen del tablero: van en el panel de arriba.
+  const enTablero = orders.filter((o) => !o.entregadaAt)
+  const visibles = enTablero.filter(filtroActual.pasa)
 
   return (
     <div className="space-y-5">
@@ -156,11 +175,55 @@ export default function Takeaway() {
         </button>
       </header>
 
+      {porRecibir.length > 0 && (
+        <section aria-label="Dinero por recibir de repartidores" className="rounded-2xl border border-[#E2B76B] bg-[#FBF0DC] p-4 space-y-3">
+          <h2 className="text-base font-extrabold text-[#6B4100]">Dinero por recibir de repartidores</h2>
+          {Object.values(porRecibir.reduce((g, o) => {
+            const k = o.repartidor?.id ?? 0
+            ;(g[k] ??= { nombre: o.repartidor?.name ?? 'Sin repartidor', lista: [] }).lista.push(o)
+            return g
+          }, {})).map((g) => {
+            const total = g.lista.reduce((s, o) => s + Number(o.total ?? 0), 0)
+            const efectivo = g.lista.filter((o) => o.metodoPago === 'EFECTIVO').reduce((s, o) => s + Number(o.total ?? 0), 0)
+            return (
+              <div key={g.nombre} className="bg-white rounded-xl border border-[#EADFC3] p-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="flex-1 min-w-[160px] font-extrabold">
+                    {g.nombre} · {fmt(total)}
+                    <span className="block text-xs font-semibold text-gray-600">
+                      {efectivo > 0 ? `${fmt(efectivo)} en efectivo` : 'Sin efectivo'}{total - efectivo > 0 ? ` · ${fmt(total - efectivo)} por transferencia` : ''}
+                    </span>
+                  </p>
+                  {g.lista.length > 1 && (
+                    <button type="button" className="btn-primary min-h-[40px]" disabled={recibiendo} onClick={() => recibir(g.lista)}>
+                      Recibir todo
+                    </button>
+                  )}
+                </div>
+                <ul className="divide-y divide-[#F0EEE8]">
+                  {g.lista.map((o) => (
+                    <li key={o.id} className="flex items-center gap-3 py-2 text-sm">
+                      <button type="button" className="flex-1 min-w-0 text-left hover:underline" onClick={() => navigate(`/orders/${o.id}`)}>
+                        <span className="font-bold">#{o.id} · {o.clienteNombre ?? 'Cliente'}</span>
+                        <span className="block text-xs text-gray-600">{PAGO_LABEL[o.metodoPago] ?? o.metodoPago} · entregado {fmtTime(o.entregadaAt)}</span>
+                      </button>
+                      <span className="font-bold">{fmt(o.total)}</span>
+                      <button type="button" className="btn-secondary min-h-[40px]" disabled={recibiendo} onClick={() => recibir([o])}>Recibir</button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })}
+          <p className="text-xs text-[#6B4100]">Se cobra en tu corte de caja (necesitas tenerlo abierto).</p>
+        </section>
+      )}
+
       <div className="flex flex-wrap gap-2" aria-label="Filtrar pedidos">
         {FILTROS.map((f) => (
           <button key={f.key} type="button" aria-pressed={filtro === f.key} onClick={() => setFiltro(f.key)}
             className={`chip ${filtro === f.key ? 'chip-on' : ''}`}>
-            {f.label} <span className="opacity-70">{orders.filter(f.pasa).length}</span>
+            {f.label} <span className="opacity-70">{enTablero.filter(f.pasa).length}</span>
           </button>
         ))}
       </div>
@@ -236,12 +299,8 @@ export default function Takeaway() {
               )}
               {tipoPedido(tipo).direccion && (
                 <>
-                  <div>
-                    <label className="text-xs font-medium text-gray-600">Dirección de entrega <span className="text-red-500">*</span></label>
-                    <input className="input" placeholder="Ej. Calle Falsa 123, Col. Centro" value={direccion}
-                      onChange={(e) => { setDireccion(e.target.value); setFieldErrors((f) => ({ ...f, direccion: '' })) }} />
-                    {fieldErrors.direccion && <p className="text-red-600 text-xs mt-1">{fieldErrors.direccion}</p>}
-                  </div>
+                  <CamposDireccion value={direccion} errors={fieldErrors} idPrefix="pos-dir"
+                    onChange={(p) => { setDireccion((d) => ({ ...d, ...p })); setFieldErrors((f) => ({ ...f, ...Object.fromEntries(Object.keys(p).map((k) => [k, ''])) })) }} />
                   <p className="flex justify-between rounded-lg bg-[#F7F6F2] px-3 py-2 text-sm">
                     <span className="text-gray-700">Costo de envío (se agrega a la orden)</span>
                     <span className="font-semibold">{fmt(deliveryFee)}</span>
@@ -282,6 +341,9 @@ function TarjetaPedido({ o, busy, onAbrir, onAceptar, onRechazar }) {
           <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{o.origen === 'WEB' ? 'Web' : 'Caja'}</span>
           <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{tipoLabel}</span>
           {o.metodoPago && <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{PAGO_LABEL[o.metodoPago] ?? o.metodoPago}</span>}
+          {o.metodoPago === 'EFECTIVO' && o.pagaCon != null && Number(o.pagaCon) > Number(o.total) && (
+            <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#E7F3EC] text-[#22603C]">Paga con {fmt(o.pagaCon)} · cambio {fmt(Number(o.pagaCon) - Number(o.total))}</span>
+          )}
         </div>
         <p className="text-sm text-gray-700">{resumen || 'Sin productos todavía'}</p>
         {!o.pendienteAceptar && piezas > 0 && listos < piezas && (

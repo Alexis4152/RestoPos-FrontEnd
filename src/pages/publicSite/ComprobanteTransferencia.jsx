@@ -3,7 +3,7 @@ import { useRef, useState } from 'react'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 
 /**
- * El cliente que paga por transferencia a domicilio sube la foto de su comprobante y decide si
+ * El cliente que paga por transferencia (a domicilio o para recoger) sube la foto de su comprobante y decide si
  * la transferencia incluye el costo de envío (si no, el envío se le paga en efectivo al
  * repartidor). Mientras no lo suba, el repartidor ve el pedido "Por cobrar". La foto no se le
  * vuelve a mostrar al cliente: solo la ve el personal de la tienda con su sesión.
@@ -80,5 +80,6 @@ export default function ComprobanteTransferencia({ status, tienda, onSubir, onAc
 }
 
 /** ¿Este pedido puede subir comprobante? (transferencia a domicilio, todavía sin entregar ni rechazar). */
-export const puedeSubirComprobante = (status) => status?.metodoPago === 'TRANSFERENCIA' && status.tipoEntrega === 'DOMICILIO'
+export const puedeSubirComprobante = (status) => status?.metodoPago === 'TRANSFERENCIA'
+  && (status.tipoEntrega === 'DOMICILIO' || status.tipoEntrega === 'RECOGER')
   && !['ENTREGADO', 'RECHAZADO'].includes(status.estado)

@@ -8,6 +8,7 @@ import { getTables } from '../../api/mesas'
 import { useNotify } from '../../context/NotifyContext'
 import { useLiveRefresh } from '../../utils/liveEvents'
 import Icon from '../../components/Icon'
+import { resolveMediaUrl } from '../../utils/media'
 import SelectorModoToma from '../../components/SelectorModoToma'
 import OrderDetail from '../OrderDetail'
 import OpcionesSheet, { gruposActivos } from './OpcionesSheet'
@@ -69,7 +70,16 @@ export default function OrdenRapida() {
   const [enviando, setEnviando] = useState(false)
   const [busy, setBusy] = useState(false)
   const [editando, setEditando] = useState(null) // línea ya enviada que se está editando
-  const [cobro, setCobro] = useState(null) // al cobrar: { cuentaId, mesa, total, cambio }
+  const [cobro, setCobro] = useState(null)
+  // Cómo se ven los platillos: 'list' (tarjetas de texto) o 'images' (con foto). Es una
+  // preferencia de este dispositivo, igual que en el punto de venta de DemoPV.
+  const [vistaProd, setVistaProd] = useState(() => {
+    try { return localStorage.getItem('restopos-rapido-vista') === 'images' ? 'images' : 'list' } catch { return 'list' }
+  })
+  function cambiarVista(v) {
+    setVistaProd(v)
+    try { localStorage.setItem('restopos-rapido-vista', v) } catch { /* sin almacenamiento */ }
+  } // al cobrar: { cuentaId, mesa, total, cambio }
 
   function load() {
     getOrder(id).then((r) => setOrder(r.data.data)).catch(() => notify('No se pudo cargar la orden', 'error'))
@@ -265,7 +275,8 @@ export default function OrdenRapida() {
               className="flex-1 min-w-0 bg-transparent outline-none text-[15px] font-semibold" />
           </label>
 
-          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" aria-label="Categorías">
+          <div className="flex items-center gap-2">
+          <div className="flex-1 min-w-0 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" aria-label="Categorías">
             <button type="button" aria-pressed={!cat} onClick={() => setCat('')}
               className={`shrink-0 min-h-[36px] px-3 rounded-full text-[13px] font-bold border ${!cat ? 'border-purple-600 bg-purple-50 text-purple-800' : 'border-[#D9D5CC] bg-white text-gray-700'}`}>
               Lo más pedido
@@ -277,19 +288,52 @@ export default function OrdenRapida() {
               </button>
             ))}
           </div>
+          <div className="flex gap-1 rounded-full bg-[#ECEAE4] p-1 shrink-0" role="radiogroup" aria-label="Vista de platillos">
+            {[['list', 'Lista'], ['images', 'Imágenes']].map(([v, label]) => (
+              <button key={v} type="button" role="radio" aria-checked={vistaProd === v} onClick={() => cambiarVista(v)}
+                className={`min-h-[32px] px-3 rounded-full text-xs font-bold ${vistaProd === v ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          <div className={`grid gap-2.5 ${vistaProd === 'images' ? 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-4' : 'grid-cols-2 sm:grid-cols-3'}`}>
             {productos.map((p) => {
               const n = piezasPorProducto[p.id] ?? 0
               const conOpciones = gruposActivos(p).length > 0
+              const etiqueta = p.sinInventario
+                ? <span className="text-[12px] font-bold text-red-700">Sin inventario</span>
+                : p.controlaInventario && p.stock <= 5 && <span className="text-[12px] font-bold text-[#7A4A00]">Quedan {p.stock}</span>
+              const contador = n > 0 && (
+                <span className="absolute top-2 right-2 min-w-[26px] h-[26px] px-1 rounded-full bg-purple-600 text-white text-[13px] font-extrabold flex items-center justify-center">{n}</span>
+              )
+              if (vistaProd === 'images') {
+                return (
+                  <button key={p.id} type="button" onClick={() => tocarProducto(p)} disabled={p.sinInventario}
+                    className={`relative text-left rounded-2xl bg-white overflow-hidden flex flex-col disabled:opacity-60 disabled:cursor-not-allowed ${n ? 'border-2 border-purple-600' : 'border border-[#E4E1DA] hover:border-purple-300'}`}>
+                    <span className="aspect-square bg-[#F1EFEA] flex items-center justify-center overflow-hidden">
+                      {p.imageUrl
+                        ? <img src={resolveMediaUrl(p.imageUrl)} alt="" className="w-full h-full object-cover"
+                            onError={(e) => { e.currentTarget.style.visibility = 'hidden' }} />
+                        : <Icon name="menu" className="w-8 h-8 text-gray-400" />}
+                    </span>
+                    <span className="p-2.5 flex flex-col gap-0.5">
+                      <span className="text-[14px] font-extrabold leading-tight line-clamp-2">{p.name}</span>
+                      <span className="text-[13px] font-bold text-gray-600">{fmt(p.price)}{conOpciones ? ' · opciones' : ''}</span>
+                      {etiqueta}
+                    </span>
+                    {contador}
+                  </button>
+                )
+              }
               return (
-                <button key={p.id} type="button" onClick={() => tocarProducto(p)}
-                  className={`relative min-h-[84px] text-left p-3 rounded-2xl bg-white flex flex-col justify-between gap-1 ${n ? 'border-2 border-purple-600' : 'border border-[#E4E1DA] hover:border-purple-300'}`}>
+                <button key={p.id} type="button" onClick={() => tocarProducto(p)} disabled={p.sinInventario}
+                  className={`relative min-h-[84px] text-left p-3 rounded-2xl bg-white flex flex-col justify-between gap-1 disabled:opacity-60 disabled:cursor-not-allowed ${n ? 'border-2 border-purple-600' : 'border border-[#E4E1DA] hover:border-purple-300'}`}>
                   <span className="text-[15px] font-extrabold leading-tight pr-7">{p.name}</span>
                   <span className="text-[13px] font-bold text-gray-600">{fmt(p.price)}{conOpciones ? ' · opciones' : ''}</span>
-                  {n > 0 && (
-                    <span className="absolute top-2 right-2 min-w-[26px] h-[26px] px-1 rounded-full bg-purple-600 text-white text-[13px] font-extrabold flex items-center justify-center">{n}</span>
-                  )}
+                  {etiqueta}
+                  {contador}
                 </button>
               )
             })}

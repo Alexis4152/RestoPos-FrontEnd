@@ -7,10 +7,11 @@ import { getCategories, createCategory } from '../api/categories'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { filaClick, FILA_CLICK } from '../utils/filaClick'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
-const emptyForm = { name: '', description: '', barcode: '', price: '', cost: '', stock: '', minStock: '', unit: 'pieza', categoryId: '', disponible: true }
+const emptyForm = { name: '', description: '', barcode: '', price: '', cost: '', stock: '', minStock: '', unit: 'pieza', categoryId: '', disponible: true, controlaInventario: true }
 const PAGE_SIZES = [10, 20, 50, 100]
 
 // Valor centinela para la opción "Otra..." del selector de categoría: no puede colisionar
@@ -144,6 +145,7 @@ export default function Inventory() {
       price: p.price, cost: p.cost ?? '', stock: p.stock,
       minStock: p.minStock, unit: p.unit, categoryId: p.category?.id ?? '',
       disponible: p.disponible !== false,
+      controlaInventario: p.controlaInventario !== false,
     })
     setNewCategoryName('')
     setError('')
@@ -484,7 +486,10 @@ export default function Inventory() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
-        <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900">Inventario</h1>
+        <div>
+          <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900">Inventario</h1>
+          <p className="text-sm text-gray-600">Solo los productos marcados con “Lleva inventario” (se marca al editar el producto aquí o en Menú).</p>
+        </div>
         <div className="flex flex-wrap gap-2">
           {isAdmin && <button className="btn-secondary text-sm" onClick={handleDownloadTemplate}>⬇️ Plantilla de carga masiva</button>}
           {isSuperAdmin && <button className="btn-secondary text-sm" onClick={openBulkImport}>📤 Carga masiva</button>}
@@ -567,7 +572,7 @@ export default function Inventory() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {products.map((p) => (
-              <tr key={p.id} className="hover:bg-gray-50">
+              <tr key={p.id} {...filaClick(isAdmin ? () => openEdit(p) : () => openAdjust(p))} className={`${FILA_CLICK} hover:bg-gray-50`}>
                 <td className="px-4 py-3 font-medium text-gray-900">{p.name}</td>
                 <td className="px-4 py-3 text-gray-500">{p.category?.name}</td>
                 <td className="px-4 py-3 text-gray-400 font-mono text-xs">{p.barcode}</td>
@@ -689,6 +694,13 @@ export default function Inventory() {
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={form.disponible} onChange={(e) => setForm({ ...form, disponible: e.target.checked })} />
                 <span className="text-sm text-gray-700">Disponible para pedirse</span>
+              </label>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" className="mt-1" checked={!!form.controlaInventario} onChange={(e) => setForm({ ...form, controlaInventario: e.target.checked })} />
+                <span>
+                  <span className="block text-sm text-gray-700">Lleva inventario</span>
+                  <span className="block text-xs text-gray-500">Para lo que se compra y se cuenta (refrescos, cervezas). Si lo desmarcas, deja de aparecer en Inventario (sigue en Menú).</span>
+                </span>
               </label>
 
               {error && <p className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</p>}

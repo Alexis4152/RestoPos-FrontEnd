@@ -115,12 +115,16 @@ export function generateRamp(baseHex) {
   const { h, s, l } = hexToHsl(baseHex)
   const ramp = {}
   for (const key of RAMP_KEYS) {
-    const targetL = clamp(l + LIGHTNESS_OFFSET[key], 4, 97)
+    // Los tonos claros (50-200) son fondos de "seleccionado" con texto encima: con una marca
+    // muy oscura (ej. negra) quedarían grises medios y el texto no se leería; nunca bajan de
+    // estos mínimos.
+    const targetL = Math.max(clamp(l + LIGHTNESS_OFFSET[key], 4, 97), TINTE_MINIMO[key] ?? 0)
     const hex = key === 600 ? baseHex : hslToHex(h, s, targetL)
     ramp[key] = hexToRgbTriplet(hex)
   }
   return ramp
 }
+const TINTE_MINIMO = { 50: 96, 100: 92, 200: 85 }
 
 // Modo oscuro: la rampa se invierte (los tonos 50-200, que en claro son fondos suaves como
 // "seleccionado", pasan a ser fondos oscuros del mismo matiz; 700-900, que en claro son

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getReservaOpciones, crearReservacion, getReservacion, cancelarReservacion, getMisReservaciones } from '../../api/publicSite'
+import { getReservaOpciones, crearReservacion, getReservacion, cancelarReservacion, getMisReservaciones,
+  modificarReservacion, avisarRetrasoReservacion, cancelarPreordenReservacion } from '../../api/publicSite'
 import NecesidadesEspeciales from '../../components/NecesidadesEspeciales'
 import { usePublicLiveRefresh, publicStreamBase } from '../../utils/liveEvents'
 import { ESTADO_RESERVA, necesidades, fechaLarga, horaCorta, ymd, sumarDias, horariosDelDia } from '../../utils/reservaciones'
@@ -17,6 +18,8 @@ export function guardarCodigosReserva(slug, codigos) {
 }
 
 const ACTIVAS = ['PENDIENTE', 'CONFIRMADA']
+const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
+const fechaHoraCorta = (iso) => new Date(iso).toLocaleString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 const inputCls = 'w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300'
 
 /**
@@ -28,13 +31,14 @@ const inputCls = 'w-full rounded-xl border border-gray-300 bg-white px-3 py-2 te
  * Un invitado sigue sus reservaciones por el código guardado en este navegador; un cliente
  * registrado las ve desde su cuenta (en cualquier dispositivo).
  */
-export default function Reservaciones({ slug, tienda, cliente, clienteToken, onSesionVencida }) {
+export default function Reservaciones({ slug, tienda, cliente, clienteToken, onSesionVencida, onOrdenar }) {
   const [opciones, setOpciones] = useState(null)
   const [error, setError] = useState('')
   const [codigos, setCodigos] = useState(() => leerCodigosReserva(slug))
   const [porCodigo, setPorCodigo] = useState({}) // { token: reservación }
   const [deCuenta, setDeCuenta] = useState([])
   const [recienCreada, setRecienCreada] = useState(null)
+  const [editando, setEditando] = useState(null) // reservación cuyos datos (personas/necesidades) se cambian
 
   useEffect(() => {
     getReservaOpciones(slug).then((r) => setOpciones(r.data.data))
@@ -78,6 +82,21 @@ export default function Reservaciones({ slug, tienda, cliente, clienteToken, onS
     const t = setInterval(cargar, 30000)
     return () => clearInterval(t)
   }, [hayPendientes, codigos.join(',')])
+
+  // Reemplaza la reservación actualizada en las dos listas (por código y de la cuenta).
+  function actualizada(nueva) {
+    setPorCodigo((m) => (m[nueva.token] ? { ...m, [nueva.token]: nueva } : m))
+    setDeCuenta((list) => list.map((x) => (x.token === nueva.token ? nueva : x)))
+  }
+  async function retraso(r, minutos) {
+    try { actualizada((await avisarRetrasoReservacion(slug, r.token, minutos)).data.data) }
+    catch (err) { window.alert(err.response?.data?.message ?? 'No se pudo avisar') }
+  }
+  async function cancelarPedido(r) {
+    if (!window.confirm('¿Cancelar tu pedido anticipado? Tu reservación sigue en pie.')) return
+    try { actualizada((await cancelarPreordenReservacion(slug, r.token)).data.data) }
+    catch (err) { window.alert(err.response?.data?.message ?? 'No se pudo cancelar el pedido') }
+  }
 
   async function cancelar(r) {
     if (!window.confirm(`¿Cancelar tu reservación del ${fechaLarga(r.fechaHora)} a las ${horaCorta(r.fechaHora)}?`)) return
@@ -127,11 +146,75 @@ export default function Reservaciones({ slug, tienda, cliente, clienteToken, onS
           {lista.map((r) => (
             <TarjetaReserva key={r.token} r={r} tienda={tienda} destacada={r.token === recienCreada}
               onCancelar={() => cancelar(r)}
+              onCambiar={() => setEditando(r)}
+              onRetraso={(min) => retraso(r, min)}
+              onOrdenar={onOrdenar ? () => onOrdenar(r) : null}
+              onCancelarPedido={() => cancelarPedido(r)}
               onQuitar={!ACTIVAS.includes(r.estado) && codigos.includes(r.token) && !deCuenta.some((x) => x.token === r.token)
                 ? () => setCodigos((list) => list.filter((x) => x !== r.token)) : null} />
           ))}
         </div>
       </div>
+      {editando && opciones && (
+        <ModalCambios slug={slug} r={editando} maxPersonas={opciones.maxPersonas} onClose={() => setEditando(null)}
+          onGuardada={(nueva) => { actualizada(nueva); setEditando(null) }} />
+      )}
+    </div>
+  )
+}
+
+/** Cambiar personas o necesidades especiales (no la fecha ni la hora: para eso, cancelar y reservar otra). */
+function ModalCambios({ slug, r, maxPersonas, onClose, onGuardada }) {
+  const [form, setForm] = useState({
+    personas: r.personas, periqueras: r.periqueras, accesible: r.accesible, carriola: r.carriola,
+    ocasion: r.ocasion ?? '', notas: r.notas ?? '',
+  })
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const set = (c) => setForm((f) => ({ ...f, ...c }))
+  async function guardar(e) {
+    e.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      const res = await modificarReservacion(slug, r.token, {
+        personas: form.personas, periqueras: Math.min(form.periqueras, form.personas), accesible: form.accesible,
+        carriola: form.carriola, ocasion: form.ocasion || null, notas: form.notas.trim() || null,
+      })
+      onGuardada(res.data.data)
+    } catch (err) {
+      setError(err.response?.data?.message ?? 'No se pudo guardar el cambio')
+    } finally { setSaving(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <form onSubmit={guardar} className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div>
+          <h3 className="text-lg font-bold">Cambiar mi reservación</h3>
+          <p className="text-sm text-gray-500 capitalize">{fechaLarga(r.fechaHora)} · {horaCorta(r.fechaHora)}</p>
+        </div>
+        <div>
+          <span className="block text-sm font-medium text-gray-700 mb-1">Personas</span>
+          <div className="flex items-center gap-3">
+            <button type="button" aria-label="Menos personas" disabled={form.personas <= 1} onClick={() => set({ personas: form.personas - 1 })}
+              className="w-10 h-10 rounded-full border border-gray-300 text-xl leading-none hover:bg-gray-50 disabled:opacity-30">−</button>
+            <span className="w-10 text-center text-xl font-bold">{form.personas}</span>
+            <button type="button" aria-label="Más personas" disabled={form.personas >= maxPersonas} onClick={() => set({ personas: form.personas + 1 })}
+              className="w-10 h-10 rounded-full border border-gray-300 text-xl leading-none hover:bg-gray-50 disabled:opacity-30">+</button>
+          </div>
+          {r.estado === 'CONFIRMADA' && form.personas > r.personas && (
+            <p className="text-xs text-gray-500 mt-1">Si tu mesa ya no alcanza, el restaurante volverá a confirmarte con otra.</p>
+          )}
+        </div>
+        <NecesidadesEspeciales value={form} personas={form.personas} onChange={set} />
+        {error && <p className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{error}</p>}
+        <div className="flex gap-2">
+          <button type="button" onClick={onClose} className="flex-1 rounded-full border border-gray-300 py-2.5 font-semibold hover:bg-gray-50">Volver</button>
+          <button disabled={saving} className="flex-1 rounded-full bg-purple-600 text-white py-2.5 font-semibold hover:bg-purple-700 disabled:opacity-50">
+            {saving ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }
@@ -289,9 +372,12 @@ function FormularioReserva({ slug, tienda, opciones, cliente, clienteToken, onSe
   )
 }
 
-function TarjetaReserva({ r, tienda, destacada, onCancelar, onQuitar }) {
+function TarjetaReserva({ r, tienda, destacada, onCancelar, onQuitar, onCambiar, onRetraso, onOrdenar, onCancelarPedido }) {
   const est = ESTADO_RESERVA[r.estado] ?? { cliente: r.estado, cls: 'bg-gray-100 text-gray-600 border-gray-300' }
   const chips = necesidades(r)
+  const [eligiendoRetraso, setEligiendoRetraso] = useState(false)
+  const activa = ACTIVAS.includes(r.estado)
+  const horaConRetraso = r.retrasoMinutos ? horaCorta(new Date(new Date(r.fechaHora).getTime() + r.retrasoMinutos * 60000).toISOString()) : null
   return (
     <article className={`bg-white rounded-2xl border shadow-sm p-4 ${destacada ? 'border-purple-400 ring-2 ring-purple-200' : 'border-gray-100'}`}>
       <div className="flex items-start justify-between gap-2">
@@ -316,7 +402,74 @@ function TarjetaReserva({ r, tienda, destacada, onCancelar, onQuitar }) {
       {r.notas && <p className="text-xs text-gray-500 mt-2 italic">"{r.notas}"</p>}
       {r.estado === 'PENDIENTE' && <p className="text-xs text-gray-500 mt-2">El restaurante revisará tu reservación y te avisará aquí.</p>}
       {r.estado === 'CONFIRMADA' && (
-        <p className="text-xs text-green-700 mt-2">¡Te esperamos! Si llegarás tarde o no podrás venir, avísanos{tienda.telefono ? ` al ${tienda.telefono}` : ''}.</p>
+        <p className="text-xs text-green-700 mt-2">¡Te esperamos! Si no podrás venir, cancela aquí o avísanos{tienda.telefono ? ` al ${tienda.telefono}` : ''}.</p>
+      )}
+
+      {/* Retraso: "llegaré un poco más tarde", hasta las horas que fijó el restaurante */}
+      {activa && r.retrasoMinutos > 0 && (
+        <p className="text-sm font-semibold text-amber-800 mt-2">⏰ Avisaste que llegas {r.retrasoMinutos} min tarde (~{horaConRetraso}).</p>
+      )}
+      {activa && r.puedeAvisarRetraso && (
+        eligiendoRetraso ? (
+          <div className="mt-2 rounded-xl bg-amber-50 border border-amber-200 p-2.5">
+            <p className="text-sm font-semibold text-amber-900 mb-1.5">¿Cuánto tiempo más tarde?</p>
+            <div className="flex flex-wrap gap-1.5">
+              {[15, 30, 45, 60].map((m) => (
+                <button key={m} type="button" onClick={() => { onRetraso(m); setEligiendoRetraso(false) }}
+                  className={`px-3 py-1.5 rounded-full text-sm font-semibold border ${r.retrasoMinutos === m ? 'bg-amber-600 text-white border-amber-600' : 'bg-white border-amber-300 text-amber-900'}`}>
+                  {m} min
+                </button>
+              ))}
+              {r.retrasoMinutos > 0 && (
+                <button type="button" onClick={() => { onRetraso(0); setEligiendoRetraso(false) }} className="px-3 py-1.5 rounded-full text-sm font-semibold border border-gray-300 bg-white">
+                  Llego a tiempo
+                </button>
+              )}
+              <button type="button" onClick={() => setEligiendoRetraso(false)} className="px-2 text-sm text-gray-500 hover:underline">Cerrar</button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setEligiendoRetraso(true)} className="block mt-2 text-sm font-semibold text-amber-800 hover:underline">
+            ⏰ {r.retrasoMinutos > 0 ? 'Cambiar mi aviso de retraso' : 'Llegaré un poco más tarde'}
+            <span className="block text-xs font-normal text-gray-500">Puedes avisar hasta el {fechaHoraCorta(r.limiteRetraso)}</span>
+          </button>
+        )
+      )}
+
+      {/* Cambios de personas / necesidades */}
+      {activa && (r.puedeModificar ? (
+        <button type="button" onClick={onCambiar} className="block mt-2 text-sm font-semibold text-purple-700 hover:underline">
+          ✏️ Cambiar personas o necesidades
+          <span className="block text-xs font-normal text-gray-500">Hasta el {fechaHoraCorta(r.limiteCambios)}</span>
+        </button>
+      ) : (
+        <p className="text-xs text-gray-500 mt-2">Para hacer cambios ahora, llámanos{tienda.telefono ? ` al ${tienda.telefono}` : ''}.</p>
+      ))}
+
+      {/* Pedido anticipado: se prepara cuando llegas */}
+      {r.preorden && (
+        <div className="mt-3 rounded-xl bg-blue-50 border border-blue-100 p-3 text-sm">
+          <p className="font-semibold text-blue-900">🍽️ Tu pedido · {fmt(r.preorden.total)}</p>
+          <ul className="text-blue-900/80 text-xs mt-1 space-y-0.5">
+            {r.preorden.items.map((i, idx) => <li key={idx}>{Number(i.cantidad)}× {i.nombre}</li>)}
+          </ul>
+          <p className="text-xs text-blue-900 mt-1.5">
+            {r.preorden.estado === 'EN_COCINA' ? 'Ya está en cocina.' : 'Lo empezamos a preparar cuando llegues. Lo pagas en el restaurante.'}
+          </p>
+          {r.preorden.estado === 'EN_ESPERA' && (
+            <div className="flex gap-3 mt-2">
+              {r.puedeOrdenar && onOrdenar && <button type="button" onClick={onOrdenar} className="text-sm font-semibold text-purple-700 hover:underline">Agregar más</button>}
+              <button type="button" onClick={onCancelarPedido} className="text-sm font-semibold text-red-600 hover:underline">Cancelar pedido</button>
+            </div>
+          )}
+        </div>
+      )}
+      {!r.preorden && r.puedeOrdenar && onOrdenar && (
+        <button type="button" onClick={onOrdenar}
+          className="mt-3 w-full rounded-full border-2 border-purple-200 text-purple-700 py-2 text-sm font-semibold hover:bg-purple-50">
+          🍽️ Ordenar desde ahora
+          <span className="block text-xs font-normal text-gray-500">Se manda a cocina cuando llegues</span>
+        </button>
       )}
       {r.motivo && ['RECHAZADA', 'CANCELADA'].includes(r.estado) && <p className="text-xs text-red-700 mt-2">{r.motivo}</p>}
       {(r.puedeCancelar || onQuitar) && (

@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import PasswordInput from '../components/PasswordInput'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { filaClick, FILA_CLICK } from '../utils/filaClick'
 
 const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—'
 
@@ -288,7 +289,7 @@ export default function Users() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {users.map((u) => (
-              <tr key={u.id} className="hover:bg-gray-50">
+              <tr key={u.id} {...filaClick(() => openEdit(u))} className={`${FILA_CLICK} hover:bg-gray-50`}>
                 <td className="px-4 py-3 font-medium text-gray-900">{u.name}</td>
                 <td className="px-4 py-3 text-gray-500">{u.email}</td>
                 <td className="px-4 py-3">

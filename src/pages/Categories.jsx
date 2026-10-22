@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getCategories, createCategory, updateCategory, deleteCategory, updateCategoryAvailabilityMode } from '../api/categories'
 import { useNotify } from '../context/NotifyContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { filaClick, FILA_CLICK } from '../utils/filaClick'
 
 const emptyForm = { name: '', description: '', scheduleStart: '', scheduleEnd: '' }
 
@@ -177,7 +178,7 @@ export default function Categories() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {categories.map((c) => (
-                <tr key={c.id} className="hover:bg-gray-50">
+                <tr key={c.id} {...filaClick(() => openEdit(c))} className={`${FILA_CLICK} hover:bg-gray-50`}>
                   <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
                   <td className="px-4 py-3 text-gray-500">{c.description || '—'}</td>
                   <td className="px-4 py-3 text-gray-500">

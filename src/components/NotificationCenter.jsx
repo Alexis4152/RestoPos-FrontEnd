@@ -51,7 +51,8 @@ const guardar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } c
  *  - Mesas que pidieron la cuenta (Mesas): Ver orden.
  *  - Comprobante de transferencia subido, por confirmar (Para llevar).
  *  - Reservaciones por confirmar (Mesas).
- *  - Informativos: cliente reportó un problema (24 h) y envíos entregados (3 h).
+ *  - Informativos: cliente reportó un problema (24 h) y envíos a domicilio (3 h): el
+ *    repartidor lo tomó, va en camino y lo entregó — estos tres también saltan.
  * Los avisos se calculan del estado actual (al atenderlos desaparecen solos). "Leído" se
  * guarda por usuario y tienda en este navegador. Lo nuevo suena (si el sonido está activo),
  * sale un aviso emergente abajo a la izquierda y, con la pestaña oculta, una notificación del
@@ -68,7 +69,7 @@ export default function NotificationCenter() {
   const puedePedidos = hasSection('TAKEAWAY') || hasSection('ORDERS')
   const puedeMesas = hasSection('TABLES')
 
-  const [datos, setDatos] = useState({ web: [], pickups: [], mesas: [], llevar: [], reservas: [], reportes: [], entregados: [] })
+  const [datos, setDatos] = useState({ web: [], pickups: [], mesas: [], llevar: [], reservas: [], reportes: [], entregados: [], tomados: [], enCamino: [], soltados: [], cuentasPorCobrar: [] })
   const [abierto, setAbierto] = useState(false)
   const [tab, setTab] = useState('todas')
   const [leidas, setLeidas] = useState(() => leer(kLeidas, {}))
@@ -104,6 +105,9 @@ export default function NotificationCenter() {
         web: web.data.data ?? [], pickups: pickups.data.data ?? [], mesas: mesas.data.data ?? [],
         llevar: llevar.data.data ?? [], reservas: reservas.data.data ?? [],
         reportes: avisos.data.data?.reportes ?? [], entregados: avisos.data.data?.entregados ?? [],
+        tomados: avisos.data.data?.tomados ?? [], enCamino: avisos.data.data?.enCamino ?? [],
+        soltados: avisos.data.data?.soltados ?? [],
+        cuentasPorCobrar: avisos.data.data?.cuentasPorCobrar ?? [],
       })
     })
   }
@@ -135,7 +139,15 @@ export default function NotificationCenter() {
         ],
       })
     })
-    datos.mesas.filter((m) => m.estado === 'PENDIENTE_PAGO' && m.ordenActiva && !m.unidaA).forEach((m) => out.push({
+    // Caja (quien cobra): cada cuenta que se genera y falta cobrar; el cliente viene con su ticket.
+    const conCuenta = new Set(datos.cuentasPorCobrar.map((c) => c.ordenId))
+    datos.cuentasPorCobrar.forEach((c) => out.push({
+      key: `cxc-${c.cuentaId}`, tipo: 'cobro', accion: true, fecha: c.fecha,
+      titulo: `Cuenta por cobrar · ${c.lugar}`,
+      detalle: [`Folio ${c.folio}`, fmt(c.total), c.generadaPor && `generó ${c.generadaPor}`].filter(Boolean).join(' · '),
+      acciones: [{ label: 'Cobrar', primaria: true, run: () => ir(`/orders/${c.ordenId}`) }],
+    }))
+    datos.mesas.filter((m) => m.estado === 'PENDIENTE_PAGO' && m.ordenActiva && !m.unidaA && !conCuenta.has(m.ordenActiva.id)).forEach((m) => out.push({
       key: `cuenta-${m.ordenActiva.id}`, tipo: 'cuenta', accion: true, fecha: m.updatedAt,
       titulo: `Mesa ${m.numero} pidió la cuenta`,
       detalle: [m.zona?.nombre, m.ordenActiva.mesero?.name, fmt(m.ordenActiva.total)].filter(Boolean).join(' · '),
@@ -159,10 +171,31 @@ export default function NotificationCenter() {
       detalle: `Pedido #${o.id}${o.reporteProductos ? ` · ${o.reporteProductos}` : ''}`,
       acciones: [{ label: 'Ver pedido', run: () => ir(`/orders/${o.id}`) }],
     }))
+    // Envíos a domicilio: el repartidor lo tomó, va en camino y lo entregó. No piden acción,
+    // pero sí saltan (sonido + aviso emergente) para que la caja sepa en qué va cada pedido.
+    datos.tomados.forEach((o) => out.push({
+      key: `tom-${o.id}-${o.tomadaAt}`, tipo: 'entrega', accion: false, emergente: true, fecha: o.tomadaAt,
+      titulo: `${o.repartidor?.name ?? 'Un repartidor'} tomó el pedido #${o.id}`,
+      detalle: [o.clienteNombre, o.direccion].filter(Boolean).join(' · '),
+      acciones: [{ label: 'Ver pedido', run: () => ir(`/orders/${o.id}`) }],
+    }))
+    datos.enCamino.forEach((o) => out.push({
+      key: `cam-${o.id}-${o.enCaminoAt}`, tipo: 'entrega', accion: false, emergente: true, fecha: o.enCaminoAt,
+      titulo: `Pedido #${o.id} va en camino`,
+      detalle: [o.repartidor?.name, o.clienteNombre].filter(Boolean).join(' · '),
+      acciones: [{ label: 'Ver pedido', run: () => ir(`/orders/${o.id}`) }],
+    }))
+    // Un repartidor soltó un envío (con su motivo): vuelve a estar disponible para otro.
+    datos.soltados.forEach((e) => out.push({
+      key: `sol-${e.ordenId}-${e.fecha}`, tipo: 'alerta', accion: false, emergente: true, fecha: e.fecha,
+      titulo: `${e.repartidor ?? 'El repartidor'} soltó el pedido #${e.ordenId}`,
+      detalle: e.motivo ? `Motivo: ${e.motivo}` : 'Vuelve a estar disponible para otro repartidor',
+      acciones: [{ label: 'Ver pedido', run: () => ir(`/orders/${e.ordenId}`) }],
+    }))
     datos.entregados.forEach((o) => out.push({
-      key: `ent-${o.id}`, tipo: 'entrega', accion: false, fecha: o.entregadaAt,
+      key: `ent-${o.id}`, tipo: 'entrega', accion: false, emergente: true, fecha: o.entregadaAt,
       titulo: `Pedido #${o.id} entregado`,
-      detalle: `${o.repartidor?.name ?? 'Repartidor'} · ${o.estado === 'PAGADA' ? `cobrado ${fmt(o.total)}` : 'pendiente de cobro'}`,
+      detalle: `${o.repartidor?.name ?? 'Repartidor'} · ${o.estado === 'PAGADA' ? `cobrado ${fmt(o.total)}` : `por recibir en caja ${fmt(o.total)}`}`,
       acciones: [],
     }))
     return out.sort((a, b) => (b.accion - a.accion) || String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')))
@@ -172,7 +205,7 @@ export default function NotificationCenter() {
   useEffect(() => {
     const claves = new Set(avisos.map((a) => a.key))
     if (vistosRef.current) {
-      const nuevos = avisos.filter((a) => a.accion && !vistosRef.current.has(a.key))
+      const nuevos = avisos.filter((a) => (a.accion || a.emergente) && !vistosRef.current.has(a.key))
       if (nuevos.length > 0) {
         const a = nuevos[0]
         setToast({ ...a, extra: nuevos.length - 1 })

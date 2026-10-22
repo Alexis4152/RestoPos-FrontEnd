@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { getReservaciones, getReservacionesPendientes, createReservacion, confirmReservacion, rejectReservacion,
-  cancelReservacion, markReservacionLlegada } from '../api/reservaciones'
+  cancelReservacion, markReservacionLlegada, getReglasReservacion } from '../api/reservaciones'
 import { getTables } from '../api/mesas'
 import { getZonas } from '../api/zonas'
 import { useNotify } from '../context/NotifyContext'
@@ -28,6 +28,11 @@ export default function Reservaciones() {
   const [asignando, setAsignando] = useState(null) // reservación a confirmar / cambiar mesa
   const [conMotivo, setConMotivo] = useState(null) // { r, accion: 'rechazar' | 'cancelar' }
   const [nueva, setNueva] = useState(false)
+  const [llegando, setLlegando] = useState(null) // reservación con pedido anticipado y sin mesa: elegir mesa al llegar
+  const [reglas, setReglas] = useState({ todasLasMesas: true, llegadaMinutosAntes: 30 })
+  // Re-pinta cada minuto: los botones de llegada se habilitan media hora antes de la hora.
+  const [, setTick] = useState(0)
+  useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 60000); return () => clearInterval(t) }, [])
 
   function load() {
     getReservaciones(fecha).then((r) => setDelDia(r.data.data ?? [])).catch(() => {})
@@ -37,7 +42,17 @@ export default function Reservaciones() {
   useEffect(() => {
     getTables().then((r) => setMesas(r.data.data ?? [])).catch(() => {})
     getZonas().then((r) => setZonas(r.data.data ?? [])).catch(() => {})
+    getReglasReservacion().then((r) => setReglas(r.data.data)).catch(() => {})
   }, [])
+  // Con "solo algunas mesas", solo esas se ofrecen para asignar.
+  const mesasReservables = reglas.todasLasMesas ? mesas : mesas.filter((m) => m.reservable !== false)
+
+  function marcarLlegada(r, llego) {
+    // Trae pedido anticipado y no tiene mesa: primero se elige dónde se sientan.
+    if (llego && r.preorden?.estado === 'EN_ESPERA' && !r.mesaId) { setLlegando(r); return }
+    accion(r, () => markReservacionLlegada(r.id, llego),
+      llego ? (r.preorden?.estado === 'EN_ESPERA' ? `${r.nombre} llegó: su pedido ya va a cocina` : `${r.nombre} llegó`) : null)
+  }
   useLiveRefresh(load, { filtro: (e) => e.name === 'reservacion' })
 
   async function accion(r, fn, ok) {
@@ -98,7 +113,7 @@ export default function Reservaciones() {
               onConfirmar={() => setAsignando(r)}
               onRechazar={() => setConMotivo({ r, accion: 'rechazar' })}
               onCancelar={() => setConMotivo({ r, accion: 'cancelar' })}
-              onLlego={(llego) => accion(r, () => markReservacionLlegada(r.id, llego), llego ? `${r.nombre} llegó` : null)} />
+              onLlego={(llego) => marcarLlegada(r, llego)} />
           ))}
         </section>
 
@@ -117,11 +132,19 @@ export default function Reservaciones() {
       </div>
 
       {asignando && (
-        <ModalMesa r={asignando} mesas={mesas} onClose={() => setAsignando(null)}
+        <ModalMesa r={asignando} mesas={mesasReservables} onClose={() => setAsignando(null)}
           onGuardar={async (mesaId) => {
             const r = asignando
             setAsignando(null)
             await accion(r, () => confirmReservacion(r.id, mesaId), r.estado === 'PENDIENTE' ? 'Reservación confirmada' : 'Mesa actualizada')
+          }} />
+      )}
+      {llegando && (
+        <ModalMesa r={llegando} mesas={mesasReservables} llegada onClose={() => setLlegando(null)}
+          onGuardar={async (mesaId) => {
+            const r = llegando
+            setLlegando(null)
+            await accion(r, () => markReservacionLlegada(r.id, true, mesaId), `${r.nombre} llegó: su pedido ya va a cocina`)
           }} />
       )}
       {conMotivo && (
@@ -134,7 +157,7 @@ export default function Reservaciones() {
           }} />
       )}
       {nueva && (
-        <ModalNueva mesas={mesas} zonas={zonas} fechaInicial={fecha} onClose={() => setNueva(false)}
+        <ModalNueva mesas={mesasReservables} zonas={zonas} fechaInicial={fecha} onClose={() => setNueva(false)}
           onCreada={(r) => { setNueva(false); setFecha(r.fechaHora.slice(0, 10)); load() }} />
       )}
     </div>
@@ -147,6 +170,10 @@ function TarjetaStaff({ r, conFecha, compacta, busy, onConfirmar, onRechazar, on
   const inactiva = ['RECHAZADA', 'CANCELADA', 'NO_LLEGO'].includes(r.estado)
   const chica = r.mesaCapacidad && r.mesaCapacidad < r.personas
   const btn = 'min-h-[44px] px-4 rounded-xl text-sm font-bold disabled:opacity-40'
+  // "Llegó" / "No llegó" se habilitan media hora antes de la hora de la reservación.
+  const llegadaLista = !r.llegadaDesde || new Date(r.llegadaDesde) <= new Date()
+  const conRetraso = r.retrasoMinutos > 0
+  const horaRetraso = conRetraso ? horaCorta(new Date(new Date(r.fechaHora).getTime() + r.retrasoMinutos * 60000).toISOString()) : null
   return (
     <article className={`bg-white border border-[#E4E1DA] rounded-2xl p-4 flex flex-wrap gap-4 ${inactiva ? 'opacity-60' : ''} ${compacta ? '!bg-[#FBFAF7]' : ''}`}>
       <div className={compacta ? 'w-full flex items-center gap-3' : 'w-24 shrink-0'}>
@@ -182,6 +209,22 @@ function TarjetaStaff({ r, conFecha, compacta, busy, onConfirmar, onRechazar, on
           </div>
         )}
         {r.notas && <p className="text-sm text-gray-800 bg-[#F7F6F2] rounded-lg px-2.5 py-1.5">Nota: {r.notas}</p>}
+        {conRetraso && ['PENDIENTE', 'CONFIRMADA'].includes(r.estado) && (
+          <p className="text-sm font-bold text-[#7A4A00] bg-[#FBF0DC] rounded-lg px-2.5 py-1.5">⏰ Avisó que llega {r.retrasoMinutos} min tarde (~{horaRetraso})</p>
+        )}
+        {r.modificadaAt && ['PENDIENTE', 'CONFIRMADA'].includes(r.estado) && (
+          <p className="text-xs text-gray-600">✏️ El cliente hizo cambios el {new Date(r.modificadaAt).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+        )}
+        {r.preorden && (
+          <div className="rounded-lg border border-[#C9D7EE] bg-[#EEF3FB] px-2.5 py-2 text-[13px] text-[#1E4585]">
+            <p className="font-bold">
+              🍽️ Pedido anticipado · {r.preorden.items.reduce((n, i) => n + Number(i.cantidad), 0)} platillo(s) · ${Number(r.preorden.total).toFixed(2)}
+              {r.preorden.estado === 'EN_COCINA' ? ' · ya en cocina' : ''}
+            </p>
+            <p>{r.preorden.items.map((i) => `${Number(i.cantidad)}× ${i.nombre}`).join(', ')}</p>
+            {r.preorden.estado === 'EN_ESPERA' && <p className="text-xs mt-0.5">Se manda a cocina al marcar "Llegó".</p>}
+          </div>
+        )}
         {r.motivo && inactiva && <p className="text-xs text-red-700">{r.motivo}</p>}
       </div>
       <div className={`flex flex-wrap gap-2 ${compacta ? 'w-full' : 'sm:flex-col sm:w-40 shrink-0'}`}>
@@ -193,9 +236,12 @@ function TarjetaStaff({ r, conFecha, compacta, busy, onConfirmar, onRechazar, on
         )}
         {r.estado === 'CONFIRMADA' && onLlego && (
           <>
-            <button type="button" disabled={busy} onClick={() => onLlego(true)} className={`btn-primary ${btn}`}>Llegó</button>
+            <button type="button" disabled={busy || !llegadaLista} onClick={() => onLlego(true)} className={`btn-primary ${btn}`}
+              title={llegadaLista ? undefined : `Se habilita a las ${horaCorta(r.llegadaDesde)}`}>Llegó</button>
             <button type="button" disabled={busy} onClick={onConfirmar} className={`btn-secondary ${btn}`}>{r.mesa ? 'Cambiar mesa' : 'Asignar mesa'}</button>
-            <button type="button" disabled={busy} onClick={() => onLlego(false)} className={`btn-secondary ${btn}`}>No llegó</button>
+            <button type="button" disabled={busy || !llegadaLista} onClick={() => onLlego(false)} className={`btn-secondary ${btn}`}
+              title={llegadaLista ? undefined : `Se habilita a las ${horaCorta(r.llegadaDesde)}`}>No llegó</button>
+            {!llegadaLista && <p className="text-xs text-gray-600 w-full">Llegada desde las {horaCorta(r.llegadaDesde)}</p>}
             <button type="button" disabled={busy} onClick={onCancelar} className={`btn-secondary text-red-700 ${btn}`}>Cancelar</button>
           </>
         )}
@@ -220,7 +266,7 @@ function opcionesMesa(mesas, r) {
   return [...porZona.entries()].sort(([, a], [, b]) => (b.zonaId === r.zonaId) - (a.zonaId === r.zonaId))
 }
 
-function ModalMesa({ r, mesas, onClose, onGuardar }) {
+function ModalMesa({ r, mesas, llegada, onClose, onGuardar }) {
   const [mesaId, setMesaId] = useState(r.mesaId ? String(r.mesaId) : '')
   useEscapeKey(onClose, true)
   const grupos = useMemo(() => opcionesMesa(mesas, r), [mesas, r])
@@ -229,7 +275,8 @@ function ModalMesa({ r, mesas, onClose, onGuardar }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-bold">{r.estado === 'PENDIENTE' ? 'Confirmar reservación' : 'Mesa de la reservación'}</h3>
+        <h3 className="text-lg font-bold">{llegada ? '¿En qué mesa se sientan?' : r.estado === 'PENDIENTE' ? 'Confirmar reservación' : 'Mesa de la reservación'}</h3>
+        {llegada && <p className="text-sm text-gray-700 mt-1">Traen pedido anticipado: se abre en esta mesa y entra a cocina.</p>}
         <p className="text-sm text-gray-600 mt-1 capitalize">{fechaLarga(r.fechaHora)} · {horaCorta(r.fechaHora)} · {r.nombre} · 👥 {r.personas}</p>
         {chips.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
@@ -238,7 +285,7 @@ function ModalMesa({ r, mesas, onClose, onGuardar }) {
         )}
         <label className="block text-sm font-medium text-gray-700 mt-4 mb-1">Mesa</label>
         <select className="input" value={mesaId} onChange={(e) => setMesaId(e.target.value)}>
-          <option value="">Sin mesa por ahora (se asigna al llegar)</option>
+          <option value="">{llegada ? 'Elige la mesa…' : 'Sin mesa por ahora (se asigna al llegar)'}</option>
           {grupos.map(([zona, g]) => (
             <optgroup key={zona} label={`${zona}${g.zonaId && g.zonaId === r.zonaId ? ' ★ preferida' : ''}`}>
               {g.mesas.map((m) => (
@@ -256,8 +303,8 @@ function ModalMesa({ r, mesas, onClose, onGuardar }) {
         <p className="text-xs text-gray-400 mt-2">Si la mesa ya está reservada a una hora cercana, se te avisará.</p>
         <div className="flex gap-2 mt-5">
           <button className="btn-secondary flex-1" onClick={onClose}>Cancelar</button>
-          <button className="btn-primary flex-1" onClick={() => onGuardar(mesaId ? Number(mesaId) : null)}>
-            {r.estado === 'PENDIENTE' ? 'Confirmar' : 'Guardar'}
+          <button className="btn-primary flex-1" disabled={llegada && !mesaId} onClick={() => onGuardar(mesaId ? Number(mesaId) : null)}>
+            {llegada ? 'Llegó · mandar a cocina' : r.estado === 'PENDIENTE' ? 'Confirmar' : 'Guardar'}
           </button>
         </div>
       </div>

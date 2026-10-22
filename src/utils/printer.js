@@ -1,5 +1,5 @@
 import qz from 'qz-tray'
-import { getAccountTicketEscPos } from '../api/cuentas'
+import { getAccountTicketEscPos, getTicketPdf } from '../api/cuentas'
 import { getQzCertificate, signQzData } from '../api/qz'
 
 /**
@@ -105,8 +105,8 @@ export async function listPrinters() {
  * @throws {Error} con un mensaje en español listo para mostrarle al cajero, si QZ Tray no
  *   está disponible o la impresión falla.
  */
-export async function printAccountTicket(accountId) {
-  const res = await getAccountTicketEscPos(accountId)
+export async function printAccountTicket(accountId, copias = 1) {
+  const res = await getAccountTicketEscPos(accountId, copias)
   const hex = res.data?.data
   if (!hex) throw new Error('El servidor no devolvió el contenido del ticket.')
 
@@ -131,5 +131,19 @@ export async function printAccountTicket(accountId) {
     throw new Error(
       `No se pudo imprimir el ticket (¿está encendida y conectada la impresora "${printer}"?): ${err?.message || err}`
     )
+  }
+}
+
+/**
+ * Cuenta por pagar que genera el mesero: 2 copias en la térmica ("COPIA CLIENTE", que el cliente
+ * lleva a la caja para pagar, y "COPIA COMERCIO"), ambas marcadas "CUENTA POR PAGAR". Sin
+ * impresora térmica (QZ Tray), abre el PDF para imprimirlo desde el navegador.
+ */
+export async function printCuentaPorPagar(accountId, copias = 2) {
+  try {
+    await printAccountTicket(accountId, copias)
+  } catch {
+    const r = await getTicketPdf(accountId)
+    window.open(URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' })), '_blank', 'noopener')
   }
 }

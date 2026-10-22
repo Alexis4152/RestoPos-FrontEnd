@@ -3,6 +3,7 @@ import { getRoles, createRole, updateRole, deleteRole } from '../api/roles'
 import { SECTIONS } from '../config/sections'
 import { useNotify } from '../context/NotifyContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { filaClick, FILA_CLICK } from '../utils/filaClick'
 
 const emptyForm = { name: '', description: '', sections: [] }
 
@@ -181,7 +182,7 @@ export default function Roles() {
           </thead>
           <tbody className="divide-y divide-gray-50">
             {roles.map((r) => (
-              <tr key={r.id} className="hover:bg-gray-50">
+              <tr key={r.id} {...filaClick(() => openEdit(r))} className={`${FILA_CLICK} hover:bg-gray-50`}>
                 <td className="px-4 py-3 font-medium text-gray-900">
                   {r.name}
                   {r.isSystem && (

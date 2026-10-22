@@ -27,7 +27,8 @@ const porNumero = (a, b) => String(a.numero).localeCompare(String(b.numero), 'es
  * usuario (Orden.mesero). El modo detallado (plano por zonas) sigue en el interruptor.
  */
 export default function MisMesas() {
-  const { user } = useAuth()
+  const { user, hasSection } = useAuth()
+  const puedeCobrar = hasSection('CASH_CUTS')
   const { notify } = useNotify()
   const navigate = useNavigate()
   const [mesas, setMesas] = useState([])
@@ -203,7 +204,7 @@ export default function MisMesas() {
                   className="flex-1 min-h-[44px] rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-extrabold">+ Pedir</button>
                 <button type="button" onClick={() => navigate(`/orders/${o.id}?ver=cuenta`)}
                   className={`flex-1 min-h-[44px] rounded-xl text-sm font-extrabold ${cuenta ? 'bg-gray-900 text-white' : 'border border-[#D9D5CC] bg-white text-gray-900 hover:bg-[#F1EFEA]'}`}>
-                  {cuenta ? 'Cobrar' : 'Cuenta'}
+                  {cuenta ? (puedeCobrar ? 'Cobrar' : 'Ver cuenta') : 'Cuenta'}
                 </button>
               </div>
             </article>

@@ -35,7 +35,7 @@ const RESUMEN = [
   { key: 'RESERVADA', label: 'Reservadas', short: 'reservadas' },
 ]
 
-const emptyMesaForm = { numero: '', capacidad: '', zonaId: '' }
+const emptyMesaForm = { numero: '', capacidad: '', zonaId: '', reservable: true }
 const porNumero = (a, b) => Number(a.numero) - Number(b.numero) || String(a.numero).localeCompare(String(b.numero))
 
 /** "38 min" / "1 h 05" desde una fecha. */
@@ -219,7 +219,7 @@ function TablesDetallado() {
   }
   function openEditMesa(mesa) {
     setEditTable(mesa)
-    setForm({ numero: mesa.numero, capacidad: mesa.capacidad ?? '', zonaId: mesa.zona?.id ?? '' })
+    setForm({ numero: mesa.numero, capacidad: mesa.capacidad ?? '', zonaId: mesa.zona?.id ?? '', reservable: mesa.reservable !== false })
     setFieldErrors({})
     setShowModal(true)
   }
@@ -231,7 +231,7 @@ function TablesDetallado() {
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); notify('Revisa los campos marcados en rojo', 'error'); return }
     setLoading(true)
     try {
-      const payload = { numero: form.numero, capacidad: form.capacidad ? Number(form.capacidad) : null, zonaId: Number(form.zonaId) }
+      const payload = { numero: form.numero, capacidad: form.capacidad ? Number(form.capacidad) : null, zonaId: Number(form.zonaId), reservable: form.reservable }
       if (editTable) await updateTable(editTable.id, payload)
       else await createTable(payload)
       setShowModal(false)
@@ -582,6 +582,13 @@ function TablesDetallado() {
                 <input id="mesa-cap" className="input" type="number" min="1" value={form.capacidad} onChange={(e) => setForm({ ...form, capacidad: e.target.value })} />
                 <p className="text-xs text-gray-500 mt-1">Se dibujan como figuras alrededor de la mesa.</p>
               </div>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" className="mt-1" checked={form.reservable} onChange={(e) => setForm({ ...form, reservable: e.target.checked })} />
+                <span>
+                  <span className="font-semibold text-gray-800">Disponible para reservaciones</span>
+                  <span className="block text-xs text-gray-500">Cuenta cuando en Página web eliges "solo las mesas que marque".</span>
+                </span>
+              </label>
               <div className="flex gap-2 justify-end pt-2">
                 <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
                 <button type="submit" className="btn-primary" disabled={loading}>{loading ? '...' : 'Guardar'}</button>

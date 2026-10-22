@@ -3,6 +3,7 @@ import { getCashCutCashiers, getCashCutMovements, getCashCutSummary, getCashCuts
 import { getCashPeople } from '../../api/cashRegisters'
 import ResolveArqueoModal, { ARQUEO_RESOLUTION_LABELS } from './ResolveArqueoModal'
 import { resolveMediaUrl } from '../../utils/media'
+import { filaClick, FILA_CLICK } from '../../utils/filaClick'
 import { CountBadge, Modal, MovementBadge, Pagination, SignedAmount, SummaryRow, fmt, fmtDate, fmtTime } from './common'
 
 const EMPTY_FILTERS = { from: '', to: '', status: '', userId: '', arqueoStatus: '' }
@@ -109,7 +110,7 @@ export default function HistoryTab({ onChanged }) {
               {cuts.map((c) => {
                 const diff = c.cashDifference != null ? Number(c.cashDifference) : null
                 return (
-                  <tr key={c.id} className="hover:bg-gray-50">
+                  <tr key={c.id} {...filaClick(() => setDetail(c))} className={`${FILA_CLICK} hover:bg-gray-50`}>
                     <td className="px-4 py-3 text-gray-400 font-mono text-xs">#{c.id}</td>
                     <td className="px-4 py-3 text-gray-700">{c.cashRegister?.name ?? '—'}</td>
                     <td className="px-4 py-3 text-gray-600">{fmtDate(c.openedAt)}</td>

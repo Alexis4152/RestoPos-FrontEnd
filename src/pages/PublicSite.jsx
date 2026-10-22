@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { getPublicTienda, getPublicMenu, getPublicMesas, createPublicPedido, getPublicPedido, uploadComprobantePedido, getClienteMe, logoutCliente, verificarCorreoCliente, reenviarVerificacionCliente } from '../api/publicSite'
+import { getPublicTienda, getPublicMenu, getPublicMesas, createPublicPedido, getPublicPedido, uploadComprobantePedido, uploadComprobanteCliente, getClienteMe, logoutCliente, verificarCorreoCliente, reenviarVerificacionCliente, preordenarReservacion } from '../api/publicSite'
 import { useAuth } from '../context/AuthContext'
 import { AuthScreen, MisPedidos, PerfilCliente, RestablecerScreen, esRepartidorDe } from './publicSite/Account'
 import Deliveries from './Deliveries'
@@ -8,8 +8,10 @@ import ComprobanteTransferencia, { puedeSubirComprobante } from './publicSite/Co
 import Reservaciones, { leerCodigosReserva, guardarCodigosReserva } from './publicSite/Reservaciones'
 import { usePublicLiveRefresh, publicStreamBase } from '../utils/liveEvents'
 import { applyTiendaBrand } from '../utils/theme'
+import GruposModificadores from '../components/GruposModificadores'
 import defaultLogo from '../assets/logo.png'
 import { resolveMediaUrl } from '../utils/media'
+import CamposDireccion, { validarDireccion, direccionPayload } from '../components/CamposDireccion'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
@@ -18,7 +20,7 @@ const PAGO_LABEL = { EFECTIVO: '💵 Efectivo', TARJETA: '💳 Tarjeta', TRANSFE
 const PAGO_HINT = {
   EFECTIVO: 'Pagas al recibir o al recoger tu pedido.',
   TARJETA: 'Pagas con tarjeta al recibir o al recoger (terminal).',
-  TRANSFERENCIA: 'Transfiere a la cuenta de abajo y sube la foto de tu comprobante en el seguimiento del pedido.',
+  TRANSFERENCIA: 'Transfiere a la cuenta de abajo y sube la foto de tu comprobante aquí o después en el seguimiento.',
 }
 const MESA_STYLE = {
   LIBRE: 'bg-green-50 border-green-300 text-green-800',
@@ -73,6 +75,9 @@ export default function PublicSite() {
   const [checkout, setCheckout] = useState(false)
   const [customize, setCustomize] = useState(null) // producto en personalización
   const [avisoCarrito, setAvisoCarrito] = useState(null) // lo que no se pudo agregar al "volver a pedir"
+  // Ordenando para una reservación ({ token, fechaHora, personas }): el carrito se manda como
+  // pedido anticipado (entra a cocina cuando llegan) en vez de pedido para recoger/domicilio.
+  const [paraReserva, setParaReserva] = useState(null)
 
   // Acceso: cliente registrado ({ token, cliente }), invitado, o repartidor (sesión del
   // personal, ver esRepartidorDe). Sin ninguno se muestra la pantalla de acceso.
@@ -234,7 +239,7 @@ export default function PublicSite() {
 
   const esRepartidor = esRepartidorDe(staffUser, tienda.tiendaId)
   const cliente = clienteSesion?.cliente ?? null
-  const puedePedir = (tienda.recoger || tienda.domicilio) && !esRepartidor
+  const puedePedir = ((tienda.recoger || tienda.domicilio) || !!paraReserva) && !esRepartidor
   const puedeReservar = tienda.reservaciones && !esRepartidor
 
   /**
@@ -422,6 +427,17 @@ export default function PublicSite() {
         )}
         {tab === 'menu' && !esRepartidor && (
           <>
+            {paraReserva && (
+              <div className="mb-6 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 px-4 py-3 text-sm flex flex-wrap items-center gap-3">
+                <p className="flex-1 min-w-[220px]">
+                  🍽️ Ordenando para tu reservación del <b>{new Date(paraReserva.fechaHora).toLocaleString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</b>.
+                  Lo preparamos cuando llegues y lo pagas en el restaurante.
+                </p>
+                <button type="button" onClick={() => { setParaReserva(null); setTab('reservar') }} className="px-3 py-1.5 rounded-full bg-white border border-blue-200 font-semibold hover:bg-blue-100">
+                  Salir
+                </button>
+              </div>
+            )}
             {!puedePedir && (
               <p className="mb-6 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 text-sm">
                 Por ahora este restaurante no recibe pedidos en línea, pero puedes ver su menú.
@@ -458,7 +474,7 @@ export default function PublicSite() {
                   {c.productos.map((p) => {
                     const qty = qtyOfProduct(p.id)
                     return (
-                      <article key={p.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex">
+                      <article key={p.id} className={`bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex ${p.sinInventario ? 'opacity-60' : ''}`}>
                         {p.imageUrl ? (
                           <img src={resolveMediaUrl(p.imageUrl)} alt={p.nombre} className="w-28 sm:w-32 min-h-28 object-cover shrink-0" />
                         ) : (
@@ -470,7 +486,9 @@ export default function PublicSite() {
                           {p.descripcion && <p className="text-sm text-gray-500 mt-1 line-clamp-2">{p.descripcion}</p>}
                           <div className="mt-auto pt-3 flex items-center justify-between gap-2">
                             <span className="font-bold text-purple-700">{fmt(p.precio)}</span>
-                            {puedePedir && (
+                            {p.sinInventario ? (
+                              <span className="px-3 py-1.5 rounded-full bg-gray-100 text-gray-600 text-sm font-semibold">No disponible</span>
+                            ) : puedePedir && (
                               <button onClick={() => (p.grupos.length > 0 ? setCustomize(p) : addToCart(p))}
                                 className="px-3 py-1.5 rounded-full bg-purple-600 text-white text-sm font-semibold hover:bg-purple-700">
                                 {qty > 0 ? `Agregar (${qty})` : 'Agregar'}
@@ -531,7 +549,8 @@ export default function PublicSite() {
         {esRepartidor && <Deliveries />}
 
         {tab === 'reservar' && puedeReservar && (
-          <Reservaciones slug={slug} tienda={tienda} cliente={cliente} clienteToken={clienteSesion?.token} onSesionVencida={sesionVencida} />
+          <Reservaciones slug={slug} tienda={tienda} cliente={cliente} clienteToken={clienteSesion?.token} onSesionVencida={sesionVencida}
+            onOrdenar={(r) => { setParaReserva({ token: r.token, fechaHora: r.fechaHora, personas: r.personas }); setTab('menu'); window.scrollTo({ top: 0 }) }} />
         )}
 
         {tab === 'mispedidos' && cliente && (
@@ -592,9 +611,11 @@ export default function PublicSite() {
 
       {cartOpen && (
         <CartDrawer
-          slug={slug} tienda={tienda} cart={cart} total={cartTotal} checkout={checkout}
+          slug={slug} tienda={tienda} cart={cart} total={cartTotal} checkout={checkout} paraReserva={paraReserva}
+          onPedidoReserva={() => { setCart([]); setCartOpen(false); setCheckout(false); setParaReserva(null); setTab('reservar'); window.scrollTo({ top: 0 }) }}
           cliente={cliente} clienteToken={clienteSesion?.token} onSesionVencida={() => { sesionVencida(); setCartOpen(false) }}
           setCheckout={setCheckout} setQty={setQty} onClose={() => { setCartOpen(false); setAvisoCarrito(null) }}
+          onVaciar={() => { setCart([]); setCheckout(false) }}
           aviso={avisoCarrito} onCerrarAviso={() => setAvisoCarrito(null)}
           onPedidoCreado={(p) => {
             setCart([])
@@ -638,29 +659,7 @@ function CustomizeModal({ producto, onClose, onAdd }) {
           <p className="font-semibold text-purple-700 mt-2">{fmt(producto.precio)}</p>
         </div>
         <div className="p-5 space-y-5 overflow-y-auto">
-          {producto.grupos.map((g) => (
-            <div key={g.id}>
-              <div className="flex items-center justify-between">
-                <p className="font-semibold">{g.nombre}</p>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${g.obligatorio ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
-                  {g.obligatorio ? 'Obligatorio' : 'Opcional'}{g.tipo !== 'UNICO' ? ' · varias' : ''}
-                </span>
-              </div>
-              <div className="mt-2 space-y-2">
-                {g.opciones.map((o) => {
-                  const on = (sel[g.id] ?? []).includes(o.id)
-                  return (
-                    <button key={o.id} type="button" onClick={() => toggle(g, o.id)}
-                      className={`w-full flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left ${on ? 'border-purple-600 bg-purple-50' : 'border-gray-200 hover:border-gray-300'}`}>
-                      <span className={`w-5 h-5 shrink-0 flex items-center justify-center text-xs font-bold ${g.tipo === 'UNICO' ? 'rounded-full' : 'rounded'} ${on ? 'bg-purple-600 text-white' : 'border border-gray-300'}`}>{on ? '✓' : ''}</span>
-                      <span className="flex-1">{o.nombre}</span>
-                      {Number(o.precioExtra) > 0 && <span className="text-sm text-gray-500">+{fmt(o.precioExtra)}</span>}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          ))}
+          <GruposModificadores grupos={producto.grupos} sel={sel} onToggle={toggle} />
           <div>
             <p className="font-semibold">Instrucciones especiales</p>
             <textarea className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-300"
@@ -689,17 +688,36 @@ function CustomizeModal({ producto, onClose, onAdd }) {
 }
 
 /** Panel lateral del carrito; en su segundo paso, el formulario para enviar el pedido. */
-function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, onClose, onPedidoCreado, cliente, clienteToken, onSesionVencida, aviso, onCerrarAviso }) {
+/** Billetes sugeridos para "¿con cuánto pagas?": los siguientes montos redondos que cubren el total. */
+function billetesQueCubren(total) {
+  const out = []
+  for (const paso of [50, 100, 200, 500, 1000]) {
+    const v = Math.ceil(total / paso) * paso
+    if (v > total && !out.includes(v)) out.push(v)
+  }
+  return out.slice(0, 3)
+}
+
+function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, onClose, onVaciar, onPedidoCreado, cliente, clienteToken, onSesionVencida, aviso, onCerrarAviso, paraReserva, onPedidoReserva }) {
   useEscapeKey(onClose)
   const pagos = ['EFECTIVO', 'TARJETA', 'TRANSFERENCIA'].filter((k) =>
     (k === 'EFECTIVO' && tienda.pagoEfectivo) || (k === 'TARJETA' && tienda.pagoTarjeta) || (k === 'TRANSFERENCIA' && tienda.pagoTransferencia))
   const [form, setForm] = useState(() => ({
     // Cliente registrado: sus datos ya vienen llenos (los puede cambiar para este pedido).
-    nombre: cliente?.nombre ?? '', telefono: cliente?.telefono ?? '', direccion: cliente?.direccion ?? '', notas: '',
+    nombre: cliente?.nombre ?? '', telefono: cliente?.telefono ?? '', notas: '',
+    calle: cliente?.calle ?? '', colonia: cliente?.colonia ?? '', codigoPostal: cliente?.codigoPostal ?? '',
     tipoEntrega: tienda.recoger ? 'RECOGER' : 'DOMICILIO',
     metodoPago: pagos[0] ?? '',
   }))
   const [errors, setErrors] = useState({})
+  // Efectivo: con cuánto paga. 'exacto' | un billete sugerido (número) | 'otro' (escribe el monto).
+  const [pagaCon, setPagaCon] = useState('exacto')
+  const [otroMonto, setOtroMonto] = useState('')
+  const [confirmarVaciar, setConfirmarVaciar] = useState(false)
+  // Transferencia: comprobante opcional desde aquí (si ya transfirió); si no, lo sube en el seguimiento.
+  const [comprobante, setComprobante] = useState(null)
+  const [comprobanteIncluyeEnvio, setComprobanteIncluyeEnvio] = useState(true)
+  const [comprobanteError, setComprobanteError] = useState('')
   const [sending, setSending] = useState(false)
   const [serverError, setServerError] = useState('')
   // Llave única de este intento de pedido: si el envío se repite (doble clic, red lenta), el
@@ -708,6 +726,9 @@ function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, 
   const correoSinConfirmar = !!cliente && !cliente.emailVerificado
 
   const envio = form.tipoEntrega === 'DOMICILIO' ? Number(tienda.costoEnvio || 0) : 0
+  const totalPedido = Math.round((total + envio) * 100) / 100
+  const montoPagaCon = pagaCon === 'exacto' ? totalPedido : pagaCon === 'otro' ? Number(otroMonto) || 0 : pagaCon
+  const cambio = Math.round((montoPagaCon - totalPedido) * 100) / 100
   const set = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setErrors((e) => ({ ...e, [k]: '' })) }
 
   async function enviar(e) {
@@ -717,8 +738,11 @@ function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, 
     if (!form.nombre.trim()) errs.nombre = 'Escribe tu nombre'
     if (!form.telefono.trim()) errs.telefono = 'Escribe tu teléfono'
     else if (form.telefono.replace(/\D/g, '').length < 8) errs.telefono = 'Revisa tu teléfono'
-    if (form.tipoEntrega === 'DOMICILIO' && !form.direccion.trim()) errs.direccion = 'Escribe la dirección de entrega'
+    if (form.tipoEntrega === 'DOMICILIO') Object.assign(errs, validarDireccion(form))
     if (!form.metodoPago) errs.metodoPago = 'Elige cómo vas a pagar'
+    if (form.metodoPago === 'EFECTIVO' && montoPagaCon < totalPedido) {
+      errs.pagaCon = `Debe ser al menos ${fmt(totalPedido)}`
+    }
     setErrors(errs)
     if (Object.keys(errs).length > 0) return
     setSending(true)
@@ -728,15 +752,25 @@ function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, 
         clienteNombre: form.nombre.trim(),
         clienteTelefono: form.telefono.trim(),
         tipoEntrega: form.tipoEntrega,
-        direccion: form.tipoEntrega === 'DOMICILIO' ? form.direccion.trim() : undefined,
+        ...(form.tipoEntrega === 'DOMICILIO' ? direccionPayload(form) : {}),
         metodoPago: form.metodoPago,
+        pagaCon: form.metodoPago === 'EFECTIVO' ? montoPagaCon : undefined,
         notas: form.notas.trim() || undefined,
         items: cart.map((l) => ({
           productoId: l.productoId, cantidad: l.cantidad,
           observaciones: l.nota || undefined, modificadorOpcionIds: l.mods.map((m) => m.id),
         })),
       }, clienteToken, idemKey)
-      onPedidoCreado({ id: res.data.data.id, token: res.data.data.token })
+      const creado = { id: res.data.data.id, token: res.data.data.token }
+      // El pedido ya quedó: si el comprobante falla, se puede volver a subir desde el seguimiento.
+      if (form.metodoPago === 'TRANSFERENCIA' && comprobante) {
+        try {
+          const incluye = form.tipoEntrega !== 'DOMICILIO' || envio === 0 || comprobanteIncluyeEnvio
+          if (clienteToken) await uploadComprobanteCliente(slug, clienteToken, creado.id, comprobante, incluye)
+          else await uploadComprobantePedido(slug, creado.token, comprobante, incluye)
+        } catch { /* se sube después desde el seguimiento */ }
+      }
+      onPedidoCreado(creado)
     } catch (err) {
       if (err.response?.status === 401) { onSesionVencida(); return }
       setServerError(err.response?.data?.message ?? 'No pudimos enviar tu pedido. Intenta de nuevo.')
@@ -746,6 +780,28 @@ function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, 
   }
 
   const inputCls = 'mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-300'
+
+  // Pedido anticipado de una reservación: sin entrega ni forma de pago (se paga en el restaurante).
+  async function enviarReserva(e) {
+    e.preventDefault()
+    if (sending) return
+    setSending(true)
+    setServerError('')
+    try {
+      await preordenarReservacion(slug, paraReserva.token, {
+        notas: form.notas.trim() || undefined,
+        items: cart.map((l) => ({
+          productoId: l.productoId, cantidad: l.cantidad,
+          observaciones: l.nota || undefined, modificadorOpcionIds: l.mods.map((m) => m.id),
+        })),
+      })
+      onPedidoReserva()
+    } catch (err) {
+      setServerError(err.response?.data?.message ?? 'No pudimos enviar tu pedido. Intenta de nuevo.')
+    } finally {
+      setSending(false)
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onClose}>
@@ -767,6 +823,22 @@ function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, 
                 </div>
               )}
               {cart.length === 0 && <p className="text-center text-gray-400 py-16">Tu carrito está vacío.</p>}
+              {cart.length > 0 && (
+                <div className="flex justify-end">
+                  {confirmarVaciar ? (
+                    <span className="flex items-center gap-2 text-sm">
+                      <span className="text-gray-600">¿Vaciar el carrito?</span>
+                      <button type="button" onClick={() => { onVaciar(); setConfirmarVaciar(false) }}
+                        className="px-3 py-1.5 rounded-full bg-red-600 text-white font-semibold">Sí, vaciar</button>
+                      <button type="button" onClick={() => setConfirmarVaciar(false)}
+                        className="px-3 py-1.5 rounded-full border border-gray-300 font-semibold">No</button>
+                    </span>
+                  ) : (
+                    <button type="button" onClick={() => setConfirmarVaciar(true)}
+                      className="text-sm font-semibold text-red-600 hover:underline">🗑️ Vaciar carrito</button>
+                  )}
+                </div>
+              )}
               {cart.map((l) => (
                 <div key={l.key} className="flex gap-3">
                   {l.imageUrl ? <img src={resolveMediaUrl(l.imageUrl)} alt="" className="w-16 h-16 rounded-xl object-cover" /> : <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">🍽️</div>}
@@ -799,6 +871,27 @@ function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, 
               </button>
             </div>
           </>
+        ) : paraReserva ? (
+          <form onSubmit={enviarReserva} className="flex-1 flex flex-col min-h-0">
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              <div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-sm text-blue-900">
+                <p className="font-semibold">Para tu reservación</p>
+                <p className="capitalize">{new Date(paraReserva.fechaHora).toLocaleString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} · {paraReserva.personas} persona{paraReserva.personas === 1 ? '' : 's'}</p>
+                <p className="mt-1.5 text-xs">No se prepara todavía: entra a cocina cuando llegues al restaurante. Lo pagas ahí.</p>
+              </div>
+              <label className="block text-sm text-gray-600">Comentarios (opcional)
+                <textarea className={inputCls} rows={2} maxLength={500} value={form.notas} onChange={(e) => set('notas', e.target.value)} />
+              </label>
+            </div>
+            <div className="p-5 border-t border-gray-100 space-y-1.5">
+              <div className="flex justify-between font-bold text-lg"><span>Total</span><span>{fmt(total)}</span></div>
+              {serverError && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{serverError}</p>}
+              <button type="submit" disabled={sending || cart.length === 0}
+                className="w-full mt-2 rounded-full bg-purple-600 text-white py-3.5 font-semibold hover:bg-purple-700 disabled:opacity-40">
+                {sending ? 'Enviando...' : 'Dejar listo mi pedido'}
+              </button>
+            </div>
+          </form>
         ) : (
           <form onSubmit={enviar} className="flex-1 flex flex-col min-h-0">
             <div className="flex-1 overflow-y-auto p-5 space-y-5">
@@ -832,10 +925,12 @@ function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, 
                   {errors.telefono && <span className="text-xs text-red-600">{errors.telefono}</span>}
                 </label>
                 {form.tipoEntrega === 'DOMICILIO' && (
-                  <label className="block text-sm text-gray-600">Dirección de entrega *
-                    <textarea className={inputCls} rows={2} maxLength={200} placeholder="Calle, número, colonia, referencias" value={form.direccion} onChange={(e) => set('direccion', e.target.value)} autoComplete="street-address" />
-                    {errors.direccion && <span className="text-xs text-red-600">{errors.direccion}</span>}
-                  </label>
+                  <div>
+                    <p className="text-sm text-gray-600 mb-1">Dirección de entrega</p>
+                    <CamposDireccion value={form} errors={errors} inputCls={inputCls} labelCls="block text-sm text-gray-600" idPrefix="web-dir"
+                      onChange={(p) => Object.entries(p).forEach(([k, v]) => set(k, v))} />
+                    <p className="text-xs text-gray-500 mt-1">Referencias para encontrarte (entre calles, color de la casa…) en los comentarios del pedido.</p>
+                  </div>
                 )}
               </div>
 
@@ -852,6 +947,59 @@ function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, 
                 </div>
                 {errors.metodoPago && <p className="text-xs text-red-600 mt-1">{errors.metodoPago}</p>}
                 {form.metodoPago === 'TRANSFERENCIA' && <TransferenciaInfo tienda={tienda} />}
+                {form.metodoPago === 'TRANSFERENCIA' && (
+                  <div className="mt-3 rounded-xl border border-gray-200 p-3 space-y-2 text-sm">
+                    <p className="font-semibold">¿Ya transferiste? Sube tu comprobante <span className="font-normal text-gray-500">(opcional)</span></p>
+                    <p className="text-xs text-gray-500">Si aún no, envía tu pedido y súbelo después desde el seguimiento.</p>
+                    {form.tipoEntrega === 'DOMICILIO' && envio > 0 && (
+                      <div className="space-y-1">
+                        <label className="flex items-center gap-2"><input type="radio" checked={comprobanteIncluyeEnvio} onChange={() => setComprobanteIncluyeEnvio(true)} />
+                          Transferí todo ({fmt(totalPedido)})</label>
+                        <label className="flex items-center gap-2"><input type="radio" checked={!comprobanteIncluyeEnvio} onChange={() => setComprobanteIncluyeEnvio(false)} />
+                          Transferí sin el envío; el envío ({fmt(envio)}) lo pago en efectivo</label>
+                      </div>
+                    )}
+                    <label className="inline-flex items-center gap-2 px-3 py-2 rounded-full border-2 border-gray-200 font-semibold cursor-pointer hover:border-gray-300">
+                      📎 {comprobante ? 'Cambiar foto' : 'Elegir foto del comprobante'}
+                      <input type="file" accept="image/*" className="sr-only" onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        e.target.value = ''
+                        if (!f) return
+                        if (f.size > 3 * 1024 * 1024) { setComprobanteError('La foto no debe pesar más de 3 MB'); return }
+                        setComprobanteError(''); setComprobante(f)
+                      }} />
+                    </label>
+                    {comprobante && (
+                      <p className="text-green-700">✓ {comprobante.name}{' '}
+                        <button type="button" className="text-gray-500 underline" onClick={() => setComprobante(null)}>Quitar</button>
+                      </p>
+                    )}
+                    {comprobanteError && <p className="text-xs text-red-600">{comprobanteError}</p>}
+                  </div>
+                )}
+                {form.metodoPago === 'EFECTIVO' && (
+                  <div className="mt-3 rounded-xl border border-gray-200 p-3 space-y-2">
+                    <p className="text-sm font-semibold">¿Con cuánto pagas?</p>
+                    <p className="text-xs text-gray-500">Así {form.tipoEntrega === 'DOMICILIO' ? 'el repartidor lleva' : 'tenemos listo'} tu cambio.</p>
+                    <div className="flex flex-wrap gap-2">
+                      {['exacto', ...billetesQueCubren(totalPedido), 'otro'].map((v) => (
+                        <button key={v} type="button" aria-pressed={pagaCon === v}
+                          onClick={() => { setPagaCon(v); setErrors((e) => ({ ...e, pagaCon: '' })) }}
+                          className={`px-3 py-2 rounded-full text-sm font-semibold border-2 ${pagaCon === v ? 'border-purple-600 bg-purple-50 text-purple-800' : 'border-gray-200 text-gray-700'}`}>
+                          {v === 'exacto' ? 'Exacto' : v === 'otro' ? 'Otro monto' : fmt(v).replace('.00', '')}
+                        </button>
+                      ))}
+                    </div>
+                    {pagaCon === 'otro' && (
+                      <input type="number" inputMode="decimal" min={totalPedido} className={inputCls} placeholder={`Mínimo ${fmt(totalPedido)}`}
+                        aria-label="Monto con el que pagas" value={otroMonto}
+                        onChange={(e) => { setOtroMonto(e.target.value); setErrors((er) => ({ ...er, pagaCon: '' })) }} />
+                    )}
+                    {errors.pagaCon
+                      ? <p className="text-xs text-red-600">{errors.pagaCon}</p>
+                      : cambio > 0 && <p className="text-sm font-semibold text-green-700">Tu cambio: {fmt(cambio)}</p>}
+                  </div>
+                )}
               </div>
 
               <label className="block text-sm text-gray-600">Comentarios del pedido (opcional)
@@ -914,8 +1062,8 @@ function PedidoTracker({ tienda, status, onCerrar, slug, token, onActualizado })
           </>
         ) : (
           <>
-            <h2 className="text-2xl font-bold mt-1">{steps[idx]?.label ?? status.estado}</h2>
-            <p className="text-gray-600 mt-1">{steps[idx]?.hint}</p>
+            <h2 className="text-2xl font-bold mt-1">{status.buscandoRepartidor ? 'Buscando otro repartidor' : (steps[idx]?.label ?? status.estado)}</h2>
+            <p className="text-gray-600 mt-1">{status.buscandoRepartidor ? 'Tu repartidor anterior no pudo llevarlo; en cuanto otro lo tome, sale hacia tu domicilio.' : steps[idx]?.hint}</p>
             <ol className={`mt-6 grid gap-2 ${steps.length === 5 ? 'grid-cols-5' : 'grid-cols-4'}`}>
               {steps.map((s, i) => (
                 <li key={s.key} className="text-center">
@@ -938,7 +1086,11 @@ function PedidoTracker({ tienda, status, onCerrar, slug, token, onActualizado })
             </div>
           ))}
           <div className="flex justify-between font-bold text-lg pt-2 border-t border-gray-100"><span>Total</span><span>{fmt(status.total)}</span></div>
-          <p className="text-sm text-gray-500">Pago: {PAGO_LABEL[status.metodoPago] ?? status.metodoPago}</p>
+          <p className="text-sm text-gray-500">
+            Pago: {PAGO_LABEL[status.metodoPago] ?? status.metodoPago}
+            {status.metodoPago === 'EFECTIVO' && status.pagaCon != null && Number(status.pagaCon) > Number(status.total)
+              ? ` · pagas con ${fmt(status.pagaCon)} (cambio ${fmt(Number(status.pagaCon) - Number(status.total))})` : ''}
+          </p>
           {status.metodoPago === 'TRANSFERENCIA' && !terminado && <TransferenciaInfo tienda={tienda} />}
           {puedeSubirComprobante(status) && slug && token && (
             <ComprobanteTransferencia status={status} onActualizado={onActualizado}

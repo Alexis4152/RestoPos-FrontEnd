@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { loginCliente, registerCliente, getClientePedidos, reviewClientePedido, updateClienteMe, reportClientePedido, olvideContrasenaCliente, restablecerContrasenaCliente, getCuentasParaOpinar, opinarCuentaCliente, getRepetirPedido, uploadComprobanteCliente } from '../../api/publicSite'
 import ComprobanteTransferencia, { puedeSubirComprobante } from './ComprobanteTransferencia'
 import OpinionForm from './OpinionForm'
+import CamposDireccion, { validarDireccion, direccionPayload } from '../../components/CamposDireccion'
 import { useAuth } from '../../context/AuthContext'
 import { usePublicLiveRefresh, publicStreamBase } from '../../utils/liveEvents'
 import defaultLogo from '../../assets/logo.png'
@@ -32,8 +33,7 @@ function validarCliente(f, { conPassword }) {
   if (!f.telefono.trim()) e.telefono = 'Escribe tu teléfono'
   else if (!TEL_RE.test(f.telefono)) e.telefono = 'Solo números, espacios, guiones o +'
   else if (digitos < 10 || digitos > 15) e.telefono = 'Debe tener entre 10 y 15 dígitos'
-  if (f.direccion.trim().length < 5) e.direccion = 'Escribe tu dirección (calle, número, colonia)'
-  else if (f.direccion.length > 200) e.direccion = 'Máximo 200 caracteres'
+  Object.assign(e, validarDireccion(f))
   if (conPassword) {
     if (!EMAIL_RE.test(f.email.trim())) e.email = 'Escribe un correo válido'
     else if (f.email.length > 150) e.email = 'Máximo 150 caracteres'
@@ -64,7 +64,7 @@ function Field({ label, error, children }) {
 export function AuthScreen({ slug, tienda, onCliente, onRepartidor, onInvitado, onCancel }) {
   const { login: staffLogin, logout: staffLogout } = useAuth()
   const [modo, setModo] = useState('login')
-  const [form, setForm] = useState({ email: '', password: '', nombre: '', telefono: '', direccion: '', confirm: '' })
+  const [form, setForm] = useState({ email: '', password: '', nombre: '', telefono: '', calle: '', colonia: '', codigoPostal: '', confirm: '' })
   const [errors, setErrors] = useState({})
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -111,7 +111,7 @@ export function AuthScreen({ slug, tienda, onCliente, onRepartidor, onInvitado, 
     setError('')
     try {
       const res = await registerCliente(slug, {
-        nombre: form.nombre.trim(), telefono: form.telefono.trim(), direccion: form.direccion.trim(),
+        nombre: form.nombre.trim(), telefono: form.telefono.trim(), ...direccionPayload(form),
         email: form.email.trim(), password: form.password,
       })
       onCliente(res.data.data)
@@ -169,10 +169,11 @@ export function AuthScreen({ slug, tienda, onCliente, onRepartidor, onInvitado, 
             <Field label="Teléfono *" error={errors.telefono}>
               <input className={inputCls} type="tel" maxLength={30} autoComplete="tel" value={form.telefono} onChange={(e) => set('telefono', e.target.value)} />
             </Field>
-            <Field label="Dirección *" error={errors.direccion}>
-              <textarea className={inputCls} rows={2} maxLength={200} autoComplete="street-address" placeholder="Calle, número, colonia, referencias"
-                value={form.direccion} onChange={(e) => set('direccion', e.target.value)} />
-            </Field>
+            <div>
+              <p className="block text-sm font-medium text-gray-700 mb-1">Dirección (para tus pedidos a domicilio)</p>
+              <CamposDireccion value={form} errors={errors} inputCls={inputCls} labelCls="block text-sm text-gray-600" idPrefix="reg-dir"
+                onChange={(p) => Object.entries(p).forEach(([k, v]) => set(k, v))} />
+            </div>
             <Field label="Correo *" error={errors.email}>
               <input className={inputCls} type="email" maxLength={150} autoComplete="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
             </Field>
@@ -350,8 +351,8 @@ function Etapas({ pedido }) {
     <div className="mt-4">
       {!terminado && (
         <>
-          <p className="text-lg font-bold">{steps[idx].label}</p>
-          <p className="text-sm text-gray-600">{steps[idx].hint}</p>
+          <p className="text-lg font-bold">{pedido.buscandoRepartidor ? 'Buscando otro repartidor' : steps[idx].label}</p>
+          <p className="text-sm text-gray-600">{pedido.buscandoRepartidor ? 'Tu repartidor anterior no pudo llevarlo; en cuanto otro lo tome, sale hacia tu domicilio.' : steps[idx].hint}</p>
         </>
       )}
       <ol className={`mt-3 grid gap-2 ${steps.length === 5 ? 'grid-cols-5' : 'grid-cols-4'}`}>
@@ -713,7 +714,12 @@ function PedidoHistorial({ slug, tienda, token, pedido, onCambio, onSesionVencid
 
 /** Datos del cliente (nombre, teléfono, dirección); el correo no se cambia aquí. */
 export function PerfilCliente({ slug, token, cliente, onActualizado, onSesionVencida }) {
-  const [form, setForm] = useState({ nombre: cliente.nombre, telefono: cliente.telefono, direccion: cliente.direccion, email: cliente.email, password: '', confirm: '' })
+  const [form, setForm] = useState({
+    nombre: cliente.nombre, telefono: cliente.telefono, email: cliente.email, password: '', confirm: '',
+    calle: cliente.calle ?? '', colonia: cliente.colonia ?? '', codigoPostal: cliente.codigoPostal ?? '',
+  })
+  // Cuentas de antes: tenían la dirección en un solo texto; se muestra para que la pasen a los campos.
+  const direccionAnterior = !cliente.calle && cliente.direccion ? cliente.direccion : null
   const [errors, setErrors] = useState({})
   const [msg, setMsg] = useState('')
   const [saving, setSaving] = useState(false)
@@ -726,7 +732,7 @@ export function PerfilCliente({ slug, token, cliente, onActualizado, onSesionVen
     if (Object.keys(errs).length > 0) return
     setSaving(true)
     try {
-      const r = await updateClienteMe(slug, token, { nombre: form.nombre.trim(), telefono: form.telefono.trim(), direccion: form.direccion.trim() })
+      const r = await updateClienteMe(slug, token, { nombre: form.nombre.trim(), telefono: form.telefono.trim(), ...direccionPayload(form) })
       onActualizado(r.data.data)
       setMsg('Datos guardados')
     } catch (err) {
@@ -748,9 +754,14 @@ export function PerfilCliente({ slug, token, cliente, onActualizado, onSesionVen
       <Field label="Teléfono *" error={errors.telefono}>
         <input className={inputCls} type="tel" maxLength={30} value={form.telefono} onChange={(e) => set('telefono', e.target.value)} />
       </Field>
-      <Field label="Dirección *" error={errors.direccion}>
-        <textarea className={inputCls} rows={2} maxLength={200} value={form.direccion} onChange={(e) => set('direccion', e.target.value)} />
-      </Field>
+      <div>
+        <p className="block text-sm font-medium text-gray-700 mb-1">Dirección</p>
+        {direccionAnterior && (
+          <p className="text-xs text-amber-800 bg-amber-50 rounded-lg px-2.5 py-1.5 mb-2">Tu dirección guardada: "{direccionAnterior}". Captúrala en los campos de abajo.</p>
+        )}
+        <CamposDireccion value={form} errors={errors} inputCls={inputCls} labelCls="block text-sm text-gray-600" idPrefix="perfil-dir"
+          onChange={(p) => Object.entries(p).forEach(([k, v]) => set(k, v))} />
+      </div>
       {msg && <p className={`text-sm rounded-lg px-3 py-2 ${msg === 'Datos guardados' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>{msg}</p>}
       <button disabled={saving} className="w-full rounded-full bg-purple-600 text-white py-3 font-semibold hover:bg-purple-700 disabled:opacity-40">
         {saving ? 'Guardando...' : 'Guardar'}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getProductSuggestions } from '../../api/products'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
+import GruposModificadores from '../../components/GruposModificadores'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
@@ -90,28 +91,8 @@ export default function OpcionesSheet({ producto, anterior, onAgregar, onCerrar 
           <p className="-mt-2 text-sm text-gray-600">Ya viene con lo que más se pide. Si así va, solo toca Agregar.</p>
         )}
 
-        {grupos.map((g) => (
-          <fieldset key={g.id} className="space-y-1.5">
-            <legend className="text-sm font-extrabold">
-              {g.nombre}{' '}
-              <span className="font-semibold text-gray-600">
-                · {g.tipo === 'UNICO' ? 'elige 1' : 'puedes elegir varias'}{g.obligatorio ? '' : ' (opcional)'}
-              </span>
-            </legend>
-            <div className="flex flex-wrap gap-2">
-              {g.opciones.map((o) => {
-                const on = (sel[g.id] ?? []).includes(o.id)
-                return (
-                  <button key={o.id} type="button" aria-pressed={on} onClick={() => tocar(g, o.id)}
-                    className={`min-h-[44px] px-4 rounded-full text-sm font-bold border ${on ? 'border-2 border-purple-600 bg-purple-50 text-purple-800' : 'border-[#D9D5CC] bg-white text-gray-700'}`}>
-                    {o.nombre}{Number(o.precioExtra) > 0 ? ` +${fmt(o.precioExtra)}` : ''}
-                    {sugeridas[g.id] === o.id && <span className="ml-1.5 text-[11px] font-semibold text-gray-600">lo más pedido</span>}
-                  </button>
-                )
-              })}
-            </div>
-          </fieldset>
-        ))}
+        <GruposModificadores grupos={grupos} sel={sel} onToggle={tocar}
+          nota={(g, o) => (sugeridas[g.id] === o.id ? 'lo más pedido' : null)} />
 
         <div className="space-y-1.5">
           <p className="text-sm font-extrabold">Notas {notasFrecuentes.length > 0 && <span className="font-semibold text-gray-600">· las más usadas</span>}</p>

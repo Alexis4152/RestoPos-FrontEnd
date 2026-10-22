@@ -14,8 +14,8 @@ const PASOS = [
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 const METODO_PAGO = { CASH: 'Efectivo', CARD: 'Tarjeta', TRANSFER: 'Transferencia' }
 const METODO_ACORDADO = { EFECTIVO: 'efectivo', TARJETA: 'tarjeta', TRANSFERENCIA: 'transferencia' }
-const EVENTO_LABEL = { TOMADO: 'Lo tomó', SOLTADO: 'Lo soltó', EN_CAMINO: 'Salió en camino', ENTREGADO: 'Entregado' }
-const EVENTO_ICONO = { TOMADO: '🙋', SOLTADO: '↩️', EN_CAMINO: '🛵', ENTREGADO: '✅' }
+const EVENTO_LABEL = { TOMADO: 'Lo tomó', SOLTADO: 'Lo soltó', EN_CAMINO: 'Salió en camino', ENTREGADO: 'Entregado', RECIBIDO_CAJA: 'Dinero recibido en caja' }
+const EVENTO_ICONO = { TOMADO: '🙋', SOLTADO: '↩️', EN_CAMINO: '🛵', ENTREGADO: '✅', RECIBIDO_CAJA: '💰' }
 
 /**
  * Seguimiento de un envío a domicilio en el punto de venta: en qué paso va (sin repartidor →
@@ -166,6 +166,8 @@ function TransferenciaEnvio({ t, total, ordenId }) {
 /** Etiqueta corta del cobro para tarjetas (tablero "Para llevar"). */
 export function etiquetaCobro(orden) {
   if (orden.estado === 'PAGADA') return { texto: '💰 Cobrado', cls: 'bg-green-100 text-green-800' }
+  // Entregado y sin cobrar: el dinero lo trae el repartidor; la caja lo recibe.
+  if (orden.entregadaAt) return { texto: `💵 Por recibir de ${orden.repartidor?.name ?? 'el repartidor'} · ${fmt(orden.total)}`, cls: 'bg-amber-100 text-amber-800' }
   if (orden.metodoPago === 'TRANSFERENCIA' && orden.comprobanteAt) {
     const sinEnvio = orden.transferenciaIncluyeEnvio === false
     return { texto: `🧾 Comprobante subido${sinEnvio ? ' · envío en efectivo' : ''} · por confirmar`, cls: 'bg-blue-100 text-blue-800' }

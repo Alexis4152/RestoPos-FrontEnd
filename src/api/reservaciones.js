@@ -16,5 +16,9 @@ export const rejectReservacion = (id, motivo) => api.post(`/reservaciones/${id}/
 
 export const cancelReservacion = (id, motivo) => api.post(`/reservaciones/${id}/cancelar`, { motivo })
 
-/** Marca que el grupo llegó (true) o que no llegó (false). */
-export const markReservacionLlegada = (id, llego) => api.post(`/reservaciones/${id}/${llego ? 'llego' : 'no-llego'}`)
+/** Marca que el grupo llegó (true, opcionalmente en la mesa `mesaId`) o que no llegó (false). */
+export const markReservacionLlegada = (id, llego, mesaId) =>
+  api.post(`/reservaciones/${id}/${llego ? 'llego' : 'no-llego'}`, llego && mesaId ? { mesaId } : undefined)
+
+/** Reglas de la tienda: { todasLasMesas, cambiosHoras, llegadaMinutosAntes }. */
+export const getReglasReservacion = () => api.get('/reservaciones/reglas')

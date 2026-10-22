@@ -4,6 +4,7 @@ import { updateOrderItem, cancelOrderItem, addOrderItem } from '../../api/ordene
 import { useNotify } from '../../context/NotifyContext'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { gruposActivos } from './OpcionesSheet'
+import GruposModificadores from '../../components/GruposModificadores'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const ENTREGADO = ['ENTREGADO_MESERO', 'ENTREGADO']
@@ -128,22 +129,7 @@ export default function EditarLineaSheet({ ordenId, item, comensales, onCerrar, 
           </div>
         </div>
 
-        {grupos.map((g) => (
-          <fieldset key={g.id} className="space-y-1.5" disabled={!puedeOpciones}>
-            <legend className="text-sm font-extrabold">{g.nombre} <span className="font-semibold text-gray-600">· {g.tipo === 'UNICO' ? 'elige 1' : 'puedes elegir varias'}</span></legend>
-            <div className="flex flex-wrap gap-2">
-              {g.opciones.map((o) => {
-                const on = (sel[g.id] ?? []).includes(o.id)
-                return (
-                  <button key={o.id} type="button" aria-pressed={on} onClick={() => tocar(g, o.id)}
-                    className={`min-h-[44px] px-4 rounded-full text-sm font-bold border disabled:opacity-60 ${on ? 'border-2 border-purple-600 bg-purple-50 text-purple-800' : 'border-[#D9D5CC] bg-white text-gray-700'}`}>
-                    {o.nombre}{Number(o.precioExtra) > 0 ? ` +${fmt(o.precioExtra)}` : ''}
-                  </button>
-                )
-              })}
-            </div>
-          </fieldset>
-        ))}
+        <GruposModificadores grupos={grupos} sel={sel} onToggle={tocar} disabled={!puedeOpciones} />
 
         {!entregado && (
           <div>

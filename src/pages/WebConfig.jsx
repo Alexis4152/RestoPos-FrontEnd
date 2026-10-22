@@ -49,6 +49,10 @@ export default function WebConfig() {
         // El backend manda "13:00:00"; el input de hora usa "13:00".
         reservaHoraInicio: i.reservaHoraInicio ? i.reservaHoraInicio.slice(0, 5) : '',
         reservaHoraFin: i.reservaHoraFin ? i.reservaHoraFin.slice(0, 5) : '',
+        reservaTodasMesas: i.reservaTodasMesas !== false,
+        reservaCambiosHoras: i.reservaCambiosHoras ?? 2,
+        reservaRetrasoEnabled: i.reservaRetrasoEnabled !== false,
+        reservaRetrasoHoras: i.reservaRetrasoHoras ?? 3,
       })
     })
   }, [tiendaId])
@@ -70,6 +74,10 @@ export default function WebConfig() {
         reservaDiasMax: Number(form.reservaDiasMax) || 30,
         reservaHoraInicio: form.reservaHoraInicio || null,
         reservaHoraFin: form.reservaHoraFin || null,
+        reservaTodasMesas: form.reservaTodasMesas,
+        reservaCambiosHoras: Number(form.reservaCambiosHoras) || 0,
+        reservaRetrasoEnabled: form.reservaRetrasoEnabled,
+        reservaRetrasoHoras: Number(form.reservaRetrasoHoras) || 0,
       })
       notify('Página web guardada', 'success')
     } catch (err) {
@@ -171,6 +179,27 @@ export default function WebConfig() {
               <input type="number" min={1} max={365} className="input" value={form.reservaDiasMax} onChange={(e) => set('reservaDiasMax', e.target.value)} />
             </div>
             <p className="text-xs text-gray-400 sm:col-span-2">Sin horario, se ofrecen de 8:00 a 22:00 cada media hora.</p>
+            <fieldset className="sm:col-span-2">
+              <legend className="block text-xs font-medium text-gray-600 mb-1">Mesas que se pueden reservar</legend>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <label className="flex items-center gap-2"><input type="radio" checked={form.reservaTodasMesas} onChange={() => set('reservaTodasMesas', true)} /> Todas</label>
+                <label className="flex items-center gap-2"><input type="radio" checked={!form.reservaTodasMesas} onChange={() => set('reservaTodasMesas', false)} /> Solo las que marque en Mesas</label>
+              </div>
+              {!form.reservaTodasMesas && (
+                <p className="text-xs text-gray-500 mt-1">En <Link to="/tables" className="text-purple-600 hover:underline">Mesas</Link>, edita cada mesa y marca "Disponible para reservaciones".</p>
+              )}
+            </fieldset>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">El cliente puede cambiar personas o necesidades hasta (horas antes)</label>
+              <input type="number" min={0} max={168} className="input" value={form.reservaCambiosHoras} onChange={(e) => set('reservaCambiosHoras', e.target.value)} />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-1">
+                <input type="checkbox" checked={form.reservaRetrasoEnabled} onChange={(e) => set('reservaRetrasoEnabled', e.target.checked)} />
+                "Llegaré un poco más tarde" hasta (horas antes)
+              </label>
+              <input type="number" min={0} max={72} className="input" disabled={!form.reservaRetrasoEnabled} value={form.reservaRetrasoHoras} onChange={(e) => set('reservaRetrasoHoras', e.target.value)} />
+            </div>
           </div>
         )}
       </div>

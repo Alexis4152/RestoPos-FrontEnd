@@ -3,6 +3,7 @@ import { getSales } from '../api/sales'
 import { printAccountTicket } from '../utils/printer'
 import { useNotify } from '../context/NotifyContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { filaClick, FILA_CLICK } from '../utils/filaClick'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—'
@@ -152,7 +153,7 @@ export default function Sales() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {ventas.map((v) => (
-                <tr key={v.ordenId} className="hover:bg-gray-50">
+                <tr key={v.ordenId} {...filaClick(() => setDetail(v))} className={`${FILA_CLICK} hover:bg-gray-50`}>
                   <td className="px-4 py-3 text-gray-400 font-mono text-xs">#{v.ordenId}</td>
                   <td className="px-4 py-3 text-gray-600">{fmtDate(v.fecha)}</td>
                   <td className="px-4 py-3 text-gray-700">{v.mesa ? `Mesa ${v.mesa.numero}` : 'Para llevar'}</td>
