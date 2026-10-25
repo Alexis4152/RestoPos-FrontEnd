@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { login as apiLogin, logout as apiLogout, me as apiMe } from '../api/auth'
+import { cerrarCanalPersonal } from '../utils/liveEvents'
 import { applyDefaultBrand, applyTiendaBrand } from '../utils/theme'
 
 const AuthContext = createContext(null)
@@ -108,15 +109,19 @@ export function AuthProvider({ children }) {
    * falle (p. ej. sin red) — cerrar sesión localmente no debe depender de esa respuesta.
    */
   async function logout() {
+    // Primero la sesión local, AL INSTANTE: si se esperaba al servidor, la pantalla de login
+    // veía todavía al usuario y lo regresaba a su pantalla (parpadeo), y con el servidor lento
+    // o sin respuesta la sesión nunca se cerraba. El aviso al servidor (revocar el refresh
+    // token de la cookie) va después, con tiempo límite, y si falla no importa.
+    localStorage.removeItem('pos_token')
+    localStorage.removeItem('pos_user')
+    setUser(null)
+    applyDefaultBrand()
+    cerrarCanalPersonal()
     try {
       await apiLogout()
     } catch {
-      // sin red o backend caído: igual se cierra la sesión local, ver comentario de arriba
-    } finally {
-      localStorage.removeItem('pos_token')
-      localStorage.removeItem('pos_user')
-      setUser(null)
-      applyDefaultBrand()
+      // sin red o backend caído: la sesión local ya quedó cerrada
     }
   }
 

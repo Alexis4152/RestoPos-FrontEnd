@@ -109,6 +109,11 @@ function asegurarStaff() {
   })
 }
 
+/** Al cerrar sesión: suelta la conexión en vivo del personal (la próxima sesión abre otra). */
+export function cerrarCanalPersonal() {
+  if (cerrarStaff) { cerrarStaff(); cerrarStaff = null }
+}
+
 function suscribirStaff(fn) {
   listeners.add(fn)
   asegurarStaff()

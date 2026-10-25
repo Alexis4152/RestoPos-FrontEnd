@@ -93,8 +93,8 @@ export default function Layout({ children }) {
   useEscapeKey(() => setMobileOpen(false), !!mobileOpen)
 
   function handleLogout() {
-    logout()
-    navigate('/login')
+    logout() // borra la sesión local al instante (el aviso al servidor sigue por detrás)
+    navigate('/login', { replace: true })
   }
 
   /** Regresa a un actor de plataforma (SUPER_ADMIN/SUPERVISOR) a la pantalla de tiendas. */

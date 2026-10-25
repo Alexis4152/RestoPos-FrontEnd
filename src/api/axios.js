@@ -83,7 +83,7 @@ api.interceptors.response.use(
   (err) => {
     const url = err.config?.url || ''
     const isLoginRequest = url.includes('/auth/login')
-    const isRefreshRequest = url.includes('/auth/refresh')
+    const isRefreshRequest = url.includes('/auth/refresh') || url.includes('/auth/logout')
     const status = err.response?.status
 
     if (status !== 401 || isLoginRequest || isRefreshRequest) {

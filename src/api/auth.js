@@ -29,7 +29,7 @@ export const refresh = () => api.post('/auth/refresh')
  * hubiera sesión activa.
  * @returns {Promise} Respuesta de axios confirmando el cierre de sesión.
  */
-export const logout = () => api.post('/auth/logout')
+export const logout = () => api.post('/auth/logout', null, { timeout: 8000 })
 
 /**
  * Cambia la contraseña del usuario ya autenticado (exige la actual como comprobante de
