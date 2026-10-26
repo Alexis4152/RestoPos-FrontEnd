@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { getProducts, createProduct, updateProduct, adjustStock, deleteProduct, searchProducts, uploadProductImage, removeProductImage } from '../api/products'
 import { getCategories } from '../api/categories'
@@ -473,7 +474,10 @@ export default function Menu() {
 
   return (
     <div>
-      <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900 mb-6">Menú</h1>
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <h1 className="flex-1 text-[28px] font-extrabold tracking-tight text-gray-900">Menú</h1>
+        <Link to="/menu-imprimible" className="btn-secondary inline-flex items-center gap-2">🖨️ Menú imprimible con QR</Link>
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <div className="flex flex-wrap gap-3">

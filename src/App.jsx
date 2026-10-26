@@ -33,6 +33,7 @@ import OpinionPage from './pages/publicSite/OpinionPage'
 import Opiniones from './pages/Opiniones'
 import Reservaciones from './pages/Reservaciones'
 import WebConfig from './pages/WebConfig'
+import MenuImprimible from './pages/MenuImprimible'
 
 /**
  * Árbol de rutas de la aplicación.
@@ -75,6 +76,7 @@ function AppRoutes() {
                 <Route path="/orders/:id" element={<PrivateRoute section={['ORDERS', 'TAKEAWAY']}><OrdenSegunModo /></PrivateRoute>} />
                 <Route path="/kitchen" element={<PrivateRoute section="KITCHEN"><Kitchen /></PrivateRoute>} />
                 <Route path="/menu" element={<PrivateRoute section="MENU"><Menu /></PrivateRoute>} />
+                <Route path="/menu-imprimible" element={<PrivateRoute section="MENU"><MenuImprimible /></PrivateRoute>} />
                 <Route path="/inventory" element={<PrivateRoute section="INVENTORY"><Inventory /></PrivateRoute>} />
                 <Route path="/cash-cuts" element={<PrivateRoute section="CASH_CUTS"><CashCuts /></PrivateRoute>} />
                 <Route path="/sales" element={<PrivateRoute section="SALES"><Sales /></PrivateRoute>} />
