@@ -20,8 +20,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const SRC = path.join(ROOT, 'src')
 const OUT = path.join(SRC, 'styles', 'dark.css')
 
-// Páginas públicas (sitio de la tienda, opiniones): siempre en claro, no se escanean.
-const EXCLUIR = [/PublicSite\.jsx$/, /[\\/]publicSite[\\/]/, /OpinionPage\.jsx$/]
+// Páginas públicas que siempre se ven en claro (no se escanean). PublicSite.jsx sí: el
+// repartidor la usa en su modo (ver usarModoEnPaginaWeb en utils/themeMode.js).
+const EXCLUIR = [/[\\/]publicSite[\\/]/, /OpinionPage\.jsx$/]
 
 // ── Colores ────────────────────────────────────────────────────────────────────────────
 const hexToRgb = (hex) => {

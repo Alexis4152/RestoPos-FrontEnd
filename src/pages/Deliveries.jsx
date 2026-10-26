@@ -10,6 +10,8 @@ import ComprobanteImagen from '../components/ComprobanteImagen'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 const fmtTime = (d) => (d ? new Date(d).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '—')
 const PAGO_PREF = { EFECTIVO: '💵 Efectivo', TARJETA: '💳 Tarjeta', TRANSFERENCIA: '🏦 Transferencia' }
+const POR_PAGINA = 10
+const fmtFechaHora = (d) => (d ? new Date(d).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : null)
 
 /** Costo de envío del pedido (cargos extra no cancelados). */
 const costoEnvio = (o) => (o.items ?? [])
@@ -59,11 +61,13 @@ export default function Deliveries() {
   // Historial: sus entregas (por default los últimos 7 días); también da lo que trae por entregar en caja.
   const [historial, setHistorial] = useState([])
   const [rango, setRango] = useState({ desde: '', hasta: '' })
+  const [pagina, setPagina] = useState(0)
+  const [detalle, setDetalle] = useState(null) // entrega del historial abierta
   const [busyId, setBusyId] = useState(null)
   const [cobro, setCobro] = useState(null) // orden que se está entregando
   const [soltando, setSoltando] = useState(null) // orden que se suelta (pide el motivo)
   const [motivo, setMotivo] = useState('')
-  useEscapeKey(() => { if (soltando) setSoltando(null); else setCobro(null) }, !!(cobro || soltando))
+  useEscapeKey(() => { if (detalle) setDetalle(null); else if (soltando) setSoltando(null); else setCobro(null) }, !!(cobro || soltando || detalle))
   const seenRef = useRef(null)
 
   function load() {
@@ -89,7 +93,7 @@ export default function Deliveries() {
 
   useEffect(() => { load() }, [])
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadHistorial() }, [rango.desde, rango.hasta])
+  useEffect(() => { loadHistorial(); setPagina(0) }, [rango.desde, rango.hasta])
   useLiveRefresh(() => { load(); loadHistorial() }, { filtro: (e) => e.name === 'orden' })
 
   // Lo entregado que la caja todavía no recibe: el dinero lo trae él.
@@ -184,10 +188,11 @@ export default function Deliveries() {
             {historial.length} entrega{historial.length === 1 ? '' : 's'} · {fmt(historial.reduce((s, o) => s + Number(o.total ?? 0), 0))} en total
           </p>
           {historial.length === 0 && <p className="text-center text-gray-400 py-10">Sin entregas en estas fechas.</p>}
-          {historial.map((o) => {
+          {historial.slice(pagina * POR_PAGINA, (pagina + 1) * POR_PAGINA).map((o) => {
             const recibido = o.estado === 'PAGADA'
             return (
-              <div key={o.id} className="card border border-gray-100 !p-4">
+              <button type="button" key={o.id} onClick={() => setDetalle(o)} aria-label={`Ver detalle del pedido ${o.id}`}
+                className="card border border-gray-100 !p-4 w-full text-left hover:border-purple-300">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-bold text-gray-900">#{o.id} · {o.clienteNombre ?? 'Cliente'}</p>
@@ -204,11 +209,20 @@ export default function Deliveries() {
                     </span>
                   </div>
                 </div>
-              </div>
+              </button>
             )
           })}
+          {historial.length > POR_PAGINA && (
+            <nav aria-label="Páginas del historial" className="flex items-center justify-between gap-2 pt-1">
+              <button type="button" className="btn-secondary min-h-[44px]" disabled={pagina === 0} onClick={() => setPagina((p) => p - 1)}>← Anterior</button>
+              <span className="text-sm text-gray-600">Página {pagina + 1} de {Math.ceil(historial.length / POR_PAGINA)}</span>
+              <button type="button" className="btn-secondary min-h-[44px]" disabled={(pagina + 1) * POR_PAGINA >= historial.length}
+                onClick={() => setPagina((p) => p + 1)}>Siguiente →</button>
+            </nav>
+          )}
         </section>
       )}
+      {detalle && <DetalleEntrega o={detalle} onClose={() => setDetalle(null)} />}
 
       {loaded && tab !== 'historial' && lista.length === 0 && (
         <p className="text-center text-gray-400 py-12">
@@ -517,6 +531,78 @@ function CobroModal({ orden, onClose, onDone }) {
             {saving ? 'Procesando...' : 'Confirmar entrega'}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/** Detalle de una entrega del historial: cliente, lo que pidió, cobro y tiempos. */
+function DetalleEntrega({ o, onClose }) {
+  const items = (o.items ?? []).filter((i) => i.estado !== 'CANCELADO')
+  const productos = items.filter((i) => !i.cargoExtra)
+  const envio = items.filter((i) => i.cargoExtra).reduce((s, i) => s + Number(i.subtotal ?? 0), 0)
+  const recibido = o.estado === 'PAGADA'
+  const tiempos = [
+    ['Pedido', o.openedAt], ['Lo tomaste', o.tomadaAt], ['Salió en camino', o.enCaminoAt], ['Entregado', o.entregadaAt],
+  ].filter(([, t]) => t)
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby="detalle-entrega-titulo" onClick={(e) => e.stopPropagation()}
+        className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl max-h-[92vh] overflow-y-auto p-5 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="detalle-entrega-titulo" className="text-xl font-extrabold">Pedido #{o.id}</h2>
+            <span className={`inline-block mt-1 text-xs font-bold px-2 py-0.5 rounded-md ${recibido ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'}`}>
+              {recibido ? 'Entregado en caja' : 'Por entregar en caja'}
+            </span>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Cerrar" className="w-10 h-10 rounded-full hover:bg-gray-100 text-gray-500">✕</button>
+        </div>
+
+        <section className="space-y-1 text-sm">
+          <h3 className="font-bold text-gray-900">Cliente</h3>
+          <p className="text-gray-800">{o.clienteNombre ?? 'Sin nombre'}</p>
+          {o.clienteTelefono && <a href={`tel:${o.clienteTelefono}`} className="block text-purple-700 font-semibold">📞 {o.clienteTelefono}</a>}
+          {o.direccion && <p className="text-gray-700">📍 {o.direccion}</p>}
+          {o.notas && <p className="text-gray-600 italic">"{o.notas}"</p>}
+        </section>
+
+        <section className="space-y-2 text-sm">
+          <h3 className="font-bold text-gray-900">Lo que pidió</h3>
+          <ul className="divide-y divide-gray-100 border border-gray-100 rounded-xl">
+            {productos.map((i) => (
+              <li key={i.id} className="flex items-start justify-between gap-3 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-900">{Number(i.cantidad)} × {i.productoNombre}</p>
+                  {(i.modificadores ?? []).length > 0 && (
+                    <p className="text-xs text-gray-600">{i.modificadores.map((m) => `${m.grupoNombre} ${m.nombre}`).join(' · ')}</p>
+                  )}
+                  {i.observaciones && <p className="text-xs text-gray-500 italic">{i.observaciones}</p>}
+                </div>
+                <span className="font-semibold whitespace-nowrap">{fmt(i.subtotal)}</span>
+              </li>
+            ))}
+          </ul>
+          {envio > 0 && <p className="flex justify-between text-gray-600"><span>Envío</span><span>{fmt(envio)}</span></p>}
+          <p className="flex justify-between text-base font-extrabold"><span>Total</span><span>{fmt(o.total)}</span></p>
+        </section>
+
+        <section className="space-y-1 text-sm">
+          <h3 className="font-bold text-gray-900">Cobro</h3>
+          <p className="text-gray-700">{PAGO_PREF[o.metodoPago] ?? o.metodoPago ?? 'Sin forma de pago'}</p>
+          {o.metodoPago === 'EFECTIVO' && o.pagaCon != null && Number(o.pagaCon) > Number(o.total) && (
+            <p className="text-gray-700">Pagó con {fmt(o.pagaCon)} · cambio {fmt(Number(o.pagaCon) - Number(o.total))}</p>
+          )}
+        </section>
+
+        {tiempos.length > 0 && (
+          <section className="space-y-1 text-sm">
+            <h3 className="font-bold text-gray-900">Tiempos</h3>
+            {tiempos.map(([label, t]) => (
+              <p key={label} className="flex justify-between text-gray-700"><span>{label}</span><span>{fmtFechaHora(t)}</span></p>
+            ))}
+          </section>
+        )}
       </div>
     </div>
   )

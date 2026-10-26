@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { getPublicTienda, getPublicMenu, getPublicMesas, createPublicPedido, getPublicPedido, uploadComprobantePedido, uploadComprobanteCliente, getClienteMe, logoutCliente, verificarCorreoCliente, reenviarVerificacionCliente, preordenarReservacion } from '../api/publicSite'
+import { getPublicTienda, getPublicMenu, getPublicMesas, createPublicPedido, getPublicPedido, uploadComprobantePedido, uploadComprobanteCliente, getClienteMe, logoutCliente, verificarCorreoCliente, reenviarVerificacionCliente, preordenarReservacion, getReservacion, getMisReservaciones } from '../api/publicSite'
 import { useAuth } from '../context/AuthContext'
 import { AuthScreen, MisPedidos, PerfilCliente, RestablecerScreen, esRepartidorDe } from './publicSite/Account'
 import Deliveries from './Deliveries'
+import OpinionesPublicas from './publicSite/OpinionesPublicas'
 import ComprobanteTransferencia, { puedeSubirComprobante } from './publicSite/ComprobanteTransferencia'
-import Reservaciones, { leerCodigosReserva, guardarCodigosReserva } from './publicSite/Reservaciones'
+import Reservaciones, { leerCodigosReserva, guardarCodigosReserva, ModalNuevaReserva } from './publicSite/Reservaciones'
 import { usePublicLiveRefresh, publicStreamBase } from '../utils/liveEvents'
 import { applyTiendaBrand } from '../utils/theme'
 import GruposModificadores from '../components/GruposModificadores'
@@ -13,6 +14,7 @@ import defaultLogo from '../assets/logo.png'
 import { resolveMediaUrl } from '../utils/media'
 import CamposDireccion, { validarDireccion, direccionPayload } from '../components/CamposDireccion'
 import { useEscapeKey } from '../hooks/useEscapeKey'
+import { useModo, usarModoEnPaginaWeb } from '../utils/themeMode'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 
@@ -31,7 +33,7 @@ const MESA_LABEL = { LIBRE: 'Libre', OCUPADA: 'Ocupada', RESERVADA: 'Reservada' 
 const STEPS = [
   { key: 'RECIBIDO', label: 'Recibido', hint: 'Esperando que el restaurante confirme tu pedido.' },
   { key: 'ACEPTADO', label: 'En preparación', hint: '¡Confirmado! Ya lo estamos preparando.' },
-  { key: 'LISTO', label: 'Listo', hint: 'Tu pedido está listo.' },
+  { key: 'LISTO', label: 'Listo', hint: 'Tu pedido está listo.', labelRecoger: 'Listo para recoger', hintRecoger: '¡Ya puedes pasar por él!' },
   { key: 'EN_CAMINO', label: 'En camino', hint: 'El repartidor ya va hacia tu domicilio.', soloDomicilio: true },
   { key: 'ENTREGADO', label: 'Entregado', hint: '¡Gracias por tu compra!' },
 ]
@@ -78,6 +80,13 @@ export default function PublicSite() {
   // Ordenando para una reservación ({ token, fechaHora, personas }): el carrito se manda como
   // pedido anticipado (entra a cocina cuando llegan) en vez de pedido para recoger/domicilio.
   const [paraReserva, setParaReserva] = useState(null)
+  // Reservaciones a las que todavía se puede ordenar (de este navegador o de la cuenta): al
+  // agregar el primer platillo se pregunta si el pedido es para una de ellas o para ahora.
+  const [reservasActivas, setReservasActivas] = useState([])
+  const [preguntaReserva, setPreguntaReserva] = useState(false)
+  const yaPregunto = useRef(false)
+  const [reservarMesa, setReservarMesa] = useState(null) // mesa tocada en "Mesas" → formulario
+  const [reservaCreada, setReservaCreada] = useState(null)
 
   // Acceso: cliente registrado ({ token, cliente }), invitado, o repartidor (sesión del
   // personal, ver esRepartidorDe). Sin ninguno se muestra la pantalla de acceso.
@@ -120,6 +129,13 @@ export default function PublicSite() {
     if (!clienteSesion) setInvitado(true)
     setTab('reservar')
     searchParams.delete('reservacion'); setSearchParams(searchParams, { replace: true })
+  }, [])
+  // QR de opiniones (?ver=opiniones): abre la pestaña directo, sin pasar por el acceso.
+  useEffect(() => {
+    if (searchParams.get('ver') !== 'opiniones') return
+    if (!clienteSesion) setInvitado(true)
+    setTab('opiniones')
+    searchParams.delete('ver'); setSearchParams(searchParams, { replace: true })
   }, [])
   const [menuCuenta, setMenuCuenta] = useState(false)
 
@@ -206,7 +222,30 @@ export default function PublicSite() {
       .filter((c) => c.productos.length > 0)
   }, [menu, search])
 
+  function cargarReservasActivas() {
+    const token = clienteSesion?.token
+    const porCodigo = leerCodigosReserva(slug).map((t) => getReservacion(slug, t).then((r) => r.data.data).catch(() => null))
+    const deCuenta = token ? getMisReservaciones(slug, token).then((r) => r.data.data ?? []).catch(() => []) : Promise.resolve([])
+    Promise.all([Promise.all(porCodigo), deCuenta]).then(([a, b]) => {
+      const m = new Map()
+      ;[...a.filter(Boolean), ...b].forEach((r) => { if (r.puedeOrdenar) m.set(r.token, r) })
+      setReservasActivas([...m.values()].sort((x, y) => x.fechaHora.localeCompare(y.fechaHora)))
+    })
+  }
+  useEffect(() => { if (tienda?.reservaciones) cargarReservasActivas() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [slug, tienda?.reservaciones, clienteSesion?.token, tab])
+
   function addToCart(producto, mods = [], nota = '', cantidad = 1) {
+    // Primer platillo y hay reservación a la que se puede ordenar: ¿para la reservación o para ahora?
+    if (cart.length === 0 && !paraReserva && reservasActivas.length > 0 && !yaPregunto.current) {
+      yaPregunto.current = true
+      const soloReserva = !(tienda?.recoger || tienda?.domicilio)
+      if (soloReserva && reservasActivas.length === 1) {
+        const r = reservasActivas[0]
+        setParaReserva({ token: r.token, fechaHora: r.fechaHora, personas: r.personas })
+      } else {
+        setPreguntaReserva(true)
+      }
+    }
     const key = `${producto.id}|${mods.map((m) => m.id).sort((a, b) => a - b).join(',')}|${nota.trim()}`
     setCart((c) => {
       const existing = c.find((l) => l.key === key)
@@ -221,6 +260,9 @@ export default function PublicSite() {
     setActiveCat(id)
     document.getElementById(`cat-${id ?? 'otros'}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
+
+  // El repartidor trabaja desde aquí: ve la página en su modo (claro / oscuro). Los clientes, en claro.
+  usarModoEnPaginaWeb(!!tienda && esRepartidorDe(staffUser, tienda.tiendaId))
 
   if (notFound) {
     return (
@@ -239,7 +281,8 @@ export default function PublicSite() {
 
   const esRepartidor = esRepartidorDe(staffUser, tienda.tiendaId)
   const cliente = clienteSesion?.cliente ?? null
-  const puedePedir = ((tienda.recoger || tienda.domicilio) || !!paraReserva) && !esRepartidor
+  const puedePedirWeb = (tienda.recoger || tienda.domicilio) && !esRepartidor
+  const puedePedir = (puedePedirWeb || !!paraReserva || reservasActivas.length > 0) && !esRepartidor
   const puedeReservar = tienda.reservaciones && !esRepartidor
 
   /**
@@ -306,6 +349,9 @@ export default function PublicSite() {
             {puedeReservar && (
               <button onClick={() => setTab('reservar')} className={`px-3 py-2 rounded-lg ${tab === 'reservar' ? 'bg-purple-50 text-purple-700' : 'text-gray-600 hover:bg-gray-100'}`}>📅 Reservar</button>
             )}
+            {!esRepartidor && (
+              <button onClick={() => setTab('opiniones')} className={`px-3 py-2 rounded-lg ${tab === 'opiniones' ? 'bg-purple-50 text-purple-700' : 'text-gray-600 hover:bg-gray-100'}`}>⭐ Opiniones</button>
+            )}
             {esRepartidor && (
               <button onClick={() => setTab('entregas')} className={`px-3 py-2 rounded-lg ${tab === 'entregas' ? 'bg-purple-50 text-purple-700' : 'text-gray-600 hover:bg-gray-100'}`}>🛵 Entregas</button>
             )}
@@ -319,7 +365,8 @@ export default function PublicSite() {
               Iniciar sesión
             </button>
           ) : (
-            <div className="relative">
+            <div className="relative flex items-center gap-1">
+              {esRepartidor && <BotonModo />}
               <button onClick={() => setMenuCuenta((v) => !v)}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-100 max-w-[10rem]">
                 <span>{esRepartidor ? '🛵' : '👤'}</span>
@@ -374,6 +421,9 @@ export default function PublicSite() {
           {puedeReservar && (
             <button onClick={() => setTab('reservar')} className={`flex-1 py-2.5 ${tab === 'reservar' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Reservar</button>
           )}
+          {!esRepartidor && (
+            <button onClick={() => setTab('opiniones')} className={`flex-1 py-2.5 ${tab === 'opiniones' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Opiniones</button>
+          )}
           {esRepartidor && (
             <button onClick={() => setTab('entregas')} className={`flex-1 py-2.5 ${tab === 'entregas' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Entregas</button>
           )}
@@ -399,7 +449,7 @@ export default function PublicSite() {
                 </span>
               )}
               {puedeReservar && (
-                <button type="button" onClick={() => setTab('reservar')} className="px-3 py-1 rounded-full bg-white text-purple-700 font-semibold hover:bg-white/90">📅 Reservar mesa</button>
+                <button type="button" onClick={() => setTab(tienda.mostrarMesas ? 'mesas' : 'reservar')} className="px-3 py-1 rounded-full bg-white text-purple-700 font-semibold hover:bg-white/90">📅 Reservar mesa</button>
               )}
               {tienda.direccion && <span className="px-3 py-1 rounded-full bg-white/20">📍 {tienda.direccion}</span>}
               {tienda.telefono && <a href={`tel:${tienda.telefono}`} className="px-3 py-1 rounded-full bg-white/20 hover:bg-white/30">📞 {tienda.telefono}</a>}
@@ -511,7 +561,7 @@ export default function PublicSite() {
             <p className="text-sm text-gray-500 mt-1">
               Se actualiza automáticamente.{' '}
               {puedeReservar
-                ? <button type="button" onClick={() => setTab('reservar')} className="font-semibold text-purple-700 hover:underline">📅 Reserva tu mesa aquí</button>
+                ? <b className="text-purple-700">📅 Toca una mesa para reservarla.</b>
                 : <>Para reservar, llámanos{tienda.telefono ? ` al ${tienda.telefono}` : ''}.</>}
             </p>
             <div className="mt-3 flex gap-3 text-xs">
@@ -532,13 +582,26 @@ export default function PublicSite() {
                     </p>
                   </div>
                   <div className="mt-4 grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-8 gap-3">
-                    {z.mesas.map((m) => (
-                      <div key={m.numero} className={`rounded-xl border-2 p-3 text-center ${MESA_STYLE[m.estado] ?? ''}`}>
-                        <p className="font-bold">Mesa {m.numero}</p>
-                        <p className="text-xs font-semibold uppercase mt-0.5">{MESA_LABEL[m.estado] ?? m.estado}</p>
-                        {m.capacidad && <p className="text-xs opacity-70 mt-0.5">👥 {m.capacidad}</p>}
-                      </div>
-                    ))}
+                    {z.mesas.map((m) => {
+                      const contenido = (
+                        <>
+                          <p className="font-bold">Mesa {m.numero}</p>
+                          <p className="text-xs font-semibold uppercase mt-0.5">{MESA_LABEL[m.estado] ?? m.estado}</p>
+                          {m.capacidad && <p className="text-xs opacity-70 mt-0.5">👥 {m.capacidad}</p>}
+                          {puedeReservar && !m.reservable && <p className="text-[11px] opacity-70 mt-0.5">Sin reserva en línea</p>}
+                        </>
+                      )
+                      // Cualquier mesa (libre u ocupada ahora) se puede reservar para otro momento.
+                      return puedeReservar && m.reservable ? (
+                        <button key={m.numero} type="button" onClick={() => setReservarMesa({ ...m, zona: z.nombre })}
+                          aria-label={`Reservar la mesa ${m.numero}`}
+                          className={`rounded-xl border-2 p-3 text-center hover:ring-2 hover:ring-purple-300 ${MESA_STYLE[m.estado] ?? ''}`}>
+                          {contenido}
+                        </button>
+                      ) : (
+                        <div key={m.numero} className={`rounded-xl border-2 p-3 text-center ${MESA_STYLE[m.estado] ?? ''}`}>{contenido}</div>
+                      )
+                    })}
                   </div>
                 </section>
               ))}
@@ -548,8 +611,11 @@ export default function PublicSite() {
 
         {esRepartidor && <Deliveries />}
 
+        {tab === 'opiniones' && !esRepartidor && <OpinionesPublicas slug={slug} tienda={tienda} />}
+
         {tab === 'reservar' && puedeReservar && (
           <Reservaciones slug={slug} tienda={tienda} cliente={cliente} clienteToken={clienteSesion?.token} onSesionVencida={sesionVencida}
+            creada={reservaCreada} puedeElegirMesa={!!tienda.mostrarMesas} onIrAMesas={() => setTab('mesas')}
             onOrdenar={(r) => { setParaReserva({ token: r.token, fechaHora: r.fechaHora, personas: r.personas }); setTab('menu'); window.scrollTo({ top: 0 }) }} />
         )}
 
@@ -603,6 +669,44 @@ export default function PublicSite() {
       {pedidos.filter((p) => !['ENTREGADO', 'RECHAZADO'].includes(statuses[p.id]?.estado)).map((p) => (
         <SeguimientoEnVivo key={p.id} slug={slug} token={p.token} onCambio={() => cargarPedido(p)} />
       ))}
+
+      {reservarMesa && (
+        <ModalNuevaReserva slug={slug} tienda={tienda} cliente={cliente} clienteToken={clienteSesion?.token} onSesionVencida={sesionVencida}
+          mesa={reservarMesa} onClose={() => setReservarMesa(null)}
+          onCreada={(c) => {
+            guardarCodigosReserva(slug, [...leerCodigosReserva(slug).filter((x) => x !== c.token), c.token])
+            setReservarMesa(null)
+            setReservaCreada(c.token)
+            setTab('reservar')
+            window.scrollTo({ top: 0 })
+          }} />
+      )}
+
+      {preguntaReserva && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="pregunta-reserva" className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-3">
+            <h2 id="pregunta-reserva" className="text-lg font-bold">¿Este pedido es para tu reservación?</h2>
+            <p className="text-sm text-gray-600">Si es para tu reservación, lo preparamos cuando llegues y lo pagas en el restaurante.</p>
+            {reservasActivas.map((r) => (
+              <button key={r.token} type="button"
+                onClick={() => { setParaReserva({ token: r.token, fechaHora: r.fechaHora, personas: r.personas }); setPreguntaReserva(false) }}
+                className="w-full text-left rounded-xl border-2 border-purple-200 bg-purple-50 px-4 py-3 hover:border-purple-400">
+                <span className="block font-semibold text-purple-800">🍽️ Para mi reservación</span>
+                <span className="block text-sm text-gray-700 capitalize">
+                  {new Date(r.fechaHora).toLocaleString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })} · {r.personas} persona{r.personas === 1 ? '' : 's'}
+                </span>
+              </button>
+            ))}
+            {puedePedirWeb && (
+              <button type="button" onClick={() => setPreguntaReserva(false)}
+                className="w-full text-left rounded-xl border-2 border-gray-200 px-4 py-3 hover:border-gray-400">
+                <span className="block font-semibold">🛍️ Pedir ahora</span>
+                <span className="block text-sm text-gray-600">Para recoger{tienda.domicilio ? ' o a domicilio' : ''}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {customize && (
         <CustomizeModal producto={customize} onClose={() => setCustomize(null)}
@@ -1045,6 +1149,7 @@ function PedidoTracker({ tienda, status, onCerrar, slug, token, onActualizado })
   if (!status) return <p className="text-center text-gray-400 py-8 bg-white rounded-2xl border border-gray-100">Cargando tu pedido...</p>
   const rechazado = status.estado === 'RECHAZADO'
   const steps = STEPS.filter((s) => !s.soloDomicilio || status.tipoEntrega === 'DOMICILIO')
+    .map((s) => (status.tipoEntrega === 'RECOGER' && s.labelRecoger ? { ...s, label: s.labelRecoger, hint: s.hintRecoger } : s))
   const idx = steps.findIndex((s) => s.key === status.estado)
   const terminado = rechazado || status.estado === 'ENTREGADO'
 
@@ -1125,4 +1230,16 @@ function nuevaLlave() {
   const b = new Uint8Array(16)
   crypto.getRandomValues(b)
   return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('')
+}
+
+/** Claro / oscuro para el repartidor (preferencia de este dispositivo, igual que en el POS). */
+function BotonModo() {
+  const { oscuro, setModo } = useModo()
+  const etiqueta = oscuro ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro'
+  return (
+    <button type="button" onClick={() => setModo(oscuro ? 'light' : 'dark')} aria-label={etiqueta} title={etiqueta}
+      className="w-10 h-10 rounded-lg text-lg hover:bg-gray-100 flex items-center justify-center">
+      {oscuro ? '☀️' : '🌙'}
+    </button>
+  )
 }

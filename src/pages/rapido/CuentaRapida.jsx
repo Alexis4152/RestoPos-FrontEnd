@@ -36,12 +36,16 @@ export function CobroExitoso({ cobro }) {
   const { notify } = useNotify()
   return (
     <div className="max-w-md mx-auto bg-white border border-[#E4E1DA] rounded-2xl p-6 text-center space-y-3">
-      <p className="text-sm font-bold text-[#22603C]">Cobrado · {/^mesa/i.test(String(cobro.mesa)) ? cobro.mesa : `Mesa ${cobro.mesa}`} liberada</p>
+      <p className="text-sm font-bold text-[#22603C]">
+        Cobrado · {cobro.lugar ?? `${/^mesa\b/i.test(String(cobro.mesa)) ? cobro.mesa : `Mesa ${cobro.mesa}`} liberada`}
+      </p>
       <p className="text-3xl font-extrabold">{fmt(cobro.total)}</p>
       {cobro.cambio > 0 && <p className="text-2xl font-extrabold">Cambio: {fmt(cobro.cambio)}</p>}
       <div className="flex flex-wrap gap-2 justify-center pt-2">
         <button type="button" className="btn-secondary min-h-[44px]" onClick={() => imprimir(cobro.cuentaId).catch(() => notify('No se pudo imprimir', 'error'))}>Reimprimir ticket</button>
-        <Link to="/tables" className="btn-primary min-h-[44px] inline-flex items-center">Volver a mis mesas</Link>
+        <Link to={cobro.lugar ? '/takeaway' : '/tables'} className="btn-primary min-h-[44px] inline-flex items-center">
+          {cobro.lugar ? 'Volver a Para llevar' : 'Volver a mis mesas'}
+        </Link>
       </div>
     </div>
   )
@@ -88,8 +92,10 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
   const subtotal = cuentaLista ? Number(cuentaLista.total) : r2(lineas.reduce((s, l) => s + l.importe, 0))
   const propinaNum = propinaModo === '10' || propinaModo === '15' ? Number(propinaModo)
     : propinaValor === '' ? null : Number(propinaValor)
+  // Máximo 50% (en %) o la mitad de la cuenta (en $), igual que el backend.
+  const propinaMaxMonto = Math.floor(subtotal * 50) / 100
   const propinaExcede = propinaNum != null && !Number.isNaN(propinaNum)
-    && (propinaTipo === 'PORCENTAJE' ? propinaNum > 100 : propinaNum > 9999999999.99)
+    && (propinaTipo === 'PORCENTAJE' ? propinaNum > 50 : propinaNum > propinaMaxMonto)
   const propinaNegativa = propinaNum != null && propinaNum < 0
   const propinaInvalida = propinaExcede || propinaNegativa || (propinaNum != null && Number.isNaN(propinaNum))
   // Misma fórmula que el backend (PagoService): porcentaje sobre el subtotal, redondeado a centavos.
@@ -119,6 +125,7 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
       imprimir(cuenta.id).catch(() => notify('No se pudo imprimir el ticket', 'error'))
       onCobrada?.({
         cuentaId: cuenta.id, mesa: order.mesa?.numero, total: r2(Number(cuenta.total) + propina),
+        lugar: order.mesa ? null : `Pedido #${order.id}${order.clienteNombre ? ` · ${order.clienteNombre}` : ''}`,
         cambio: metodo === 'CASH' ? r2(recibidoNum - Number(cuenta.total) - propina) : 0,
       })
     } catch (err) {
@@ -235,7 +242,7 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
                 placeholder={propinaTipo === 'PORCENTAJE' ? 'Ej. 10' : 'Ej. 20.00'}
                 value={propinaValor} onChange={(e) => setPropinaValor(e.target.value)} />
               {propinaExcede ? (
-                <p className="text-xs text-red-600">{propinaTipo === 'PORCENTAJE' ? 'El porcentaje no puede exceder 100' : 'El número es excesivamente grande'}</p>
+                <p className="text-xs text-red-600">{propinaTipo === 'PORCENTAJE' ? 'La propina no puede pasar del 50%' : `La propina no puede pasar del 50% de la cuenta (${fmt(propinaMaxMonto)})`}</p>
               ) : propinaNegativa ? (
                 <p className="text-xs text-red-600">La propina no puede ser negativa</p>
               ) : propina > 0 && (
@@ -294,7 +301,7 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
 
       <button type="button" disabled={busy || faltaEfectivo || propinaInvalida} onClick={cobrar}
         className="w-full min-h-[56px] rounded-2xl bg-gray-900 text-white text-base font-extrabold disabled:opacity-50 disabled:cursor-not-allowed">
-        {busy ? 'Cobrando…' : `Cobrar ${fmt(total)} y liberar mesa`}
+        {busy ? 'Cobrando…' : `Cobrar ${fmt(total)}${order.mesa ? ' y liberar mesa' : ''}`}
       </button>
       {!cuentaLista && (
         <button type="button" disabled={busy} onClick={soloImprimir}

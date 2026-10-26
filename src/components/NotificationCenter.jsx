@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
-import { getWebPendingOrders, acceptWebOrder, cancelOrder, getPickups, updateOrderItemStatus, getTakeawayOrders, getOrderNotices } from '../api/ordenes'
-import { getReservacionesPendientes } from '../api/reservaciones'
+import { getWebPendingOrders, acceptWebOrder, rejectWebOrder, cancelOrder, getPickups, updateOrderItemStatus, getTakeawayOrders, getOrderNotices } from '../api/ordenes'
+import { getReservacionesPendientes, getAvisosReservaciones } from '../api/reservaciones'
 import { getTables } from '../api/mesas'
 import { useLiveRefresh } from '../utils/liveEvents'
 import { useEscapeKey } from '../hooks/useEscapeKey'
@@ -69,7 +69,7 @@ export default function NotificationCenter() {
   const puedePedidos = hasSection('TAKEAWAY') || hasSection('ORDERS')
   const puedeMesas = hasSection('TABLES')
 
-  const [datos, setDatos] = useState({ web: [], pickups: [], mesas: [], llevar: [], reservas: [], reportes: [], entregados: [], tomados: [], enCamino: [], soltados: [], cuentasPorCobrar: [] })
+  const [datos, setDatos] = useState({ web: [], pickups: [], mesas: [], llevar: [], reservas: [], reportes: [], entregados: [], tomados: [], enCamino: [], soltados: [], cuentasPorCobrar: [], cambiosReserva: [] })
   const [abierto, setAbierto] = useState(false)
   const [tab, setTab] = useState('todas')
   const [leidas, setLeidas] = useState(() => leer(kLeidas, {}))
@@ -100,7 +100,8 @@ export default function NotificationCenter() {
       puedePedidos ? ok(getTakeawayOrders()) : vacio,
       puedeMesas ? ok(getReservacionesPendientes()) : vacio,
       puedePedidos ? getOrderNotices().catch(() => ({ data: { data: {} } })) : { data: { data: {} } },
-    ]).then(([web, pickups, mesas, llevar, reservas, avisos]) => {
+      puedeMesas ? ok(getAvisosReservaciones()) : vacio,
+    ]).then(([web, pickups, mesas, llevar, reservas, avisos, cambiosReserva]) => {
       setDatos({
         web: web.data.data ?? [], pickups: pickups.data.data ?? [], mesas: mesas.data.data ?? [],
         llevar: llevar.data.data ?? [], reservas: reservas.data.data ?? [],
@@ -108,6 +109,7 @@ export default function NotificationCenter() {
         tomados: avisos.data.data?.tomados ?? [], enCamino: avisos.data.data?.enCamino ?? [],
         soltados: avisos.data.data?.soltados ?? [],
         cuentasPorCobrar: avisos.data.data?.cuentasPorCobrar ?? [],
+        cambiosReserva: cambiosReserva.data.data ?? [],
       })
     })
   }
@@ -164,6 +166,14 @@ export default function NotificationCenter() {
       titulo: 'Reservación por confirmar',
       detalle: `${r.nombre} · ${r.personas} persona${r.personas === 1 ? '' : 's'} · ${new Date(r.fechaHora).toLocaleString('es-MX', { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}${r.accesible ? ' · mesa accesible' : ''}${r.periqueras > 0 ? ` · ${r.periqueras} periquera${r.periqueras === 1 ? '' : 's'}` : ''}`,
       acciones: [{ label: 'Revisar', primaria: true, run: () => ir('/reservaciones') }],
+    }))
+    // Lo que hizo el cliente con su reservación (cambió personas, avisó retraso, ordenó, canceló):
+    // salta con sonido y aviso emergente.
+    datos.cambiosReserva.forEach((c) => out.push({
+      key: `resc-${c.id}-${c.fecha}`, tipo: 'reserva', accion: false, emergente: true, fecha: c.fecha,
+      titulo: `${c.nombre}: ${c.cambio}`,
+      detalle: `Reservación del ${new Date(c.fechaHora).toLocaleString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
+      acciones: [{ label: 'Ver', run: () => ir(`/reservaciones?fecha=${String(c.fechaHora).slice(0, 10)}`) }],
     }))
     datos.reportes.forEach((o) => out.push({
       key: `rep-${o.id}-${o.reporteAt}`, tipo: 'alerta', accion: false, fecha: o.reporteAt,
@@ -243,8 +253,8 @@ export default function NotificationCenter() {
     const o = rechazando
     setRechazando(null)
     setBusy(`web-${o.id}`)
-    try { await cancelOrder(o.id, motivo.trim() || 'Pedido rechazado'); notify(`Pedido #${o.id} rechazado`, 'success'); load() }
-    catch (err) { notify(err.response?.data?.message ?? 'No se pudo rechazar el pedido', 'error') }
+    try { await rejectWebOrder(o.id, motivo.trim() || 'Pedido rechazado'); notify(`Pedido #${o.id} rechazado`, 'success'); load() }
+    catch (err) { notify(err.response?.data?.message ?? 'No se pudo rechazar el pedido', 'error'); load() }
     finally { setBusy(null) }
   }
   async function llevado(o) {
@@ -358,9 +368,9 @@ export default function NotificationCenter() {
         </div>
       )}
 
-      {/* Aviso emergente: lo nuevo, abajo a la izquierda, se va solo en 8 s. */}
+      {/* Aviso emergente: lo nuevo, arriba a la derecha (bajo la campana), se va solo en 8 s. */}
       {toast && !abierto && (
-        <div role="status" className="fixed left-4 lg:left-[264px] bottom-4 z-[95] w-[380px] max-w-[calc(100vw-2rem)] rounded-2xl bg-gray-900 text-white px-4 py-3.5 flex items-start gap-3 shadow-2xl">
+        <div role="status" className="fixed right-4 top-[76px] z-[95] w-[380px] max-w-[calc(100vw-2rem)] rounded-2xl bg-gray-900 text-white px-4 py-3.5 flex items-start gap-3 shadow-2xl">
           <span className="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center shrink-0" aria-hidden="true">
             <Icon name={TIPO[toast.tipo].icon} className="w-[18px] h-[18px]" />
           </span>

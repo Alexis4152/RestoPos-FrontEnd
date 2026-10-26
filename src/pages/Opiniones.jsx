@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getOpiniones } from '../api/opiniones'
+import { getOpiniones, getQrOpinionesPublicas } from '../api/opiniones'
 
 const fmtFecha = (d) => (d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '')
 const hoy = () => new Date().toISOString().slice(0, 10)
@@ -20,6 +20,13 @@ export default function Opiniones() {
   const [tipo, setTipo] = useState('')
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
+  const [qr, setQr] = useState(null) // { url, qrDataUrl } del QR público de opiniones
+  const [qrError, setQrError] = useState('')
+  function abrirQr() {
+    setQrError('')
+    getQrOpinionesPublicas().then((r) => setQr(r.data.data))
+      .catch((err) => setQrError(err.response?.data?.message ?? 'No se pudo generar el QR'))
+  }
 
   function cargar() {
     setError('')
@@ -33,7 +40,26 @@ export default function Opiniones() {
 
   return (
     <div>
-      <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900 mb-4">Opiniones</h1>
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <h1 className="flex-1 text-[28px] font-extrabold tracking-tight text-gray-900">Opiniones</h1>
+        <button type="button" onClick={abrirQr} className="btn-secondary inline-flex items-center gap-2">▦ QR de opiniones</button>
+      </div>
+      {qrError && <p className="mb-3 text-sm text-red-700 bg-red-50 rounded-lg px-3 py-2">{qrError}</p>}
+      {qr && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setQr(null)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="qr-opiniones" className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center space-y-3" onClick={(e) => e.stopPropagation()}>
+            <h2 id="qr-opiniones" className="text-lg font-extrabold">QR de opiniones</h2>
+            <p className="text-sm text-gray-600">Imprímelo o compártelo: abre las opiniones de tus clientes en tu página web, las mejores primero.</p>
+            <img src={qr.qrDataUrl} alt="Código QR de las opiniones" className="mx-auto w-60 h-60" />
+            <p className="text-xs text-gray-500 break-all">{qr.url}</p>
+            <div className="flex flex-wrap gap-2 justify-center">
+              <a href={qr.qrDataUrl} download="qr-opiniones.png" className="btn-primary">Descargar QR</a>
+              <a href={qr.url} target="_blank" rel="noopener noreferrer" className="btn-secondary">Ver la página</a>
+              <button type="button" className="btn-secondary" onClick={() => setQr(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={(e) => { e.preventDefault(); cargar() }} className="card flex flex-wrap items-end gap-3 mb-6">
         <label className="text-xs text-gray-600">Desde<input type="date" className="input mt-1" value={desde} max={hasta} onChange={(e) => setDesde(e.target.value)} /></label>

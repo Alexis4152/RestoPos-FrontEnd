@@ -44,7 +44,10 @@ export const getDeliveryFee = () => api.get('/orders/delivery-fee')
 /** Pedidos de la página web todavía sin aceptar ni rechazar. */
 export const getWebPendingOrders = () => api.get('/orders/web-pending')
 
-/** Acepta un pedido web: queda a nombre de quien lo acepta y pasa a cocina. Rechazar = cancelOrder con motivo. */
+/** Rechaza un pedido web que nadie ha aceptado (si ya lo aceptó alguien, el backend lo impide y lo dice). */
+export const rejectWebOrder = (orderId, motivo) => api.post(`/orders/${orderId}/rechazar`, { motivo })
+
+/** Acepta un pedido web: queda a nombre de quien lo acepta y pasa a cocina. Rechazar = rejectWebOrder. */
 export const acceptWebOrder = (orderId) => api.post(`/orders/${orderId}/aceptar`)
 
 /** Liga la orden a un cliente registrado de la página web (por correo o teléfono). */

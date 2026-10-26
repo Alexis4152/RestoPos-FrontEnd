@@ -75,6 +75,19 @@ export default function EntregaSeguimiento({ ordenId, version }) {
         {data.estado === 'EN_CAMINO' && <><b>{data.repartidor}</b> va en camino.</>}
         {data.estado === 'ENTREGADO' && <>Entregado por <b>{data.repartidor ?? '—'}</b>.</>}
       </p>
+      {data.estado === 'ENTREGADO' && (() => {
+        // Quién cobró al cliente (el repartidor) y quién le recibió el dinero en caja.
+        const recibido = [...data.eventos].reverse().find((e) => e.tipo === 'RECIBIDO_CAJA')
+        const cajero = recibido?.porOtro ?? recibido?.detalle?.replace(/^Recibió /, '')
+        return (
+          <p className="mt-1 text-sm text-gray-700">
+            💵 Cobró <b>{data.repartidor ?? '—'}</b>
+            {recibido
+              ? <> · recibió en caja <b>{cajero ?? '—'}</b> ({fechaHora(recibido.fecha)})</>
+              : <span className="text-[#7A4A00]"> · falta que la caja le reciba el dinero</span>}
+          </p>
+        )
+      })()}
       {data.cobro && <CobroEnvio cobro={data.cobro} ordenId={ordenId} />}
       {verHistorico && (
         <ul className="mt-2 border-t border-gray-100 pt-2 space-y-1">

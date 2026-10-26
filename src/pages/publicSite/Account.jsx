@@ -336,14 +336,16 @@ const ESTADO_INFO = {
 const STEPS = [
   { key: 'RECIBIDO', label: 'Recibido', hint: 'Esperando que el restaurante confirme tu pedido.' },
   { key: 'ACEPTADO', label: 'En preparación', hint: '¡Confirmado! Ya lo estamos preparando.' },
-  { key: 'LISTO', label: 'Listo', hint: 'Tu pedido está listo.' },
+  { key: 'LISTO', label: 'Listo', hint: 'Tu pedido está listo.', labelRecoger: 'Listo para recoger', hintRecoger: '¡Ya puedes pasar por él!' },
   { key: 'EN_CAMINO', label: 'En camino', hint: 'El repartidor ya va hacia tu domicilio.', soloDomicilio: true },
   { key: 'ENTREGADO', label: 'Entregado', hint: '¡Gracias por tu compra!' },
 ]
 
 /** Barra de etapas del pedido (Recibido → En preparación → Listo → [En camino] → Entregado). */
 function Etapas({ pedido }) {
+  const recoger = pedido.tipoEntrega === 'RECOGER'
   const steps = STEPS.filter((s) => !s.soloDomicilio || pedido.tipoEntrega === 'DOMICILIO')
+    .map((s) => (recoger && s.labelRecoger ? { ...s, label: s.labelRecoger, hint: s.hintRecoger } : s))
   const idx = steps.findIndex((s) => s.key === pedido.estado)
   if (idx < 0) return null
   const terminado = pedido.estado === 'ENTREGADO'
@@ -508,7 +510,7 @@ function PedidoTerminado({ slug, token, pedido, abierto, onToggle, onCambio, onS
           <p className="text-sm font-semibold">Pedido #{pedido.id} <span className="font-normal text-gray-500">· {fmtFecha(pedido.creadoEn)}</span></p>
           <p className="text-xs text-gray-500 truncate">{pedido.items.map((it) => `${Number(it.cantidad)}× ${it.nombre}`).join(', ')}</p>
         </div>
-        {pedido.puedeReportar && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 whitespace-nowrap">¿Cómo llegó?</span>}
+        {pedido.puedeReportar && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 whitespace-nowrap">{pedido.tipoEntrega === 'RECOGER' ? '¿Cómo estuvo?' : '¿Cómo llegó?'}</span>}
         {pedido.resenaEstrellas ? <Stars value={pedido.resenaEstrellas} size="text-sm" />
           : porCalificar ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-800">⭐ Calificar</span>
           : <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${info.cls}`}>{info.label}</span>}
@@ -564,13 +566,16 @@ function ReporteEntrega({ slug, token, pedido, onCambio, onSesionVencida }) {
   if (!pedido.puedeReportar) return null
 
   const platillos = pedido.items.filter((it) => it.nombre !== 'Envío a domicilio')
+  // Para recoger: "¿Cómo estuvo?" y solo "Me faltó algo" (lo revisó en el mostrador).
+  const recoger = pedido.tipoEntrega === 'RECOGER'
+  const opciones = recoger ? REPORTE_OPCIONES.filter((o) => o.tipo === 'FALTANTE') : REPORTE_OPCIONES
   const pideProductos = tipo === 'MAL' || tipo === 'FALTANTE'
   const toggle = (id) => { setProductos((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id])); setError('') }
   const hasta = new Date(pedido.reportarHasta).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })
 
   async function enviar(e) {
     e.preventDefault()
-    if (!tipo) { setError('Elige cómo llegó tu pedido'); return }
+    if (!tipo) { setError(recoger ? 'Toca "Me faltó algo" para reportarlo' : 'Elige cómo llegó tu pedido'); return }
     if (tipo === 'FALTANTE' && productos.length === 0) { setError('Marca qué producto te faltó'); return }
     setSaving(true)
     setError('')
@@ -587,10 +592,10 @@ function ReporteEntrega({ slug, token, pedido, onCambio, onSesionVencida }) {
 
   return (
     <form onSubmit={enviar} className="mt-3 pt-3 border-t border-gray-100">
-      <p className="font-semibold">¿Cómo llegó tu pedido? <span className="text-xs font-normal text-gray-400">(opcional)</span></p>
-      <p className="text-xs text-gray-500">Puedes reportarlo hasta el {hasta}.</p>
-      <div className="mt-2 grid grid-cols-3 gap-2">
-        {REPORTE_OPCIONES.map((o) => (
+      <p className="font-semibold">{recoger ? '¿Cómo estuvo tu pedido?' : '¿Cómo llegó tu pedido?'} <span className="text-xs font-normal text-gray-400">(opcional)</span></p>
+      <p className="text-xs text-gray-500">{recoger ? 'Si te faltó algo, avísanos. ' : ''}Puedes reportarlo hasta el {hasta}.</p>
+      <div className={`mt-2 grid gap-2 ${recoger ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-3'}`}>
+        {opciones.map((o) => (
           <button key={o.tipo} type="button" onClick={() => { setTipo(o.tipo); setError(''); if (o.tipo === 'BIEN') setProductos([]) }}
             className={`rounded-xl border-2 px-2 py-2 text-sm font-semibold ${tipo === o.tipo ? o.cls : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
             {o.label}

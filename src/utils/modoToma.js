@@ -44,3 +44,14 @@ export function useModoToma() {
   const modo = propio ?? deTienda
   return { modo, rapido: modo === 'RAPIDO', deTienda, propio, setModo: setModoToma }
 }
+
+/**
+ * ¿Esta orden se puede atender en modo rápido? Las del punto de venta mientras sigan abiertas:
+ * de mesa, para llevar, comer aquí, para recoger y a domicilio. Los pedidos de la página web y
+ * los pedidos anticipados de una reservación se quedan siempre en la vista detallada.
+ */
+export function admiteModoRapido(o) {
+  if (!o || ['PAGADA', 'CANCELADA'].includes(o.estado) || o.pendienteAceptar) return false
+  if (o.mesa) return true
+  return o.origen !== 'WEB' && ['PARA_LLEVAR', 'COMER_AQUI', 'RECOGER', 'DOMICILIO'].includes(o.tipoEntrega)
+}

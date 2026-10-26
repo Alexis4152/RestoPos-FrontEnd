@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { etiquetaEntrega, etiquetaCobro } from '../components/EntregaSeguimiento'
 import { useNavigate } from 'react-router-dom'
-import { getTakeawayOrders, openOrder, getDeliveryFee, acceptWebOrder, cancelOrder } from '../api/ordenes'
+import { getTakeawayOrders, openOrder, getDeliveryFee, acceptWebOrder, rejectWebOrder, cancelOrder } from '../api/ordenes'
 import { getDeliveriesPorRecibir, recibirDineroEntrega } from '../api/deliveries'
+import { getTables } from '../api/mesas'
+import { nombreMesa } from './rapido/MisMesas'
 import Icon from '../components/Icon'
 import { useNotify } from '../context/NotifyContext'
 import { useAuth } from '../context/AuthContext'
@@ -59,6 +61,10 @@ export default function Takeaway() {
   const [direccion, setDireccion] = useState({ calle: '', colonia: '', codigoPostal: '' })
   const [clienteNombre, setClienteNombre] = useState('')
   const [clienteTelefono, setClienteTelefono] = useState('')
+  // "Comer aquí": el cliente pide en caja y se le asigna una mesa (zona → mesa).
+  const [mesas, setMesas] = useState([])
+  const [zonaSel, setZonaSel] = useState(null)
+  const [mesaId, setMesaId] = useState(null)
   const [tipo, setTipo] = useState('PARA_LLEVAR')
   const [fieldErrors, setFieldErrors] = useState({})
   // Costo de envío configurado por el admin; null = la tienda no cobra envío (no se ofrece la casilla).
@@ -94,6 +100,9 @@ export default function Takeaway() {
     setDireccion({ calle: '', colonia: '', codigoPostal: '' })
     setClienteNombre('')
     setClienteTelefono('')
+    setMesaId(null)
+    setZonaSel(null)
+    getTables().then((r) => setMesas((r.data.data ?? []).filter((m) => m.isActive !== false && !m.unidaA))).catch(() => setMesas([]))
     setTipo('PARA_LLEVAR')
     setFieldErrors({})
     getDeliveryFee().then((r) => setDeliveryFee(r.data.data ?? null)).catch(() => setDeliveryFee(null))
@@ -121,10 +130,10 @@ export default function Takeaway() {
     setRechazando(null)
     setBusyId(o.id)
     try {
-      await cancelOrder(o.id, motivo.trim() || 'Pedido rechazado')
+      await rejectWebOrder(o.id, motivo.trim() || 'Pedido rechazado')
       notify(`Pedido #${o.id} rechazado`, 'success')
       load()
-    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo rechazar el pedido', 'error') }
+    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo rechazar el pedido', 'error'); load() }
     finally { setBusyId(null) }
   }
 
@@ -141,12 +150,15 @@ export default function Takeaway() {
       else if (clienteTelefono.length > 30) errors.clienteTelefono = 'No puede tener más de 30 caracteres'
     }
     if (t.direccion) Object.assign(errors, validarDireccion(direccion))
+    if (t.key === 'COMER_AQUI' && !mesaId) errors.mesa = 'Elige la mesa donde se va a sentar'
     setFieldErrors(errors)
     if (Object.keys(errors).length > 0) return
     setLoading(true)
     try {
       const res = await openOrder({
-        numeroComensales: 1,
+        // "Comer aquí": la mesa se abre con todos sus lugares ocupados (una de 4 → 4 comensales).
+        numeroComensales: t.key === 'COMER_AQUI' ? (mesas.find((m) => m.id === mesaId)?.capacidad || 1) : 1,
+        mesaId: t.key === 'COMER_AQUI' ? mesaId : undefined,
         tipoEntrega: t.key,
         clienteNombre: clienteNombre.trim(),
         clienteTelefono: t.telefono ? clienteTelefono.trim() : undefined,
@@ -289,6 +301,10 @@ export default function Takeaway() {
                   onChange={(e) => { setClienteNombre(e.target.value); setFieldErrors((f) => ({ ...f, clienteNombre: '' })) }} />
                 {fieldErrors.clienteNombre && <p className="text-red-600 text-xs mt-1">{fieldErrors.clienteNombre}</p>}
               </div>
+              {tipo === 'COMER_AQUI' && (
+                <ElegirMesa mesas={mesas} zonaSel={zonaSel} setZonaSel={setZonaSel} mesaId={mesaId}
+                  onMesa={(id) => { setMesaId(id); setFieldErrors((f) => ({ ...f, mesa: '' })) }} error={fieldErrors.mesa} />
+              )}
               {tipoPedido(tipo).telefono && (
                 <div>
                   <label className="text-xs font-medium text-gray-600">Teléfono <span className="text-red-500">*</span></label>
@@ -340,6 +356,7 @@ function TarjetaPedido({ o, busy, onAbrir, onAceptar, onRechazar }) {
         <div className="flex flex-wrap gap-1.5">
           <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{o.origen === 'WEB' ? 'Web' : 'Caja'}</span>
           <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{tipoLabel}</span>
+          {o.mesa && <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#E6EDF8] text-[#1E4585]">{nombreMesa(o.mesa.numero)}</span>}
           {o.metodoPago && <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{PAGO_LABEL[o.metodoPago] ?? o.metodoPago}</span>}
           {o.metodoPago === 'EFECTIVO' && o.pagaCon != null && Number(o.pagaCon) > Number(o.total) && (
             <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#E7F3EC] text-[#22603C]">Paga con {fmt(o.pagaCon)} · cambio {fmt(Number(o.pagaCon) - Number(o.total))}</span>
@@ -374,5 +391,55 @@ function TarjetaPedido({ o, busy, onAbrir, onAceptar, onRechazar }) {
         </div>
       )}
     </article>
+  )
+}
+
+/**
+ * "Comer aquí": se elige la zona y luego la mesa, con sus lugares. Las mesas ocupadas o fuera
+ * de servicio se ven pero no se pueden elegir.
+ */
+function ElegirMesa({ mesas, zonaSel, setZonaSel, mesaId, onMesa, error }) {
+  const zonas = []
+  mesas.forEach((m) => {
+    const z = m.zona ?? { id: 0, nombre: 'Sin zona' }
+    if (!zonas.some((x) => x.id === z.id)) zonas.push(z)
+  })
+  const zona = zonaSel ?? zonas[0]?.id ?? null
+  const libre = (m) => m.estado === 'DISPONIBLE' || m.estado === 'RESERVADA'
+  const deZona = mesas.filter((m) => (m.zona?.id ?? 0) === zona)
+  if (mesas.length === 0) return <p className="text-sm text-gray-600">No hay mesas dadas de alta.</p>
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium text-gray-600">Mesa <span className="text-red-500">*</span></p>
+      {zonas.length > 1 && (
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Zona">
+          {zonas.map((z) => {
+            const libres = mesas.filter((m) => (m.zona?.id ?? 0) === z.id && libre(m)).length
+            return (
+              <button key={z.id} type="button" role="radio" aria-checked={zona === z.id} onClick={() => setZonaSel(z.id)}
+                className={`min-h-[36px] px-3 rounded-full text-sm font-semibold border ${zona === z.id ? 'bg-gray-900 border-gray-900 text-white' : 'border-[#D9D5CC] bg-white text-gray-700'}`}>
+                {z.nombre} <span className="opacity-70">· {libres} libre{libres === 1 ? '' : 's'}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2" role="radiogroup" aria-label="Mesa">
+        {deZona.map((m) => {
+          const ok = libre(m)
+          const sel = mesaId === m.id
+          return (
+            <button key={m.id} type="button" role="radio" aria-checked={sel} disabled={!ok} onClick={() => onMesa(m.id)}
+              className={`min-h-[56px] rounded-xl border px-3 py-2 text-left disabled:opacity-45 disabled:cursor-not-allowed ${sel ? 'border-2 border-purple-600 bg-purple-50' : 'border-[#D9D5CC] bg-white hover:border-gray-400'}`}>
+              <span className="block text-sm font-extrabold">{nombreMesa(m.numero)}</span>
+              <span className="block text-xs text-gray-600">
+                {m.capacidad ? `${m.capacidad} lugar${m.capacidad === 1 ? '' : 'es'}` : 'Sin capacidad'}{ok ? '' : m.estado === 'FUERA_DE_SERVICIO' ? ' · fuera de servicio' : ' · ocupada'}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+      {error && <p className="text-red-600 text-xs">{error}</p>}
+    </div>
   )
 }

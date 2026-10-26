@@ -16,7 +16,7 @@ function minutos(desde) {
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`
 }
 // "Mesa 4", sin repetir la palabra si el número ya la trae ("Mesa 6").
-export const nombreMesa = (numero) => (/^mesa/i.test(String(numero)) ? String(numero) : `Mesa ${numero}`)
+export const nombreMesa = (numero) => (/^mesa\b/i.test(String(numero)) ? String(numero) : `Mesa ${numero}`)
 const porNumero = (a, b) => String(a.numero).localeCompare(String(b.numero), 'es', { numeric: true })
 
 /**

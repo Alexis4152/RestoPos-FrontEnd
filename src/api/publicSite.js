@@ -147,3 +147,6 @@ export const preordenarReservacion = (slug, token, data) =>
 
 export const cancelarPreordenReservacion = (slug, token) =>
   publicApi.post(`${base(slug)}/reservaciones/${encodeURIComponent(token)}/pedido/cancelar`)
+
+/** Opiniones de la tienda (las mejores primero), de 10 en 10. */
+export const getOpinionesPublicas = (slug, pagina = 0) => publicApi.get(`${base(slug)}/opiniones`, { params: { pagina } })

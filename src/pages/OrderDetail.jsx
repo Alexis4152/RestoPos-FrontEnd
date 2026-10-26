@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { getOrder, addDiner, deleteDiner, addOrderItem, cancelOrderItem, cancelOrder, updateOrderItemStatus, updateOrderItem, acceptWebOrder, linkOrderClient, unlinkOrderClient, getOrderOpinions } from '../api/ordenes'
+import { rejectWebOrder, getOrder, addDiner, deleteDiner, addOrderItem, cancelOrderItem, cancelOrder, updateOrderItemStatus, updateOrderItem, acceptWebOrder, linkOrderClient, unlinkOrderClient, getOrderOpinions } from '../api/ordenes'
 import { getTables } from '../api/mesas'
 import Icon, { Persona } from '../components/Icon'
 import EntregaSeguimiento from '../components/EntregaSeguimiento'
@@ -21,7 +21,9 @@ import { useEscapeKey } from '../hooks/useEscapeKey'
 import { etiquetaTipoPedido } from '../utils/tipoPedido'
 import AgotadosModal from '../components/AgotadosModal'
 import GruposModificadores from '../components/GruposModificadores'
-import { useModoToma } from '../utils/modoToma'
+import { useModoToma, admiteModoRapido } from '../utils/modoToma'
+import { leerPorEnviar, guardarPorEnviar } from '../utils/porEnviar'
+import SelectorModoToma from '../components/SelectorModoToma'
 import { recibirDineroEntrega } from '../api/deliveries'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
@@ -49,15 +51,6 @@ const toDisplayTime = (t) => (t ? t.slice(0, 5) : '')
  */
 // "Por enviar a cocina" de cada orden, guardado en este dispositivo (ver OrderDetail#porEnviar).
 const clavePorEnviar = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ?? [])].sort().join('.'), l.observaciones ?? ''].join('|')
-function leerPorEnviar(id) {
-  try { return JSON.parse(localStorage.getItem(`restopos-por-enviar-${id}`) || '[]') } catch { return [] }
-}
-function guardarPorEnviar(id, lineas) {
-  try {
-    if (lineas.length) localStorage.setItem(`restopos-por-enviar-${id}`, JSON.stringify(lineas))
-    else localStorage.removeItem(`restopos-por-enviar-${id}`)
-  } catch { /* sin almacenamiento */ }
-}
 
 export default function OrderDetail() {
   const { id } = useParams()
@@ -85,7 +78,6 @@ export default function OrderDetail() {
   // "Marcar todo entregado" en curso, para deshabilitar ese botón mientras corren todas sus
   // llamadas (una por producto pendiente) y no duplicar la acción con un doble clic.
   const [marcandoTodo, setMarcandoTodo] = useState(false)
-  const [cart, setCart] = useState({}) // { [productoId]: { cantidad, observaciones } }
   // "Por enviar a cocina": lo agregado se junta aquí y solo llega a cocina al tocar "Enviar a
   // cocina" (antes no). Se guarda por orden en este dispositivo para no perderlo si se sale.
   const [porEnviar, setPorEnviar] = useState(() => leerPorEnviar(id))
@@ -185,7 +177,7 @@ export default function OrderDetail() {
     setPickerComensalId('')
     setPorEnviar(leerPorEnviar(id))
   }, [id])
-  useEffect(() => { guardarPorEnviar(id, porEnviar) }, [id, porEnviar])
+  useEffect(() => { guardarPorEnviar(id, porEnviar, 'observaciones') }, [id, porEnviar])
   useEffect(() => { getCategories().then((r) => setCategories(r.data.data ?? [])) }, [])
   // Silencioso a propósito: "no hay corte abierto" es un estado normal, no un error.
   // Cobrar = tener la sección CASH_CUTS (cajero/admin). El mesero solo genera e imprime la cuenta.
@@ -364,34 +356,47 @@ export default function OrderDetail() {
     setProductQuery('')
     setProductCat('')
     setPickerComensalId('')
-    setCart({})
     setShowAddItem(true)
   }
 
-  function cartQty(productId) { return cart[productId]?.cantidad ?? 0 }
+  // Productos sin opciones: cada toque va DIRECTO a "Por enviar a cocina" (ese es el borrador;
+  // no hay un paso extra de "Agregar"). Se cuentan/editan las líneas sin opciones de ese
+  // producto para la persona elegida en el selector.
+  const comensalElegido = () => (pickerComensalId ? Number(pickerComensalId) : null)
+  const esLineaSimple = (x, productId) => x.productoId === Number(productId) && (x.opcionIds ?? []).length === 0
+    && (x.comensalId ?? null) === comensalElegido()
 
-  function incrementCartItem(productId) {
-    setCart((c) => ({ ...c, [productId]: { cantidad: (c[productId]?.cantidad ?? 0) + 1, observaciones: c[productId]?.observaciones ?? '' } }))
+  function cartQty(productId) {
+    return porEnviar.filter((x) => esLineaSimple(x, productId)).reduce((n, x) => n + x.cantidad, 0)
   }
 
-  function decrementCartItem(productId) {
-    setCart((c) => {
-      const current = c[productId]
-      if (!current) return c
-      if (current.cantidad <= 1) {
-        const next = { ...c }
-        delete next[productId]
-        return next
-      }
-      return { ...c, [productId]: { ...current, cantidad: current.cantidad - 1 } }
+  function incrementCartItem(p) {
+    setPorEnviar((c) => {
+      const i = c.findIndex((x) => esLineaSimple(x, p.id))
+      if (i >= 0) return c.map((x, j) => (j === i ? { ...x, cantidad: x.cantidad + 1 } : x))
+      return [...c, { productoId: p.id, nombre: p.name, precio: Number(p.price ?? 0), cantidad: 1,
+        comensalId: comensalElegido(), observaciones: '', opcionIds: [], resumen: '' }]
     })
   }
 
-  function setCartNota(productId, observaciones) {
-    setCart((c) => ({ ...c, [productId]: { ...c[productId], observaciones } }))
+  function decrementCartItem(productId) {
+    setPorEnviar((c) => {
+      const i = c.findLastIndex((x) => esLineaSimple(x, productId))
+      if (i < 0) return c
+      return c.map((x, j) => (j === i ? { ...x, cantidad: x.cantidad - 1 } : x)).filter((x) => x.cantidad > 0)
+    })
   }
 
-  const cartCount = Object.values(cart).reduce((sum, i) => sum + i.cantidad, 0)
+  const notaDe = (productId) => porEnviar.find((x) => esLineaSimple(x, productId))?.observaciones ?? ''
+
+  function setCartNota(productId, observaciones) {
+    setPorEnviar((c) => {
+      const i = c.findIndex((x) => esLineaSimple(x, productId))
+      return i < 0 ? c : c.map((x, j) => (j === i ? { ...x, observaciones } : x))
+    })
+  }
+
+  const cartCount = porEnviar.reduce((n, x) => n + x.cantidad, 0)
 
   /** Grupos de modificadores activos de un producto, con sus opciones también filtradas a activas. */
   function productModGrupos(p) {
@@ -450,20 +455,6 @@ export default function OrderDetail() {
     })
     setModPicker(null)
     notify(`${modPicker.name}: listo para enviar a cocina`, 'success')
-  }
-
-  function handleConfirmAddItems() {
-    for (const [productoId, { cantidad, observaciones }] of Object.entries(cart)) {
-      if (cantidad <= 0) continue
-      const p = productosVistos.current[productoId]
-      agregarPorEnviar({
-        productoId: Number(productoId), nombre: p?.name ?? 'Producto', precio: Number(p?.price ?? 0), cantidad,
-        comensalId: pickerComensalId ? Number(pickerComensalId) : null,
-        observaciones: (observaciones || '').trim(), opcionIds: [], resumen: '',
-      })
-    }
-    setShowAddItem(false)
-    setCart({})
   }
 
   const cambiarPorEnviar = (k, delta) => setPorEnviar((c) => c
@@ -613,9 +604,9 @@ export default function OrderDetail() {
   async function handleRejectWeb() {
     if (!(await confirmDialog('¿Rechazar este pedido? El cliente verá que no fue aceptado.', { confirmText: 'Rechazar pedido' }))) return
     try {
-      await cancelOrder(id, 'No podemos atender tu pedido en este momento')
+      await rejectWebOrder(id, 'No podemos atender tu pedido en este momento')
       navigate('/takeaway')
-    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo rechazar el pedido', 'error') }
+    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo rechazar el pedido', 'error'); load() }
   }
 
   /** Liga la orden a un cliente registrado (correo o teléfono) para que la vea y la califique en su cuenta. */
@@ -846,8 +837,10 @@ export default function OrderDetail() {
   // Mismo tope que Pago.monto en el backend (NUMERIC(12,2)) para el modo $, y 100 para el
   // modo % (@DecimalMax de PagoRequest.propinaPorcentaje) — sin esto, un número gigante se
   // arrastraba al total y "Monto a aplicar" terminaba mostrando notación científica.
+  // Propina: máximo 50% (en %) o la mitad de la cuenta (en $) — mismo tope que el backend.
+  const payPropinaMaxMonto = Math.floor(paySaldoPendiente * 50) / 100
   const payPropinaValorExceedsLimit = payPropinaValorNum != null && !Number.isNaN(payPropinaValorNum) && (
-    payPropinaTipo === 'PORCENTAJE' ? payPropinaValorNum > 100 : payPropinaValorNum > 9999999999.99
+    payPropinaTipo === 'PORCENTAJE' ? payPropinaValorNum > 50 : payPropinaValorNum > payPropinaMaxMonto
   )
   const payPropinaValorNegative = payPropinaValorNum != null && payPropinaValorNum < 0
   const payPropinaValorInvalid = payPropinaValorExceedsLimit || payPropinaValorNegative
@@ -887,6 +880,8 @@ export default function OrderDetail() {
 
   // ── Vista ────────────────────────────────────────────────────────────
   const esMesa = !!order.mesa
+  // Por persona (comensales): las mesas y "Comer aquí" (se sientan, aunque sin mesa asignada).
+  const conPersonas = esMesa || order.tipoEntrega === 'COMER_AQUI'
   // Envío a domicilio que el repartidor ya sacó ("Voy en camino") o entregó: no admite más productos.
   const salioAEntregar = order.tipoEntrega === 'DOMICILIO' && !!(order.enCaminoAt || order.entregadaAt)
   const minutos = order.openedAt ? Math.max(0, Math.round((Date.now() - new Date(order.openedAt).getTime()) / 60000)) : null
@@ -896,8 +891,8 @@ export default function OrderDetail() {
   const canceladosCount = (order.items ?? []).filter((i) => i.estado === 'CANCELADO').length
   const chips = [
     { key: 'ALL', label: 'Todos', n: piezasDe(() => true) },
-    ...(esMesa ? [{ key: 'SHARED', label: 'Compartido', n: piezasDe((i) => !i.comensal) }] : []),
-    ...(esMesa ? (order.comensales ?? []).map((c) => ({
+    ...(conPersonas ? [{ key: 'SHARED', label: 'Compartido', n: piezasDe((i) => !i.comensal) }] : []),
+    ...(conPersonas ? (order.comensales ?? []).map((c) => ({
       key: String(c.id), label: `Comensal ${c.numero}${c.nombre ? ` (${c.nombre})` : ''}`, persona: true, comensal: c,
       n: piezasDe((i) => i.comensal?.id === c.id),
     })) : []),
@@ -985,9 +980,10 @@ export default function OrderDetail() {
             {order.openedAt ? ` · abierta ${new Date(order.openedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}${!isClosed ? ` (${transcurrido})` : ''}` : ''}
           </p>
         </div>
-        {rapido && !isClosed && esMesa && (
-          <Link to={`/orders/${order.id}`} className="text-sm font-bold text-purple-700 hover:underline">Vista rápida</Link>
-        )}
+        {admiteModoRapido(order) && (esMesa
+          ? rapido && <Link to={`/orders/${order.id}`} className="text-sm font-bold text-purple-700 hover:underline">Vista rápida</Link>
+          // Para llevar: el modo se elige ya dentro del pedido (Rápido quita ?vista=detalle).
+          : <SelectorModoToma onCambio={(m) => { if (m === 'RAPIDO') navigate(`/orders/${order.id}`, { replace: true }) }} />)}
         {!isClosed && esMesa && (
           <button type="button" className="btn-secondary min-h-[44px] inline-flex items-center gap-2" onClick={abrirMover}>
             <Icon name="mover" className="w-4 h-4" /> Mover de mesa
@@ -1034,7 +1030,7 @@ export default function OrderDetail() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold truncate">{l.nombre}</p>
                     <p className="text-xs text-gray-600 truncate">
-                      {[c ? `Comensal ${c.numero}${c.nombre ? ` (${c.nombre})` : ''}` : esMesa ? 'Compartido' : null, l.resumen, l.observaciones].filter(Boolean).join(' · ')}
+                      {[c ? `Comensal ${c.numero}${c.nombre ? ` (${c.nombre})` : ''}` : conPersonas ? 'Compartido' : null, l.resumen, l.observaciones].filter(Boolean).join(' · ')}
                     </p>
                   </div>
                   <span className="text-sm font-bold">{fmt(l.precio * l.cantidad)}</span>
@@ -1081,7 +1077,7 @@ export default function OrderDetail() {
                 {c.label} <span className="opacity-70">{c.n}</span>
               </button>
             ))}
-            {esMesa && !isClosed && (
+            {conPersonas && !isClosed && (
               <button type="button" onClick={handleAddDiner} className="chip border-dashed text-purple-700 disabled:opacity-40"
                 disabled={cupoMesas != null && (order.comensales?.length ?? 0) >= cupoMesas}
                 title={cupoMesas != null && (order.comensales?.length ?? 0) >= cupoMesas ? `Las mesas son para ${cupoMesas} personas: une otra mesa para agregar más` : undefined}>
@@ -1127,7 +1123,7 @@ export default function OrderDetail() {
                       {item.observaciones && <p className="text-[13px] text-gray-600 italic">{item.observaciones}</p>}
                       {item.estado !== 'CANCELADO' && paymentLabel(item) && <p className="text-xs text-gray-600">{paymentLabel(item).replace(/^ · /, '')}</p>}
                     </div>
-                    {esMesa && (
+                    {conPersonas && (
                       <span className="text-xs font-bold px-2 py-1 rounded-md bg-[#F1EFEA] text-gray-700 whitespace-nowrap">
                         {item.comensal ? `C${item.comensal.numero}` : 'Compartido'}
                       </span>
@@ -1472,14 +1468,17 @@ export default function OrderDetail() {
               </button>
             </div>
 
-            {/* Buscador + comensal, siempre visibles arriba */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+            {/* Buscador + comensal arriba. El comensal solo en mesas y "Comer aquí": en para llevar,
+                para recoger y a domicilio todo es del cliente del pedido (no hay a quién asignarlo). */}
+            <div className={`grid grid-cols-1 ${conPersonas ? 'sm:grid-cols-2' : ''} gap-2 mb-2`}>
               <input className="input" placeholder="🔍 Buscar platillo..." value={productQuery}
                 onChange={(e) => setProductQuery(e.target.value)} />
-              <select className="input" value={pickerComensalId} onChange={(e) => setPickerComensalId(e.target.value)}>
-                <option value="">Compartido (sin comensal)</option>
-                {order.comensales?.map((c) => <option key={c.id} value={c.id}>Comensal {c.numero}{c.nombre ? ` (${c.nombre})` : ''}</option>)}
-              </select>
+              {conPersonas && (
+                <select className="input" value={pickerComensalId} onChange={(e) => setPickerComensalId(e.target.value)}>
+                  <option value="">Compartido (sin comensal)</option>
+                  {order.comensales?.map((c) => <option key={c.id} value={c.id}>Comensal {c.numero}{c.nombre ? ` (${c.nombre})` : ''}</option>)}
+                </select>
+              )}
             </div>
 
             {/* Categorías como chips (en vez de un <select>): cada una muestra si está disponible
@@ -1528,14 +1527,14 @@ export default function OrderDetail() {
                 return (
                   // Toda la tarjeta es clicable: con opciones abre "Personalizar"; sin opciones suma una pieza.
                   <div key={p.id} role="button" tabIndex={0}
-                    onClick={() => { if (!p.sinInventario) (personalizable ? openModPicker(p) : incrementCartItem(p.id)) }}
+                    onClick={() => { if (!p.sinInventario) (personalizable ? openModPicker(p) : incrementCartItem(p)) }}
                     aria-disabled={p.sinInventario || undefined}
                     onKeyDown={(e) => {
                       if (e.key !== 'Enter' && e.key !== ' ') return
                       e.preventDefault()
                       if (p.sinInventario) return
                       if (personalizable) openModPicker(p)
-                      else incrementCartItem(p.id)
+                      else incrementCartItem(p)
                     }}
                     className={`border rounded-lg overflow-hidden flex shadow-sm transition-colors ${p.sinInventario ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-purple-300 hover:bg-purple-50/40'} ${
                       qty > 0 ? 'min-h-24 border-purple-300' : 'h-24 border-gray-100'}`}>
@@ -1572,7 +1571,7 @@ export default function OrderDetail() {
                                 </>
                               )}
                               <button type="button" className="w-6 h-6 rounded-full bg-purple-600 text-white font-bold hover:bg-purple-700"
-                                onClick={() => incrementCartItem(p.id)}>+</button>
+                                onClick={() => incrementCartItem(p)}>+</button>
                             </>
                           )}
                         </div>
@@ -1580,7 +1579,7 @@ export default function OrderDetail() {
                       {qty > 0 && !personalizable && (
                         <input className="input !py-1 !text-xs mt-1" placeholder="Notas (opcional)"
                           onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}
-                          value={cart[p.id]?.observaciones ?? ''} onChange={(e) => setCartNota(p.id, e.target.value)} />
+                          value={notaDe(p.id)} onChange={(e) => setCartNota(p.id, e.target.value)} />
                       )}
                     </div>
                   </div>
@@ -1595,11 +1594,11 @@ export default function OrderDetail() {
               )}
             </div>
 
-            <div className="flex gap-2 justify-end pt-3 border-t border-gray-100 mt-2">
-              <button type="button" className="btn-secondary" onClick={() => setShowAddItem(false)}>Cancelar</button>
-              <button type="button" className="btn-primary" disabled={loading || cartCount === 0} onClick={handleConfirmAddItems}>
-                {loading ? '...' : `Agregar ${cartCount > 0 ? `(${cartCount})` : ''}`}
-              </button>
+            <div className="flex items-center gap-3 pt-3 border-t border-gray-100 mt-2">
+              <p className="flex-1 text-sm text-gray-600">
+                {cartCount > 0 ? `${cartCount} producto${cartCount === 1 ? '' : 's'} en "Por enviar a cocina"` : 'Toca un producto para agregarlo'}
+              </p>
+              <button type="button" className="btn-primary" onClick={() => setShowAddItem(false)}>Listo</button>
             </div>
           </div>
         </div>
@@ -1659,7 +1658,7 @@ export default function OrderDetail() {
             </div>
 
             <div className="p-5 space-y-4">
-              {order.mesa && (
+              {(order.mesa || order.tipoEntrega === 'COMER_AQUI') && (
                 <div>
                   <label className="text-xs font-medium text-gray-600">Comensal</label>
                   <select className="input mt-1" value={editComensalId} onChange={(e) => setEditComensalId(e.target.value)}>
@@ -2061,7 +2060,7 @@ export default function OrderDetail() {
                               setPayPropinaValor(v)
                               const num = v === '' ? null : Number(v)
                               const numValid = num != null && !Number.isNaN(num) && num >= 0
-                                && (payPropinaTipo === 'PORCENTAJE' ? num <= 100 : num <= 9999999999.99)
+                                && (payPropinaTipo === 'PORCENTAJE' ? num <= 50 : num <= Math.floor(paySaldoPendiente * 50) / 100)
                               // Fuera de rango: no se arrastra al monto sugerido — se deja en el
                               // saldo base y el error de abajo le indica al cajero qué corregir,
                               // en vez de que "Monto a aplicar" termine mostrando algo como 1e+54.
@@ -2074,8 +2073,8 @@ export default function OrderDetail() {
                           {payPropinaValorExceedsLimit ? (
                             <p className="text-xs text-red-600">
                               {payPropinaTipo === 'PORCENTAJE'
-                                ? 'El porcentaje no puede exceder 100'
-                                : 'El número es excesivamente grande — el máximo permitido es 9,999,999,999.99'}
+                                ? 'La propina no puede pasar del 50%'
+                                : `La propina no puede pasar del 50% de la cuenta (${fmt(payPropinaMaxMonto)})`}
                             </p>
                           ) : payPropinaValorNegative ? (
                             <p className="text-xs text-red-600">La propina no puede ser negativa</p>

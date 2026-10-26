@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { getReservaciones, getReservacionesPendientes, createReservacion, confirmReservacion, rejectReservacion,
   cancelReservacion, markReservacionLlegada, getReglasReservacion } from '../api/reservaciones'
 import { getTables } from '../api/mesas'
@@ -19,7 +20,13 @@ import { ESTADO_RESERVA, necesidades, fechaLarga, horaCorta, ymd, sumarDias } fr
  */
 export default function Reservaciones() {
   const { notify } = useNotify()
-  const [fecha, setFecha] = useState(ymd())
+  // ?fecha=YYYY-MM-DD (p. ej. desde un aviso de la campana): abre ese día.
+  const [searchParams] = useSearchParams()
+  const [fecha, setFecha] = useState(() => (/^\d{4}-\d{2}-\d{2}$/.test(searchParams.get('fecha') ?? '') ? searchParams.get('fecha') : ymd()))
+  useEffect(() => {
+    const f = searchParams.get('fecha')
+    if (f && /^\d{4}-\d{2}-\d{2}$/.test(f)) setFecha(f)
+  }, [searchParams])
   const [delDia, setDelDia] = useState([])
   const [pendientes, setPendientes] = useState([])
   const [mesas, setMesas] = useState([])
@@ -212,8 +219,10 @@ function TarjetaStaff({ r, conFecha, compacta, busy, onConfirmar, onRechazar, on
         {conRetraso && ['PENDIENTE', 'CONFIRMADA'].includes(r.estado) && (
           <p className="text-sm font-bold text-[#7A4A00] bg-[#FBF0DC] rounded-lg px-2.5 py-1.5">⏰ Avisó que llega {r.retrasoMinutos} min tarde (~{horaRetraso})</p>
         )}
-        {r.modificadaAt && ['PENDIENTE', 'CONFIRMADA'].includes(r.estado) && (
-          <p className="text-xs text-gray-600">✏️ El cliente hizo cambios el {new Date(r.modificadaAt).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+        {r.modificadaAt && r.ultimoCambio && (
+          <p className="text-xs text-gray-700 bg-[#F7F6F2] rounded-lg px-2.5 py-1.5">
+            ✏️ {r.ultimoCambio} · {new Date(r.modificadaAt).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+          </p>
         )}
         {r.preorden && (
           <div className="rounded-lg border border-[#C9D7EE] bg-[#EEF3FB] px-2.5 py-2 text-[13px] text-[#1E4585]">
@@ -289,21 +298,22 @@ function ModalMesa({ r, mesas, llegada, onClose, onGuardar }) {
           {grupos.map(([zona, g]) => (
             <optgroup key={zona} label={`${zona}${g.zonaId && g.zonaId === r.zonaId ? ' ★ preferida' : ''}`}>
               {g.mesas.map((m) => (
-                <option key={m.id} value={m.id}>
-                  Mesa {m.numero}{m.capacidad ? ` · ${m.capacidad} lugares` : ''}{m.capacidad && m.capacidad < r.personas ? ' (chica)' : ''}
+                <option key={m.id} value={m.id} disabled={m.capacidad > 0 && m.capacidad < r.personas}>
+                  Mesa {m.numero}{m.capacidad ? ` · ${m.capacidad} lugares` : ''}{m.capacidad && m.capacidad < r.personas ? ' — chica para el grupo' : ''}
                 </option>
               ))}
             </optgroup>
           ))}
         </select>
         {elegida?.capacidad && elegida.capacidad < r.personas && (
-          <p className="text-xs text-orange-700 mt-1">Esta mesa es para {elegida.capacidad}; el grupo es de {r.personas}.</p>
+          <p className="text-xs text-red-700 mt-1">La mesa que tenía es para {elegida.capacidad} y el grupo es de {r.personas}: elige una más grande.</p>
         )}
         {r.accesible && <p className="text-xs text-blue-700 mt-1">♿ Elige una mesa accesible, sin escalones y con espacio para silla de ruedas.</p>}
         <p className="text-xs text-gray-400 mt-2">Si la mesa ya está reservada a una hora cercana, se te avisará.</p>
         <div className="flex gap-2 mt-5">
           <button className="btn-secondary flex-1" onClick={onClose}>Cancelar</button>
-          <button className="btn-primary flex-1" disabled={llegada && !mesaId} onClick={() => onGuardar(mesaId ? Number(mesaId) : null)}>
+          <button className="btn-primary flex-1" disabled={(llegada && !mesaId) || (elegida?.capacidad > 0 && elegida.capacidad < r.personas)}
+            onClick={() => onGuardar(mesaId ? Number(mesaId) : null)}>
             {llegada ? 'Llegó · mandar a cocina' : r.estado === 'PENDIENTE' ? 'Confirmar' : 'Guardar'}
           </button>
         </div>
@@ -396,7 +406,11 @@ function ModalNueva({ mesas, zonas, fechaInicial, onClose, onCreada }) {
               <option value="">Asignar después</option>
               {grupos.map(([zona, g]) => (
                 <optgroup key={zona} label={zona}>
-                  {g.mesas.map((m) => <option key={m.id} value={m.id}>Mesa {m.numero}{m.capacidad ? ` · ${m.capacidad} lugares` : ''}</option>)}
+                  {g.mesas.map((m) => (
+                    <option key={m.id} value={m.id} disabled={m.capacidad > 0 && m.capacidad < form.personas}>
+                      Mesa {m.numero}{m.capacidad ? ` · ${m.capacidad} lugares` : ''}{m.capacidad > 0 && m.capacidad < form.personas ? ' — chica' : ''}
+                    </option>
+                  ))}
                 </optgroup>
               ))}
             </select></label>

@@ -31,14 +31,27 @@ const inputCls = 'w-full rounded-xl border border-gray-300 bg-white px-3 py-2 te
  * Un invitado sigue sus reservaciones por el código guardado en este navegador; un cliente
  * registrado las ve desde su cuenta (en cualquier dispositivo).
  */
-export default function Reservaciones({ slug, tienda, cliente, clienteToken, onSesionVencida, onOrdenar }) {
+const POR_PAGINA = 10
+
+/**
+ * Pestaña "Reservar" de la página web: CONSULTA de mis reservaciones (filtro por fechas y tabla
+ * paginada); al tocar una se abre con sus acciones (cambiar, retraso, ordenar, cancelar). La
+ * reservación nueva se hace desde "Mesas" tocando la mesa (ver ModalNuevaReserva); si la tienda
+ * no muestra sus mesas, aquí hay un botón "Nueva reservación".
+ */
+export default function Reservaciones({ slug, tienda, cliente, clienteToken, onSesionVencida, onOrdenar, creada, onIrAMesas, puedeElegirMesa }) {
   const [opciones, setOpciones] = useState(null)
   const [error, setError] = useState('')
   const [codigos, setCodigos] = useState(() => leerCodigosReserva(slug))
   const [porCodigo, setPorCodigo] = useState({}) // { token: reservación }
   const [deCuenta, setDeCuenta] = useState([])
-  const [recienCreada, setRecienCreada] = useState(null)
+  const [recienCreada, setRecienCreada] = useState(creada ?? null)
   const [editando, setEditando] = useState(null) // reservación cuyos datos (personas/necesidades) se cambian
+  const [abierta, setAbierta] = useState(null) // token de la reservación abierta (detalle con acciones)
+  const [nueva, setNueva] = useState(false) // sin mesas a la vista: el formulario se abre desde aquí
+  const [filtro, setFiltro] = useState({ desde: '', hasta: '' })
+  const [pagina, setPagina] = useState(0)
+  useEffect(() => { if (creada) { setRecienCreada(creada); setCodigos((l) => (l.includes(creada) ? l : [...l, creada])) } }, [creada])
 
   useEffect(() => {
     getReservaOpciones(slug).then((r) => setOpciones(r.data.data))
@@ -113,52 +126,147 @@ export default function Reservaciones({ slug, tienda, cliente, clienteToken, onS
     return <p className="text-center text-gray-500 py-16">{error}{tienda.telefono ? ` Llámanos al ${tienda.telefono}.` : ''}</p>
   }
 
+  // Filtro por fechas (día de la reservación) y páginas de 10.
+  const filtrada = lista.filter((r) => {
+    const dia = String(r.fechaHora).slice(0, 10)
+    return (!filtro.desde || dia >= filtro.desde) && (!filtro.hasta || dia <= filtro.hasta)
+  })
+  const paginas = Math.max(1, Math.ceil(filtrada.length / POR_PAGINA))
+  const pag = Math.min(pagina, paginas - 1)
+  const visibles = filtrada.slice(pag * POR_PAGINA, (pag + 1) * POR_PAGINA)
+  const detalle = abierta ? lista.find((r) => r.token === abierta) : null
+  const est = (r) => ESTADO_RESERVA[r.estado] ?? { cliente: r.estado, cls: 'bg-gray-100 text-gray-600 border-gray-300' }
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-      <div className="lg:col-span-3">
-        <h2 className="text-2xl font-bold">Reserva tu mesa</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          Te avisamos aquí{cliente ? ' y por correo' : ''} cuando el restaurante confirme tu reservación.
-        </p>
-        {recienCreada && (
-          <div className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 flex items-start gap-3">
-            <p className="flex-1">✅ ¡Recibimos tu reservación! Está <b>por confirmar</b>; la puedes ver en "Mis reservaciones".</p>
-            <button type="button" onClick={() => setRecienCreada(null)} className="opacity-60 hover:opacity-100">✕</button>
-          </div>
-        )}
-        {!opciones ? (
-          <p className="text-gray-400 py-10">Cargando...</p>
-        ) : (
-          <FormularioReserva key={recienCreada ?? 'nueva'} slug={slug} tienda={tienda} opciones={opciones}
-            cliente={cliente} clienteToken={clienteToken} onSesionVencida={onSesionVencida}
-            onCreada={(c) => {
-              setCodigos((list) => [...list.filter((x) => x !== c.token), c.token])
-              setRecienCreada(c.token)
-              window.scrollTo({ top: 0, behavior: 'smooth' })
-            }} />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[220px]">
+          <h2 className="text-2xl font-bold">Mis reservaciones</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            {puedeElegirMesa ? 'Para reservar, elige tu mesa en "Mesas". ' : ''}Te avisamos aquí{cliente ? ' y por correo' : ''} cuando el restaurante la confirme.
+          </p>
+        </div>
+        {puedeElegirMesa ? (
+          <button type="button" onClick={onIrAMesas} className="rounded-full bg-purple-600 text-white px-4 py-2.5 text-sm font-semibold hover:bg-purple-700">📅 Reservar una mesa</button>
+        ) : opciones && (
+          <button type="button" onClick={() => setNueva(true)} className="rounded-full bg-purple-600 text-white px-4 py-2.5 text-sm font-semibold hover:bg-purple-700">📅 Nueva reservación</button>
         )}
       </div>
 
-      <div className="lg:col-span-2">
-        <h2 className="text-xl font-bold">Mis reservaciones</h2>
-        {lista.length === 0 && <p className="text-sm text-gray-400 mt-3">Aún no tienes reservaciones.</p>}
-        <div className="mt-3 space-y-3">
-          {lista.map((r) => (
-            <TarjetaReserva key={r.token} r={r} tienda={tienda} destacada={r.token === recienCreada}
-              onCancelar={() => cancelar(r)}
-              onCambiar={() => setEditando(r)}
-              onRetraso={(min) => retraso(r, min)}
-              onOrdenar={onOrdenar ? () => onOrdenar(r) : null}
-              onCancelarPedido={() => cancelarPedido(r)}
-              onQuitar={!ACTIVAS.includes(r.estado) && codigos.includes(r.token) && !deCuenta.some((x) => x.token === r.token)
-                ? () => setCodigos((list) => list.filter((x) => x !== r.token)) : null} />
-          ))}
+      {recienCreada && (
+        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 flex items-start gap-3">
+          <p className="flex-1">✅ ¡Recibimos tu reservación! Está <b>por confirmar</b>; te avisamos aquí cuando la confirmen.</p>
+          <button type="button" onClick={() => setRecienCreada(null)} className="opacity-60 hover:opacity-100">✕</button>
         </div>
+      )}
+
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-sm text-gray-600">Desde
+          <input type="date" className={`${inputCls} mt-1`} value={filtro.desde} onChange={(e) => { setFiltro((f) => ({ ...f, desde: e.target.value })); setPagina(0) }} />
+        </label>
+        <label className="text-sm text-gray-600">Hasta
+          <input type="date" className={`${inputCls} mt-1`} value={filtro.hasta} onChange={(e) => { setFiltro((f) => ({ ...f, hasta: e.target.value })); setPagina(0) }} />
+        </label>
+        {(filtro.desde || filtro.hasta) && (
+          <button type="button" className="text-sm font-semibold text-purple-700 hover:underline mb-2" onClick={() => { setFiltro({ desde: '', hasta: '' }); setPagina(0) }}>Ver todas</button>
+        )}
       </div>
+
+      {filtrada.length === 0 ? (
+        <p className="text-sm text-gray-400 py-8 text-center">{lista.length === 0 ? 'Aún no tienes reservaciones.' : 'No hay reservaciones en esas fechas.'}</p>
+      ) : (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[560px]">
+              <thead className="bg-gray-50 text-gray-600">
+                <tr>
+                  {['Fecha', 'Hora', 'Personas', 'Mesa / zona', 'Estado'].map((h) => <th key={h} className="text-left font-semibold px-4 py-2.5">{h}</th>)}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {visibles.map((r) => (
+                  <tr key={r.token} tabIndex={0} onClick={() => setAbierta(r.token)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') setAbierta(r.token) }}
+                    className={`cursor-pointer hover:bg-purple-50/40 ${r.token === recienCreada ? 'bg-green-50' : ''}`}>
+                    <td className="px-4 py-3 capitalize">{fechaLarga(r.fechaHora)}</td>
+                    <td className="px-4 py-3">{horaCorta(r.fechaHora)}{r.retrasoMinutos ? <span className="text-xs text-amber-700"> · +{r.retrasoMinutos} min</span> : null}</td>
+                    <td className="px-4 py-3">{r.personas}</td>
+                    <td className="px-4 py-3">{[r.mesa ? `Mesa ${r.mesa}` : null, r.zona].filter(Boolean).join(' · ') || '—'}</td>
+                    <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-md border text-xs font-semibold ${est(r).cls}`}>{est(r).cliente}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {paginas > 1 && (
+            <nav aria-label="Páginas de reservaciones" className="flex items-center justify-between gap-2 px-4 py-3 border-t border-gray-100 text-sm">
+              <button type="button" disabled={pag === 0} onClick={() => setPagina(pag - 1)} className="px-3 py-1.5 rounded-full border border-gray-300 font-semibold disabled:opacity-40">← Anterior</button>
+              <span className="text-gray-600">Página {pag + 1} de {paginas} · {filtrada.length} reservaciones</span>
+              <button type="button" disabled={pag >= paginas - 1} onClick={() => setPagina(pag + 1)} className="px-3 py-1.5 rounded-full border border-gray-300 font-semibold disabled:opacity-40">Siguiente →</button>
+            </nav>
+          )}
+        </div>
+      )}
+
+      {detalle && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setAbierta(null)}>
+          <div className="w-full max-w-md max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-end mb-2">
+              <button type="button" onClick={() => setAbierta(null)} aria-label="Cerrar" className="w-9 h-9 rounded-full bg-white text-gray-600 shadow">✕</button>
+            </div>
+            <TarjetaReserva r={detalle} tienda={tienda} destacada={detalle.token === recienCreada}
+              onCancelar={() => cancelar(detalle)}
+              onCambiar={() => setEditando(detalle)}
+              onRetraso={(min) => retraso(detalle, min)}
+              onOrdenar={onOrdenar ? () => { setAbierta(null); onOrdenar(detalle) } : null}
+              onCancelarPedido={() => cancelarPedido(detalle)}
+              onQuitar={!ACTIVAS.includes(detalle.estado) && codigos.includes(detalle.token) && !deCuenta.some((x) => x.token === detalle.token)
+                ? () => { setCodigos((list) => list.filter((x) => x !== detalle.token)); setAbierta(null) } : null} />
+          </div>
+        </div>
+      )}
       {editando && opciones && (
         <ModalCambios slug={slug} r={editando} maxPersonas={opciones.maxPersonas} onClose={() => setEditando(null)}
           onGuardada={(nueva) => { actualizada(nueva); setEditando(null) }} />
       )}
+      {nueva && (
+        <ModalNuevaReserva slug={slug} tienda={tienda} cliente={cliente} clienteToken={clienteToken} onSesionVencida={onSesionVencida}
+          onClose={() => setNueva(false)}
+          onCreada={(c) => { setNueva(false); setCodigos((list) => [...list.filter((x) => x !== c.token), c.token]); setRecienCreada(c.token) }} />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Formulario de reservación en ventana: se abre al tocar una mesa en "Mesas" (con esa mesa ya
+ * elegida) o desde "Nueva reservación" si la tienda no muestra sus mesas.
+ */
+export function ModalNuevaReserva({ slug, tienda, cliente, clienteToken, onSesionVencida, mesa, onClose, onCreada }) {
+  const [opciones, setOpciones] = useState(null)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    getReservaOpciones(slug).then((r) => setOpciones(r.data.data))
+      .catch((err) => setError(err.response?.data?.message ?? 'Las reservaciones no están disponibles por ahora'))
+  }, [slug])
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby="nueva-reserva-titulo" onClick={(e) => e.stopPropagation()}
+        className="bg-gray-50 w-full sm:max-w-2xl rounded-t-3xl sm:rounded-2xl max-h-[94vh] overflow-y-auto p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="nueva-reserva-titulo" className="text-2xl font-bold">{mesa ? `Reservar la mesa ${mesa.numero}` : 'Reserva tu mesa'}</h2>
+            {mesa && (
+              <p className="text-sm text-gray-600 mt-0.5">{mesa.zona}{mesa.capacidad ? ` · ${mesa.capacidad} lugares` : ''}</p>
+            )}
+          </div>
+          <button type="button" onClick={onClose} aria-label="Cerrar" className="w-9 h-9 rounded-full hover:bg-gray-200 text-gray-500">✕</button>
+        </div>
+        {error ? <p className="text-gray-600 py-8 text-center">{error}</p>
+          : !opciones ? <p className="text-gray-400 py-10">Cargando...</p>
+          : <FormularioReserva slug={slug} tienda={tienda} opciones={opciones} mesa={mesa}
+              cliente={cliente} clienteToken={clienteToken} onSesionVencida={onSesionVencida} onCreada={onCreada} />}
+      </div>
     </div>
   )
 }
@@ -219,7 +327,7 @@ function ModalCambios({ slug, r, maxPersonas, onClose, onGuardada }) {
   )
 }
 
-function FormularioReserva({ slug, tienda, opciones, cliente, clienteToken, onSesionVencida, onCreada }) {
+function FormularioReserva({ slug, tienda, opciones, mesa, cliente, clienteToken, onSesionVencida, onCreada }) {
   const hoy = ymd()
   const ultimoDia = sumarDias(hoy, opciones.diasMax)
   // Primer día con algún horario disponible (hoy puede ya no tener por la anticipación).
@@ -262,7 +370,8 @@ function FormularioReserva({ slug, tienda, opciones, cliente, clienteToken, onSe
       const r = await crearReservacion(slug, {
         nombre: form.nombre.trim(), telefono: form.telefono.trim(), email: form.email.trim() || null,
         fechaHora: `${form.fecha}T${form.hora}:00`, personas: form.personas,
-        zonaId: form.zonaId ? Number(form.zonaId) : null,
+        zonaId: !mesa && form.zonaId ? Number(form.zonaId) : null,
+        mesaId: mesa?.id ?? null,
         periqueras: Math.min(form.periqueras, form.personas), accesible: form.accesible, carriola: form.carriola,
         ocasion: form.ocasion || null, notas: form.notas.trim() || null,
       }, clienteToken)
@@ -322,7 +431,12 @@ function FormularioReserva({ slug, tienda, opciones, cliente, clienteToken, onSe
           {errors.hora && <span className="text-xs text-red-600">{errors.hora}</span>}
         </div>
 
-        {opciones.zonas.length > 1 && (
+        {mesa?.capacidad && form.personas > mesa.capacidad && (
+          <p className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2">
+            Esta mesa es para {mesa.capacidad}; son {form.personas}. El restaurante te puede asignar otra o juntar mesas.
+          </p>
+        )}
+        {!mesa && opciones.zonas.length > 1 && (
           <label className="block">
             <span className="block text-sm font-medium text-gray-700 mb-1">Zona preferida</span>
             <select className={inputCls} value={form.zonaId} onChange={(e) => set({ zonaId: e.target.value })}>

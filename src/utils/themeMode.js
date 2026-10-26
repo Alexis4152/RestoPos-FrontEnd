@@ -7,7 +7,8 @@ import { setBrandDark } from './theme'
  * ESTE dispositivo (cada mesero elige el suyo), guardada en localStorage; "automático" sigue
  * el modo del sistema operativo. Se aplica como la clase `dark` en <html>: los colores
  * oscuros salen de src/styles/dark.css (generado) y de la rampa de marca oscura (theme.js).
- * El sitio público de la tienda y las opiniones siempre se ven en claro.
+ * El sitio público de la tienda y las opiniones se ven en claro para los clientes; el
+ * repartidor (que trabaja desde la página web) sí usa su modo, ver usarModoEnPaginaWeb.
  */
 const CLAVE = 'restopos-modo'
 export const MODOS = [
@@ -55,11 +56,25 @@ export function useModo() {
 
 const esPublica = (path) => path.startsWith('/sitio/')
 
+// La página web la puede "prestar" al modo del dispositivo (p. ej. cuando entra un repartidor).
+let publicaConModo = false
+const publicaConModoActual = () => publicaConModo
+
+/** La página web usa el modo claro/oscuro del dispositivo mientras `activo` sea true. */
+export function usarModoEnPaginaWeb(activo) {
+  useEffect(() => {
+    publicaConModo = !!activo
+    avisar()
+    return () => { publicaConModo = false; avisar() }
+  }, [activo])
+}
+
 /** Aplica el modo a <html> según la ruta (va una vez, dentro del Router). */
 export function ModoSync() {
   const { oscuro } = useModo()
   const { pathname } = useLocation()
-  const activo = oscuro && !esPublica(pathname)
+  const prestada = useSyncExternalStore(suscribir, publicaConModoActual)
+  const activo = oscuro && (!esPublica(pathname) || prestada)
   useEffect(() => {
     document.documentElement.classList.toggle('dark', activo)
     document.documentElement.style.colorScheme = activo ? 'dark' : 'light'

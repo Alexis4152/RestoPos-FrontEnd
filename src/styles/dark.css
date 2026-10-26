@@ -1,5 +1,5 @@
 /* GENERADO por scripts/gen-dark-css.mjs — no editar a mano (npm run gen:dark). */
-/* 127 reglas para el modo oscuro (html.dark). */
+/* 139 reglas para el modo oscuro (html.dark). */
 html.dark .bg-\[\#D9D5CC\] { background-color: rgb(61 60 56) }
 html.dark .bg-\[\#DCD8CF\] { background-color: rgb(61 60 56) }
 html.dark .bg-\[\#E6EDF8\] { background-color: rgb(34 43 58) }
@@ -33,9 +33,13 @@ html.dark .bg-orange-100 { background-color: rgb(74 59 38) }
 html.dark .bg-orange-50 { background-color: rgb(50 40 26) }
 html.dark .bg-red-100 { background-color: rgb(60 31 31) }
 html.dark .bg-red-50 { background-color: rgb(34 34 31) }
+html.dark .bg-stone-50 { background-color: rgb(32 32 29) }
+html.dark .bg-stone-50\/95 { background-color: rgb(32 32 29 / 0.95) }
 html.dark .bg-white { background-color: rgb(28 28 26) }
 html.dark .bg-white\/10 { background-color: rgb(28 28 26 / 0.1) }
+html.dark .bg-white\/20 { background-color: rgb(28 28 26 / 0.2) }
 html.dark .bg-white\/70 { background-color: rgb(28 28 26 / 0.7) }
+html.dark .bg-white\/95 { background-color: rgb(28 28 26 / 0.95) }
 html.dark .bg-yellow-100 { background-color: rgb(74 71 38) }
 html.dark .bg-yellow-50 { background-color: rgb(60 58 31) }
 html.dark .border-\[\#8F7AD0\] { border-color: rgb(92 83 121) }
@@ -64,6 +68,7 @@ html.dark .border-green-300 { border-color: rgb(73 131 94) }
 html.dark .border-orange-200 { border-color: rgb(104 83 59) }
 html.dark .border-red-200 { border-color: rgb(85 48 48) }
 html.dark .border-red-300 { border-color: rgb(104 59 59) }
+html.dark .border-white\/70 { border-color: rgb(28 28 26 / 0.7) }
 html.dark .border-yellow-200 { border-color: rgb(131 124 73) }
 html.dark .border-yellow-300 { border-color: rgb(131 121 73) }
 html.dark .disabled\:text-gray-400:disabled { color: rgb(138 135 127) }
@@ -76,14 +81,20 @@ html.dark .hover\:bg-\[\#EFEDE7\]:hover { background-color: rgb(51 50 46) }
 html.dark .hover\:bg-\[\#F1EFEA\]:hover { background-color: rgb(42 41 38) }
 html.dark .hover\:bg-\[\#F6E6C6\]:hover { background-color: rgb(74 62 38) }
 html.dark .hover\:bg-\[\#F7F6F2\]:hover { background-color: rgb(42 41 38) }
+html.dark .hover\:bg-blue-100:hover { background-color: rgb(31 44 60) }
 html.dark .hover\:bg-gray-100:hover { background-color: rgb(38 38 35) }
 html.dark .hover\:bg-gray-200:hover { background-color: rgb(48 47 43) }
 html.dark .hover\:bg-gray-50:hover { background-color: rgb(32 32 29) }
+html.dark .hover\:bg-green-100:hover { background-color: rgb(31 60 41) }
 html.dark .hover\:bg-green-50:hover { background-color: rgb(34 34 31) }
 html.dark .hover\:bg-red-50:hover { background-color: rgb(34 34 31) }
 html.dark .hover\:bg-stone-50:hover { background-color: rgb(32 32 29) }
 html.dark .hover\:bg-white\/20:hover { background-color: rgb(28 28 26 / 0.2) }
+html.dark .hover\:bg-white\/30:hover { background-color: rgb(28 28 26 / 0.3) }
 html.dark .hover\:bg-white\/70:hover { background-color: rgb(28 28 26 / 0.7) }
+html.dark .hover\:bg-white\/90:hover { background-color: rgb(28 28 26 / 0.9) }
+html.dark .hover\:bg-yellow-100:hover { background-color: rgb(74 71 38) }
+html.dark .hover\:border-gray-300:hover { border-color: rgb(69 67 62) }
 html.dark .hover\:border-gray-400:hover { border-color: rgb(87 85 79) }
 html.dark .hover\:border-gray-900:hover { border-color: rgb(174 171 164) }
 html.dark .hover\:text-gray-600:hover { color: rgb(186 183 176) }
@@ -126,6 +137,7 @@ html.dark .text-red-800 { color: rgb(228 149 149) }
 html.dark .text-red-900 { color: rgb(224 153 153) }
 html.dark .text-yellow-500 { color: rgb(225 200 121) }
 html.dark .text-yellow-800 { color: rgb(237 206 171) }
+html.dark .text-yellow-900 { color: rgb(235 202 173) }
 @media (min-width: 1024px) {
   html.dark .lg\:bg-\[\#F4F3EF\] { background-color: rgb(20 20 18) }
 }

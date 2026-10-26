@@ -22,3 +22,6 @@ export const markReservacionLlegada = (id, llego, mesaId) =>
 
 /** Reglas de la tienda: { todasLasMesas, cambiosHoras, llegadaMinutosAntes }. */
 export const getReglasReservacion = () => api.get('/reservaciones/reglas')
+
+/** Lo que hicieron los clientes con sus reservaciones (últimas 24 h): cambios, retrasos, pedidos, cancelaciones. */
+export const getAvisosReservaciones = () => api.get('/reservaciones/avisos')

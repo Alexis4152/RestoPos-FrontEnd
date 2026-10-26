@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import { getTiendaInfo, updateWebConfig } from '../api/tiendas'
+import { getTables, setMesasReservables } from '../api/mesas'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 
@@ -23,9 +24,16 @@ export default function WebConfig() {
   const [form, setForm] = useState(null)
   const [costoEnvio, setCostoEnvio] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [mesas, setMesas] = useState([])
+  const [reservables, setReservables] = useState(() => new Set()) // ids de mesas que se pueden reservar
 
   useEffect(() => {
     if (!tiendaId) return
+    getTables().then((r) => {
+      const lista = (r.data.data ?? []).filter((m) => m.isActive !== false)
+      setMesas(lista)
+      setReservables(new Set(lista.filter((m) => m.reservable !== false).map((m) => m.id)))
+    }).catch(() => {})
     getTiendaInfo(tiendaId).then((r) => {
       const i = r.data.data
       setCostoEnvio(i.costoEnvioDomicilio)
@@ -64,6 +72,10 @@ export default function WebConfig() {
 
   async function handleSave(e) {
     e.preventDefault()
+    if (form.webReservasEnabled && !form.reservaTodasMesas && reservables.size === 0) {
+      notify('Marca al menos una mesa que se pueda reservar (o elige "Todas")', 'error')
+      return
+    }
     setSaving(true)
     try {
       await updateWebConfig(tiendaId, {
@@ -79,6 +91,7 @@ export default function WebConfig() {
         reservaRetrasoEnabled: form.reservaRetrasoEnabled,
         reservaRetrasoHoras: Number(form.reservaRetrasoHoras) || 0,
       })
+      if (form.webReservasEnabled && !form.reservaTodasMesas) await setMesasReservables([...reservables])
       notify('Página web guardada', 'success')
     } catch (err) {
       const data = err.response?.data?.data
@@ -183,10 +196,10 @@ export default function WebConfig() {
               <legend className="block text-xs font-medium text-gray-600 mb-1">Mesas que se pueden reservar</legend>
               <div className="flex flex-wrap gap-4 text-sm">
                 <label className="flex items-center gap-2"><input type="radio" checked={form.reservaTodasMesas} onChange={() => set('reservaTodasMesas', true)} /> Todas</label>
-                <label className="flex items-center gap-2"><input type="radio" checked={!form.reservaTodasMesas} onChange={() => set('reservaTodasMesas', false)} /> Solo las que marque en Mesas</label>
+                <label className="flex items-center gap-2"><input type="radio" checked={!form.reservaTodasMesas} onChange={() => set('reservaTodasMesas', false)} /> Solo las que elija</label>
               </div>
               {!form.reservaTodasMesas && (
-                <p className="text-xs text-gray-500 mt-1">En <Link to="/tables" className="text-purple-600 hover:underline">Mesas</Link>, edita cada mesa y marca "Disponible para reservaciones".</p>
+                <MesasReservables mesas={mesas} sel={reservables} onChange={setReservables} />
               )}
             </fieldset>
             <div>
@@ -230,5 +243,54 @@ export default function WebConfig() {
 
       <button className="btn-primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar página web'}</button>
     </form>
+  )
+}
+
+/**
+ * Mesas que se pueden reservar, agrupadas por zona: se tocan para marcarlas/desmarcarlas, con
+ * "Todas" / "Ninguna" por zona. Se guardan junto con la página web.
+ */
+function MesasReservables({ mesas, sel, onChange }) {
+  if (mesas.length === 0) {
+    return <p className="text-xs text-gray-500 mt-2">Aún no hay mesas. Créalas en <Link to="/tables" className="text-purple-600 hover:underline">Mesas</Link>.</p>
+  }
+  const zonas = new Map()
+  mesas.forEach((m) => {
+    const z = m.zona?.nombre ?? 'Sin zona'
+    if (!zonas.has(z)) zonas.set(z, [])
+    zonas.get(z).push(m)
+  })
+  const cambiar = (ids, marcar) => {
+    const next = new Set(sel)
+    ids.forEach((id) => (marcar ? next.add(id) : next.delete(id)))
+    onChange(next)
+  }
+  return (
+    <div className="mt-2 space-y-3 rounded-xl border border-gray-200 p-3">
+      <p className="text-xs text-gray-600">{sel.size} de {mesas.length} mesas se pueden reservar. Toca una mesa para marcarla o quitarla.</p>
+      {[...zonas.entries()].map(([zona, lista]) => {
+        const ids = lista.map((m) => m.id)
+        return (
+          <div key={zona}>
+            <div className="flex items-center gap-3 mb-1.5">
+              <p className="text-sm font-semibold text-gray-800">{zona}</p>
+              <button type="button" className="text-xs text-purple-700 hover:underline" onClick={() => cambiar(ids, true)}>Todas</button>
+              <button type="button" className="text-xs text-gray-600 hover:underline" onClick={() => cambiar(ids, false)}>Ninguna</button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {lista.map((m) => {
+                const on = sel.has(m.id)
+                return (
+                  <button key={m.id} type="button" aria-pressed={on} onClick={() => cambiar([m.id], !on)}
+                    className={`min-h-[40px] px-3 rounded-lg border text-sm font-semibold ${on ? 'border-purple-600 bg-purple-50 text-purple-800' : 'border-gray-300 bg-white text-gray-500'}`}>
+                    {on ? '✓ ' : ''}Mesa {m.numero}{m.capacidad ? <span className="font-normal"> · {m.capacidad}</span> : null}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }

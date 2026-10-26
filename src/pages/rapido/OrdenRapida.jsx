@@ -9,7 +9,10 @@ import { useNotify } from '../../context/NotifyContext'
 import { useLiveRefresh } from '../../utils/liveEvents'
 import Icon from '../../components/Icon'
 import { resolveMediaUrl } from '../../utils/media'
+import { admiteModoRapido } from '../../utils/modoToma'
+import { leerPorEnviar, guardarPorEnviar } from '../../utils/porEnviar'
 import SelectorModoToma from '../../components/SelectorModoToma'
+import { etiquetaTipoPedido } from '../../utils/tipoPedido'
 import OrderDetail from '../OrderDetail'
 import OpcionesSheet, { gruposActivos } from './OpcionesSheet'
 import CuentaRapida, { CobroExitoso } from './CuentaRapida'
@@ -27,16 +30,9 @@ function minutos(desde) {
 }
 
 // La comanda por enviar se guarda por orden en esta pestaña: si el mesero sale sin querer, no la pierde.
-const claveBorrador = (id) => `restopos-comanda-${id}`
-function leerBorrador(id) {
-  try { return JSON.parse(sessionStorage.getItem(claveBorrador(id)) || '[]') } catch { return [] }
-}
-function guardarBorrador(id, lineas) {
-  try {
-    if (lineas.length) sessionStorage.setItem(claveBorrador(id), JSON.stringify(lineas))
-    else sessionStorage.removeItem(claveBorrador(id))
-  } catch { /* sin almacenamiento */ }
-}
+// La comanda por enviar es el mismo borrador que "Por enviar a cocina" de la vista detallada.
+const leerBorrador = (id) => leerPorEnviar(id)
+const guardarBorrador = (id, lineas) => guardarPorEnviar(id, lineas, 'nota')
 const claveLinea = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ?? [])].sort().join('.'), l.nota ?? ''].join('|')
 
 /**
@@ -111,8 +107,8 @@ export default function OrdenRapida() {
 
   if (cobro) return <CobroExitoso cobro={cobro} />
   if (!order) return <p className="text-gray-600 py-10 text-center">Cargando…</p>
-  // Sin mesa, cerrada, o pedida a propósito: la vista de siempre.
-  if (!order.mesa || ['PAGADA', 'CANCELADA'].includes(order.estado) || searchParams.get('vista') === 'detalle') {
+  // A domicilio, de la página web, cerrada, o pedida a propósito: la vista de siempre.
+  if (!admiteModoRapido(order) || searchParams.get('vista') === 'detalle') {
     return <OrderDetail />
   }
 
@@ -121,12 +117,15 @@ export default function OrdenRapida() {
   const setVer = (v) => setSearchParams(v === 'pedir' ? {} : { ver: v }, { replace: true })
   const comensales = [...(order.comensales ?? [])].sort((a, b) => a.numero - b.numero)
   // Límite de personas: lugares de la mesa y las unidas (los captura el admin); null = sin límite.
-  const cupo = [order.mesa, ...mesasUnidas].every((m) => m.capacidad > 0)
+  const esMesa = !!order.mesa
+  const conPersonas = esMesa || order.tipoEntrega === 'COMER_AQUI'
+  const paraTodos = esMesa ? 'Para la mesa' : 'Compartido'
+  const cupo = esMesa && [order.mesa, ...mesasUnidas].every((m) => m.capacidad > 0)
     ? [order.mesa, ...mesasUnidas].reduce((s, m) => s + m.capacidad, 0) : null
   const mesaLlena = cupo != null && comensales.length >= cupo
   const nombreComensal = (cid) => {
     const c = comensales.find((x) => x.id === cid)
-    return c ? (c.nombre || `Persona ${c.numero}`) : 'Para la mesa'
+    return c ? (c.nombre || `Persona ${c.numero}`) : paraTodos
   }
 
   function agregarLinea(linea) {
@@ -227,18 +226,22 @@ export default function OrdenRapida() {
   return (
     <div className={`max-w-6xl space-y-4 ${ver === 'pedir' && piezasComanda > 0 ? 'pb-36 lg:pb-0' : ''}`}>
       <header className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={() => navigate('/tables')} aria-label="Volver a mis mesas"
+        <button type="button" onClick={() => navigate(esMesa ? '/tables' : '/takeaway')} aria-label={esMesa ? 'Volver a mis mesas' : 'Volver a Para llevar'}
           className="w-11 h-11 rounded-full border border-[#E4E1DA] bg-white flex items-center justify-center">
           <Icon name="atras" className="w-5 h-5" />
         </button>
         <div className="flex-1 min-w-[160px]">
-          <h1 className="text-2xl font-extrabold tracking-tight">{nombreMesa([order.mesa.numero, ...mesasUnidas.map((m) => m.numero)].join(' + '))}</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight">
+            {esMesa ? nombreMesa([order.mesa.numero, ...mesasUnidas.map((m) => m.numero)].join(' + ')) : `${etiquetaTipoPedido(order)} · ${order.clienteNombre ?? `#${order.id}`}`}
+          </h1>
           <p className="text-sm text-gray-600">
-            {order.numeroComensales} persona{order.numeroComensales === 1 ? '' : 's'} · {minutos(order.openedAt)} · {fmt(order.total)}
+            {conPersonas ? `${order.numeroComensales} persona${order.numeroComensales === 1 ? '' : 's'}` : `Pedido #${order.id}`} · {minutos(order.openedAt)} · {fmt(order.total)}
           </p>
         </div>
-        <SelectorModoToma />
-        <Link to={vistaDetallada} className="text-sm font-bold text-purple-700 hover:underline">Vista detallada</Link>
+        {/* Para llevar: el modo se elige ya dentro del pedido. En mesas se elige en Mesas. */}
+        {esMesa
+          ? <Link to={vistaDetallada} className="text-sm font-bold text-purple-700 hover:underline">Vista detallada</Link>
+          : <SelectorModoToma />}
       </header>
 
       <div className="grid grid-cols-3 gap-1 rounded-2xl bg-[#ECEAE4] p-1" role="tablist" aria-label="Secciones de la orden">
@@ -253,11 +256,11 @@ export default function OrdenRapida() {
       {ver === 'pedir' && (
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-5 lg:items-start">
         <div className="space-y-3">
-          <div>
+          {conPersonas && <div>
             <p className="text-xs font-bold text-gray-600 mb-1.5">¿Para quién? Se queda elegido mientras agregas</p>
             <div className="flex flex-wrap gap-2">
               <button type="button" aria-pressed={paraQuien === null} onClick={() => setParaQuien(null)}
-                className={`chip ${paraQuien === null ? 'chip-on' : ''}`}>Para la mesa</button>
+                className={`chip ${paraQuien === null ? 'chip-on' : ''}`}>{paraTodos}</button>
               {comensales.map((c) => (
                 <button key={c.id} type="button" aria-pressed={paraQuien === c.id} onClick={() => setParaQuien(c.id)}
                   className={`chip min-w-[44px] justify-center ${paraQuien === c.id ? 'chip-on' : ''}`}>{c.nombre || c.numero}</button>
@@ -266,7 +269,7 @@ export default function OrdenRapida() {
                 title={mesaLlena ? `La mesa es para ${cupo} personas: une otra mesa para agregar más` : undefined}
                 className="chip border-dashed min-w-[44px] justify-center disabled:opacity-40">+</button>
             </div>
-          </div>
+          </div>}
 
           <label className="flex items-center gap-2 min-h-[44px] px-3 rounded-2xl border border-[#D9D5CC] bg-white">
             <Icon name="buscar" className="w-[18px] h-[18px] text-gray-600" />
