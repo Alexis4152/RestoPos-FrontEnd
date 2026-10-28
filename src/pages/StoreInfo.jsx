@@ -76,6 +76,7 @@ export default function StoreInfo() {
         costoEnvioDomicilio: info.costoEnvioDomicilio != null ? String(info.costoEnvioDomicilio) : '',
         blindCashCount: info.tienda?.blindCashCount ?? false,
         modoToma: info.tienda?.modoToma ?? 'DETALLADO',
+        propinaMaxPorcentaje: String(info.tienda?.propinaMaxPorcentaje ?? 50),
       })
     }).finally(() => setLoading(false))
   }, [tiendaId])
@@ -107,6 +108,10 @@ export default function StoreInfo() {
     if (envio && (isNaN(Number(envio)) || Number(envio) < 0)) {
       errors.costoEnvioDomicilio = 'Debe ser un monto válido (0 o mayor)'
     }
+    const tope = Number(String(form.propinaMaxPorcentaje ?? '').trim())
+    if (!Number.isInteger(tope) || tope < 1 || tope > 100) {
+      errors.propinaMaxPorcentaje = 'Debe ser un número entero entre 1 y 100'
+    }
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors)
       notify('Revisa los campos marcados en rojo', 'error')
@@ -118,8 +123,8 @@ export default function StoreInfo() {
     setError('')
     setMessage('')
     try {
-      await updateTiendaInfo(tiendaId, { ...form, costoEnvioDomicilio: envio ? Number(envio) : null })
-      patchTienda({ name: form.name, blindCashCount: !!form.blindCashCount, modoToma: form.modoToma })
+      await updateTiendaInfo(tiendaId, { ...form, costoEnvioDomicilio: envio ? Number(envio) : null, propinaMaxPorcentaje: tope })
+      patchTienda({ name: form.name, blindCashCount: !!form.blindCashCount, modoToma: form.modoToma, propinaMaxPorcentaje: tope })
       setMessage('Datos guardados')
     } catch (err) {
       const data = err.response?.data?.data
@@ -271,6 +276,21 @@ export default function StoreInfo() {
             ))}
           </div>
         </fieldset>
+
+        <div className="border-t border-gray-100 pt-4">
+          <label htmlFor="propina-max" className="block text-sm font-semibold text-gray-800 mb-1">Tope de propina</label>
+          <div className="relative max-w-[8rem]">
+            <input id="propina-max" type="number" min="1" max="100" step="1" inputMode="numeric" className="input !pr-8"
+              value={form.propinaMaxPorcentaje}
+              onChange={(e) => setForm({ ...form, propinaMaxPorcentaje: e.target.value })} />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            Lo máximo que se puede registrar de propina al cobrar, en porcentaje del consumo (también limita la
+            propina en monto fijo). Evita errores por un dedo de más. Por default 50%.
+          </p>
+          {fieldErrors.propinaMaxPorcentaje && <p className="text-red-600 text-xs mt-1">{fieldErrors.propinaMaxPorcentaje}</p>}
+        </div>
 
         <div className="border-t border-gray-100 pt-4">
           <p className="text-sm font-semibold text-gray-800 mb-2">Corte de caja</p>

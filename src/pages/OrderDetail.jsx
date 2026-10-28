@@ -22,6 +22,7 @@ import { etiquetaTipoPedido } from '../utils/tipoPedido'
 import AgotadosModal from '../components/AgotadosModal'
 import GruposModificadores from '../components/GruposModificadores'
 import { useModoToma, admiteModoRapido } from '../utils/modoToma'
+import { useVolver } from '../utils/navegacion'
 import { leerPorEnviar, guardarPorEnviar } from '../utils/porEnviar'
 import SelectorModoToma from '../components/SelectorModoToma'
 import { recibirDineroEntrega } from '../api/deliveries'
@@ -55,8 +56,9 @@ const clavePorEnviar = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionId
 export default function OrderDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { isAdmin, isMesero, hasSection } = useAuth()
+  const { user, isAdmin, isMesero, hasSection } = useAuth()
   const { rapido } = useModoToma()
+  const volver = useVolver()
   const { notify, confirmDialog } = useNotify()
 
   const [order, setOrder] = useState(null)
@@ -605,7 +607,7 @@ export default function OrderDetail() {
     if (!(await confirmDialog('¿Rechazar este pedido? El cliente verá que no fue aceptado.', { confirmText: 'Rechazar pedido' }))) return
     try {
       await rejectWebOrder(id, 'No podemos atender tu pedido en este momento')
-      navigate('/takeaway')
+      volver('/takeaway')
     } catch (err) { notify(err.response?.data?.message ?? 'No se pudo rechazar el pedido', 'error'); load() }
   }
 
@@ -639,7 +641,7 @@ export default function OrderDetail() {
     if (!(await confirmDialog('¿Cancelar toda la orden?', { confirmText: 'Cancelar orden' }))) return
     try {
       await cancelOrder(id, 'Cancelada por el usuario')
-      navigate(order.mesa ? `/tables?zona=${order.mesa.zona?.id ?? ''}` : '/takeaway')
+      volver(order.mesa ? `/tables?zona=${order.mesa.zona?.id ?? ''}` : '/takeaway')
     } catch (err) { notify(err.response?.data?.message ?? 'No se pudo cancelar la orden') }
   }
 
@@ -837,10 +839,12 @@ export default function OrderDetail() {
   // Mismo tope que Pago.monto en el backend (NUMERIC(12,2)) para el modo $, y 100 para el
   // modo % (@DecimalMax de PagoRequest.propinaPorcentaje) — sin esto, un número gigante se
   // arrastraba al total y "Monto a aplicar" terminaba mostrando notación científica.
-  // Propina: máximo 50% (en %) o la mitad de la cuenta (en $) — mismo tope que el backend.
-  const payPropinaMaxMonto = Math.floor(paySaldoPendiente * 50) / 100
+  // Propina: tope de la tienda ("Datos de la tienda", 50% por default), en % o en $ sobre la
+  // cuenta — mismo tope que valida el backend.
+  const topePropina = Number(user?.tienda?.propinaMaxPorcentaje) || 50
+  const payPropinaMaxMonto = Math.floor(paySaldoPendiente * topePropina) / 100
   const payPropinaValorExceedsLimit = payPropinaValorNum != null && !Number.isNaN(payPropinaValorNum) && (
-    payPropinaTipo === 'PORCENTAJE' ? payPropinaValorNum > 50 : payPropinaValorNum > payPropinaMaxMonto
+    payPropinaTipo === 'PORCENTAJE' ? payPropinaValorNum > topePropina : payPropinaValorNum > payPropinaMaxMonto
   )
   const payPropinaValorNegative = payPropinaValorNum != null && payPropinaValorNum < 0
   const payPropinaValorInvalid = payPropinaValorExceedsLimit || payPropinaValorNegative
@@ -961,7 +965,7 @@ export default function OrderDetail() {
 
       <header className="flex flex-wrap items-center gap-3">
         <button type="button" aria-label="Regresar"
-          onClick={() => navigate(order.mesa ? `/tables?zona=${order.mesa.zona?.id ?? ''}` : '/takeaway')}
+          onClick={() => volver(order.mesa ? `/tables?zona=${order.mesa.zona?.id ?? ''}` : '/takeaway')}
           className="w-11 h-11 rounded-full border border-[#D9D5CC] bg-white flex items-center justify-center text-gray-700 hover:text-purple-700 hover:border-purple-300 shrink-0">
           <Icon name="atras" className="w-5 h-5" strokeWidth={2} />
         </button>
@@ -2060,7 +2064,7 @@ export default function OrderDetail() {
                               setPayPropinaValor(v)
                               const num = v === '' ? null : Number(v)
                               const numValid = num != null && !Number.isNaN(num) && num >= 0
-                                && (payPropinaTipo === 'PORCENTAJE' ? num <= 50 : num <= Math.floor(paySaldoPendiente * 50) / 100)
+                                && (payPropinaTipo === 'PORCENTAJE' ? num <= topePropina : num <= payPropinaMaxMonto)
                               // Fuera de rango: no se arrastra al monto sugerido — se deja en el
                               // saldo base y el error de abajo le indica al cajero qué corregir,
                               // en vez de que "Monto a aplicar" termine mostrando algo como 1e+54.
@@ -2073,8 +2077,8 @@ export default function OrderDetail() {
                           {payPropinaValorExceedsLimit ? (
                             <p className="text-xs text-red-600">
                               {payPropinaTipo === 'PORCENTAJE'
-                                ? 'La propina no puede pasar del 50%'
-                                : `La propina no puede pasar del 50% de la cuenta (${fmt(payPropinaMaxMonto)})`}
+                                ? `La propina no puede pasar del ${topePropina}%`
+                                : `La propina no puede pasar del ${topePropina}% de la cuenta (${fmt(payPropinaMaxMonto)})`}
                             </p>
                           ) : payPropinaValorNegative ? (
                             <p className="text-xs text-red-600">La propina no puede ser negativa</p>

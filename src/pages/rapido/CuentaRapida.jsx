@@ -4,6 +4,7 @@ import { createAccount, getTicketPdf } from '../../api/cuentas'
 import { createPayment } from '../../api/pagos'
 import { printAccountTicket, printCuentaPorPagar } from '../../utils/printer'
 import { useNotify } from '../../context/NotifyContext'
+import { useVolver } from '../../utils/navegacion'
 import { useAuth } from '../../context/AuthContext'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
@@ -34,6 +35,7 @@ async function imprimir(cuentaId) {
 /** Pantalla final tras cobrar (la muestra OrdenRapida aunque la orden ya esté cerrada). */
 export function CobroExitoso({ cobro }) {
   const { notify } = useNotify()
+  const volver = useVolver()
   return (
     <div className="max-w-md mx-auto bg-white border border-[#E4E1DA] rounded-2xl p-6 text-center space-y-3">
       <p className="text-sm font-bold text-[#22603C]">
@@ -43,9 +45,8 @@ export function CobroExitoso({ cobro }) {
       {cobro.cambio > 0 && <p className="text-2xl font-extrabold">Cambio: {fmt(cobro.cambio)}</p>}
       <div className="flex flex-wrap gap-2 justify-center pt-2">
         <button type="button" className="btn-secondary min-h-[44px]" onClick={() => imprimir(cobro.cuentaId).catch(() => notify('No se pudo imprimir', 'error'))}>Reimprimir ticket</button>
-        <Link to={cobro.lugar ? '/takeaway' : '/tables'} className="btn-primary min-h-[44px] inline-flex items-center">
-          {cobro.lugar ? 'Volver a Para llevar' : 'Volver a mis mesas'}
-        </Link>
+        {/* Regresa a donde venía (Mis mesas, Órdenes, Para llevar...). */}
+        <button type="button" className="btn-primary min-h-[44px]" onClick={() => volver(cobro.lugar ? '/takeaway' : '/tables')}>Listo</button>
       </div>
     </div>
   )
@@ -61,7 +62,10 @@ export function CobroExitoso({ cobro }) {
 export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio, onCobrada }) {
   const { notify } = useNotify()
   // Cobrar = sección CASH_CUTS (cajero/admin). El mesero imprime la cuenta y el cliente paga en caja.
-  const puedeCobrar = useAuth().hasSection('CASH_CUTS')
+  const { user, hasSection } = useAuth()
+  const puedeCobrar = hasSection('CASH_CUTS')
+  // Tope de propina de la tienda ("Datos de la tienda"), 50% por default; el backend lo vuelve a validar.
+  const topePropina = Number(user?.tienda?.propinaMaxPorcentaje) || 50
   const [metodo, setMetodo] = useState('CASH')
   // Propina: igual que en la vista detallada (sin propina, monto fijo $ u otro %), más 10% y
   // 15% de un toque. propinaModo: 'NONE' | '10' | '15' | 'MONTO' | 'PORCENTAJE'.
@@ -92,10 +96,9 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
   const subtotal = cuentaLista ? Number(cuentaLista.total) : r2(lineas.reduce((s, l) => s + l.importe, 0))
   const propinaNum = propinaModo === '10' || propinaModo === '15' ? Number(propinaModo)
     : propinaValor === '' ? null : Number(propinaValor)
-  // Máximo 50% (en %) o la mitad de la cuenta (en $), igual que el backend.
-  const propinaMaxMonto = Math.floor(subtotal * 50) / 100
+  const propinaMaxMonto = Math.floor(subtotal * topePropina) / 100
   const propinaExcede = propinaNum != null && !Number.isNaN(propinaNum)
-    && (propinaTipo === 'PORCENTAJE' ? propinaNum > 50 : propinaNum > propinaMaxMonto)
+    && (propinaTipo === 'PORCENTAJE' ? propinaNum > topePropina : propinaNum > propinaMaxMonto)
   const propinaNegativa = propinaNum != null && propinaNum < 0
   const propinaInvalida = propinaExcede || propinaNegativa || (propinaNum != null && Number.isNaN(propinaNum))
   // Misma fórmula que el backend (PagoService): porcentaje sobre el subtotal, redondeado a centavos.
@@ -223,7 +226,8 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-gray-600 font-semibold">Propina (opcional)</span>
             <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Tipo de propina">
-              {[['NONE', 'Sin propina'], ['10', '10%'], ['15', '15%'], ['MONTO', '$'], ['PORCENTAJE', 'Otro %']].map(([v, label]) => (
+              {[['NONE', 'Sin propina'], ['10', '10%'], ['15', '15%'], ['MONTO', '$'], ['PORCENTAJE', 'Otro %']]
+                .filter(([v]) => !(v === '10' || v === '15') || Number(v) <= topePropina).map(([v, label]) => (
                 <button key={v} type="button" role="radio" aria-checked={propinaModo === v}
                   onClick={() => { setPropinaModo(v); setPropinaValor('') }}
                   className={`min-h-[36px] min-w-[44px] px-3 rounded-lg text-[13px] font-bold border ${propinaModo === v ? 'bg-purple-600 border-purple-600 text-white' : 'border-[#D9D5CC] bg-white text-gray-700'}`}>
@@ -242,7 +246,7 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
                 placeholder={propinaTipo === 'PORCENTAJE' ? 'Ej. 10' : 'Ej. 20.00'}
                 value={propinaValor} onChange={(e) => setPropinaValor(e.target.value)} />
               {propinaExcede ? (
-                <p className="text-xs text-red-600">{propinaTipo === 'PORCENTAJE' ? 'La propina no puede pasar del 50%' : `La propina no puede pasar del 50% de la cuenta (${fmt(propinaMaxMonto)})`}</p>
+                <p className="text-xs text-red-600">{propinaTipo === 'PORCENTAJE' ? `La propina no puede pasar del ${topePropina}%` : `La propina no puede pasar del ${topePropina}% de la cuenta (${fmt(propinaMaxMonto)})`}</p>
               ) : propinaNegativa ? (
                 <p className="text-xs text-red-600">La propina no puede ser negativa</p>
               ) : propina > 0 && (

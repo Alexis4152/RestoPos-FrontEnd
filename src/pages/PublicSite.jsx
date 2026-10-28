@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { getPublicTienda, getPublicMenu, getPublicMesas, createPublicPedido, getPublicPedido, uploadComprobantePedido, uploadComprobanteCliente, getClienteMe, logoutCliente, verificarCorreoCliente, reenviarVerificacionCliente, preordenarReservacion, getReservacion, getMisReservaciones } from '../api/publicSite'
 import { useAuth } from '../context/AuthContext'
@@ -70,6 +70,18 @@ export default function PublicSite() {
   const [notFound, setNotFound] = useState(false)
   const [tab, setTab] = useState('menu')
   const [activeCat, setActiveCat] = useState(null)
+  // Alto real de la barra superior (cambia con las pestañas del celular, el nombre, etc.): la
+  // barra de categorías se pega justo debajo y las secciones se detienen debajo de ambas.
+  const [altoHeader, setAltoHeader] = useState(64)
+  const observaHeader = useRef(null)
+  const headerRef = useCallback((el) => {
+    observaHeader.current?.disconnect()
+    observaHeader.current = null
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => setAltoHeader(el.offsetHeight))
+    ro.observe(el)
+    observaHeader.current = ro
+  }, [])
   const [search, setSearch] = useState('')
 
   const [cart, setCart] = useState(() => loadJson(storageKey(slug, 'cart'), []))
@@ -335,7 +347,7 @@ export default function PublicSite() {
   return (
     <div className="min-h-screen bg-stone-50 text-gray-900">
       {/* Barra superior */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200">
+      <header ref={headerRef} className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center gap-3">
           <img src={resolveMediaUrl(tienda.logoPath) || defaultLogo} alt="" className="w-10 h-10 rounded-full object-cover border border-gray-200" />
           <p className="font-bold text-lg truncate flex-1">{tienda.nombre}</p>
@@ -374,7 +386,7 @@ export default function PublicSite() {
                 <span className="text-xs">▾</span>
               </button>
               {menuCuenta && (
-                <div className="absolute right-0 mt-1 w-52 rounded-xl border border-gray-200 bg-white shadow-xl py-1 z-40">
+                <div className="absolute right-0 top-full mt-1 w-52 rounded-xl border border-gray-200 bg-white shadow-xl py-1 z-40">
                   <p className="px-4 py-2 text-xs text-gray-500 border-b border-gray-100 truncate">
                     {esRepartidor ? `Repartidor · ${staffUser.name}` : cliente?.email}
                   </p>
@@ -411,24 +423,24 @@ export default function PublicSite() {
           )}
         </div>
         {/* Pestañas en móvil */}
-        <div className="sm:hidden flex border-t border-gray-100 text-sm font-medium">
+        <div className="sm:hidden flex overflow-x-auto border-t border-gray-100 text-sm font-medium whitespace-nowrap">
           {!esRepartidor && (
-            <button onClick={() => setTab('menu')} className={`flex-1 py-2.5 ${tab === 'menu' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Menú</button>
+            <button onClick={() => setTab('menu')} className={`flex-1 shrink-0 px-3 py-2.5 ${tab === 'menu' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Menú</button>
           )}
           {tienda.mostrarMesas && !esRepartidor && (
-            <button onClick={() => setTab('mesas')} className={`flex-1 py-2.5 ${tab === 'mesas' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Mesas</button>
+            <button onClick={() => setTab('mesas')} className={`flex-1 shrink-0 px-3 py-2.5 ${tab === 'mesas' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Mesas</button>
           )}
           {puedeReservar && (
-            <button onClick={() => setTab('reservar')} className={`flex-1 py-2.5 ${tab === 'reservar' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Reservar</button>
+            <button onClick={() => setTab('reservar')} className={`flex-1 shrink-0 px-3 py-2.5 ${tab === 'reservar' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Reservar</button>
           )}
           {!esRepartidor && (
-            <button onClick={() => setTab('opiniones')} className={`flex-1 py-2.5 ${tab === 'opiniones' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Opiniones</button>
+            <button onClick={() => setTab('opiniones')} className={`flex-1 shrink-0 px-3 py-2.5 ${tab === 'opiniones' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Opiniones</button>
           )}
           {esRepartidor && (
-            <button onClick={() => setTab('entregas')} className={`flex-1 py-2.5 ${tab === 'entregas' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Entregas</button>
+            <button onClick={() => setTab('entregas')} className={`flex-1 shrink-0 px-3 py-2.5 ${tab === 'entregas' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Entregas</button>
           )}
           {cliente && (
-            <button onClick={() => setTab('mispedidos')} className={`flex-1 py-2.5 ${tab === 'mispedidos' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Mis pedidos</button>
+            <button onClick={() => setTab('mispedidos')} className={`flex-1 shrink-0 px-3 py-2.5 ${tab === 'mispedidos' ? 'text-purple-700 border-b-2 border-purple-600' : 'text-gray-500'}`}>Mis pedidos</button>
           )}
         </div>
       </header>
@@ -501,7 +513,7 @@ export default function PublicSite() {
 
             {/* Categorías */}
             {filteredMenu.length > 0 && (
-              <div className="sticky top-[105px] sm:top-16 z-20 -mx-4 px-4 py-2 bg-stone-50/95 backdrop-blur flex gap-2 overflow-x-auto shadow-sm">
+              <div style={{ top: altoHeader }} className="sticky z-20 -mx-4 px-4 py-2 bg-stone-50/95 backdrop-blur flex gap-2 overflow-x-auto shadow-sm">
                 {filteredMenu.map((c) => (
                   <button key={c.id ?? 'otros'} onClick={() => scrollToCat(c.id)}
                     className={`shrink-0 px-4 py-1.5 rounded-full text-sm font-medium border ${
@@ -517,7 +529,7 @@ export default function PublicSite() {
             )}
 
             {filteredMenu.map((c) => (
-              <section key={c.id ?? 'otros'} id={`cat-${c.id ?? 'otros'}`} className="scroll-mt-40 sm:scroll-mt-32 mt-6">
+              <section key={c.id ?? 'otros'} id={`cat-${c.id ?? 'otros'}`} style={{ scrollMarginTop: altoHeader + 64 }} className="mt-6">
                 <h3 className="text-xl font-bold">{c.nombre}</h3>
                 {c.descripcion && <p className="text-sm text-gray-500">{c.descripcion}</p>}
                 <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

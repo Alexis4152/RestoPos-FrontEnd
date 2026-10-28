@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext'
 import { usePublicLiveRefresh, publicStreamBase } from '../../utils/liveEvents'
 import defaultLogo from '../../assets/logo.png'
 import { resolveMediaUrl } from '../../utils/media'
+import PasswordInput from '../../components/PasswordInput'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 const fmtFecha = (d) => (d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '')
@@ -45,6 +46,8 @@ function validarCliente(f, { conPassword }) {
 }
 
 const inputCls = 'mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-purple-300'
+// Contraseña con "ojito": el margen va en el contenedor para que el ícono quede centrado en el campo.
+const PwInput = (props) => <div className="mt-1"><PasswordInput className={inputCls.replace('mt-1 ', '')} {...props} /></div>
 
 function Field({ label, error, children }) {
   return (
@@ -143,7 +146,7 @@ export function AuthScreen({ slug, tienda, onCliente, onRepartidor, onInvitado, 
               <input className={inputCls} type="email" autoComplete="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
             </Field>
             <Field label="Contraseña">
-              <input className={inputCls} type="password" autoComplete="current-password" value={form.password} onChange={(e) => set('password', e.target.value)} />
+              <PwInput autoComplete="current-password" value={form.password} onChange={(e) => set('password', e.target.value)} />
             </Field>
             <div className="text-right -mt-1">
               <button type="button" className="text-xs text-purple-700 hover:underline" onClick={() => { setModo('olvide'); setError('') }}>
@@ -178,10 +181,10 @@ export function AuthScreen({ slug, tienda, onCliente, onRepartidor, onInvitado, 
               <input className={inputCls} type="email" maxLength={150} autoComplete="email" value={form.email} onChange={(e) => set('email', e.target.value)} />
             </Field>
             <Field label="Contraseña * (mínimo 8 caracteres)" error={errors.password}>
-              <input className={inputCls} type="password" autoComplete="new-password" value={form.password} onChange={(e) => set('password', e.target.value)} />
+              <PwInput autoComplete="new-password" value={form.password} onChange={(e) => set('password', e.target.value)} />
             </Field>
             <Field label="Confirma tu contraseña *" error={errors.confirm}>
-              <input className={inputCls} type="password" autoComplete="new-password" value={form.confirm} onChange={(e) => set('confirm', e.target.value)} />
+              <PwInput autoComplete="new-password" value={form.confirm} onChange={(e) => set('confirm', e.target.value)} />
             </Field>
             {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
             <button disabled={loading} className="w-full rounded-full bg-purple-600 text-white py-3 font-semibold hover:bg-purple-700 disabled:opacity-40">
@@ -290,10 +293,10 @@ export function RestablecerScreen({ slug, tienda, token, onListo }) {
         ) : (
           <form onSubmit={guardar} className="mt-6 space-y-3">
             <Field label="Nueva contraseña (mínimo 8 caracteres)">
-              <input className={inputCls} type="password" autoComplete="new-password" value={password} onChange={(e) => { setPassword(e.target.value); setError('') }} />
+              <PwInput autoComplete="new-password" value={password} onChange={(e) => { setPassword(e.target.value); setError('') }} />
             </Field>
             <Field label="Confírmala">
-              <input className={inputCls} type="password" autoComplete="new-password" value={confirm} onChange={(e) => { setConfirm(e.target.value); setError('') }} />
+              <PwInput autoComplete="new-password" value={confirm} onChange={(e) => { setConfirm(e.target.value); setError('') }} />
             </Field>
             {error && <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
             <button disabled={loading} className="w-full rounded-full bg-purple-600 text-white py-3 font-semibold hover:bg-purple-700 disabled:opacity-40">

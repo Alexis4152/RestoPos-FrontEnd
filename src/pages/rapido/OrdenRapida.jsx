@@ -12,6 +12,7 @@ import { resolveMediaUrl } from '../../utils/media'
 import { admiteModoRapido } from '../../utils/modoToma'
 import { leerPorEnviar, guardarPorEnviar } from '../../utils/porEnviar'
 import SelectorModoToma from '../../components/SelectorModoToma'
+import { useVolver } from '../../utils/navegacion'
 import { etiquetaTipoPedido } from '../../utils/tipoPedido'
 import OrderDetail from '../OrderDetail'
 import OpcionesSheet, { gruposActivos } from './OpcionesSheet'
@@ -50,6 +51,7 @@ export default function OrdenRapida() {
   const { id } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
+  const volver = useVolver()
   const { notify } = useNotify()
   const [order, setOrder] = useState(null)
   const [cuentas, setCuentas] = useState([])
@@ -226,7 +228,7 @@ export default function OrdenRapida() {
   return (
     <div className={`max-w-6xl space-y-4 ${ver === 'pedir' && piezasComanda > 0 ? 'pb-36 lg:pb-0' : ''}`}>
       <header className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={() => navigate(esMesa ? '/tables' : '/takeaway')} aria-label={esMesa ? 'Volver a mis mesas' : 'Volver a Para llevar'}
+        <button type="button" onClick={() => volver(esMesa ? '/tables' : '/takeaway')} aria-label="Regresar"
           className="w-11 h-11 rounded-full border border-[#E4E1DA] bg-white flex items-center justify-center">
           <Icon name="atras" className="w-5 h-5" />
         </button>
@@ -278,8 +280,8 @@ export default function OrdenRapida() {
               className="flex-1 min-w-0 bg-transparent outline-none text-[15px] font-semibold" />
           </label>
 
-          <div className="flex items-center gap-2">
-          <div className="flex-1 min-w-0 flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" aria-label="Categorías">
+          {/* Categorías en su propia fila (se recorren completas) y debajo, a la derecha, cómo ver los platillos. */}
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" aria-label="Categorías">
             <button type="button" aria-pressed={!cat} onClick={() => setCat('')}
               className={`shrink-0 min-h-[36px] px-3 rounded-full text-[13px] font-bold border ${!cat ? 'border-purple-600 bg-purple-50 text-purple-800' : 'border-[#D9D5CC] bg-white text-gray-700'}`}>
               Lo más pedido
@@ -291,14 +293,13 @@ export default function OrdenRapida() {
               </button>
             ))}
           </div>
-          <div className="flex gap-1 rounded-full bg-[#ECEAE4] p-1 shrink-0" role="radiogroup" aria-label="Vista de platillos">
+          <div className="flex gap-1 rounded-full bg-[#ECEAE4] p-1 w-fit ml-auto -mt-1" role="radiogroup" aria-label="Vista de platillos">
             {[['list', 'Lista'], ['images', 'Imágenes']].map(([v, label]) => (
               <button key={v} type="button" role="radio" aria-checked={vistaProd === v} onClick={() => cambiarVista(v)}
                 className={`min-h-[32px] px-3 rounded-full text-xs font-bold ${vistaProd === v ? 'bg-white shadow-sm text-gray-900' : 'text-gray-600'}`}>
                 {label}
               </button>
             ))}
-          </div>
           </div>
 
           <div className={`grid gap-2.5 ${vistaProd === 'images' ? 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-4' : 'grid-cols-2 sm:grid-cols-3'}`}>
