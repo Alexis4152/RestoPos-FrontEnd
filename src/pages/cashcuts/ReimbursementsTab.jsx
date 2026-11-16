@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useNotify } from '../../context/NotifyContext'
 import { resolveMediaUrl } from '../../utils/media'
 import { Modal, Pagination, PersonSelect, ReceiptInput, fmt, fmtDate } from './common'
+import IconButton from '../../components/IconButton'
 
 const METHOD_LABELS = { TRANSFER: 'Transferencia', EXTERNAL_CASH: 'Efectivo externo' }
 
@@ -76,7 +77,7 @@ export default function ReimbursementsTab({ onChanged }) {
                         </div>
                         <div>{fmtDate(r.paidAt)} · registró {r.paidRegisteredBy?.name ?? '—'}</div>
                         {r.reference && <div>Ref. {r.reference}</div>}
-                        {r.receiptPath && <a className="text-purple-700 hover:underline" href={resolveMediaUrl(r.receiptPath)} target="_blank" rel="noopener noreferrer">Ver comprobante</a>}
+                        {r.receiptPath && <div className="mt-1"><IconButton icon="documento" label="Ver comprobante" variant="purple" href={resolveMediaUrl(r.receiptPath)} /></div>}
                       </div>
                     )}
                   </td>

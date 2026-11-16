@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { getTables } from '../../api/mesas'
 import { openOrder, getPickups, updateOrderItemStatus } from '../../api/ordenes'
 import { useAuth } from '../../context/AuthContext'
 import { useNotify } from '../../context/NotifyContext'
 import { useLiveRefresh } from '../../utils/liveEvents'
 import SelectorModoToma from '../../components/SelectorModoToma'
+import MesaRapidaModal from './MesaRapidaModal'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const PERSONAS = [1, 2, 3, 4]
@@ -22,21 +22,23 @@ const porNumero = (a, b) => String(a.numero).localeCompare(String(b.numero), 'es
 /**
  * Modo rápido · "Mis mesas": las mesas que atiende el mesero, cada una con sus dos acciones
  * a la mano (+ Pedir / Cuenta). Una mesa libre se abre tocándola y luego cuántas personas
- * son — sin modal — y entra directo a ordenar. Arriba, los platillos que cocina ya terminó
+ * son, y se empieza a ordenar ahí mismo. Arriba, los platillos que cocina ya terminó
  * con "Ya los llevé" (los marca entregados de un toque). "Mías" = órdenes que abrió este
  * usuario (Orden.mesero). El modo detallado (plano por zonas) sigue en el interruptor.
+ * Pedir y Cuenta abren MesaRapidaModal sin salir de Mis mesas; la pantalla completa de la
+ * orden queda a un toque dentro del modal, para cuando se necesita.
  */
 export default function MisMesas() {
   const { user, hasSection } = useAuth()
   const puedeCobrar = hasSection('CASH_CUTS')
   const { notify } = useNotify()
-  const navigate = useNavigate()
   const [mesas, setMesas] = useState([])
   const [pickups, setPickups] = useState([])
   const [filtro, setFiltro] = useState(null) // null = aún sin decidir (Mías si tiene, si no Todas)
   const [abriendo, setAbriendo] = useState(null) // mesa libre elegida: muestra "¿cuántas personas?"
   const [otras, setOtras] = useState(5)
   const [busy, setBusy] = useState(false)
+  const [modal, setModal] = useState(null) // { ordenId, modo: 'pedir' | 'cuenta' }
   const [, setTick] = useState(0)
 
   function load() {
@@ -70,7 +72,9 @@ export default function MisMesas() {
     setBusy(true)
     try {
       const r = await openOrder({ mesaId: mesa.id, numeroComensales: personas })
-      navigate(`/orders/${r.data.data.id}`)
+      setAbriendo(null)
+      setModal({ ordenId: r.data.data.id, modo: 'pedir' })
+      load()
     } catch (err) {
       notify(err.response?.data?.message ?? 'No se pudo abrir la mesa', 'error')
       load()
@@ -200,9 +204,9 @@ export default function MisMesas() {
               </p>
               <p className="text-lg font-extrabold">{fmt(o.total)}</p>
               <div className="flex gap-2 mt-1">
-                <button type="button" onClick={() => navigate(`/orders/${o.id}?ver=pedir`)}
+                <button type="button" onClick={() => setModal({ ordenId: o.id, modo: 'pedir' })}
                   className="flex-1 min-h-[44px] rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-extrabold">+ Pedir</button>
-                <button type="button" onClick={() => navigate(`/orders/${o.id}?ver=cuenta`)}
+                <button type="button" onClick={() => setModal({ ordenId: o.id, modo: 'cuenta' })}
                   className={`flex-1 min-h-[44px] rounded-xl text-sm font-extrabold ${cuenta ? 'bg-gray-900 text-white' : 'border border-[#D9D5CC] bg-white text-gray-900 hover:bg-[#F1EFEA]'}`}>
                   {cuenta ? (puedeCobrar ? 'Cobrar' : 'Ver cuenta') : 'Cuenta'}
                 </button>
@@ -211,6 +215,11 @@ export default function MisMesas() {
           )
         })}
       </div>
+
+      {modal && (
+        <MesaRapidaModal key={modal.ordenId} ordenId={modal.ordenId} modo={modal.modo}
+          onCerrar={() => setModal(null)} onCambio={load} />
+      )}
     </div>
   )
 }

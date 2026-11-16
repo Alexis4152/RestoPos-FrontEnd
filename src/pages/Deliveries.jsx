@@ -26,13 +26,18 @@ const envioEnEfectivo = (o) => (o.comprobantePath && o.transferenciaIncluyeEnvio
 /** ¿Ya salieron de cocina todos sus platillos? (para saber si el pedido está listo para llevarse). */
 // ¿El restaurante ya le entregó la bolsa al repartidor? ("Entregado para llevar" en el punto
 // de venta: todos los platillos en ENTREGADO). Solo entonces se habilita "Voy en camino".
-const entregadoAlRepartidor = (o) => (o.items ?? [])
-  .filter((i) => !i.cargoExtra && i.estado !== 'CANCELADO')
-  .every((i) => i.estado === 'ENTREGADO')
+const entregadoAlRepartidor = (o) => {
+  const platillos = (o.items ?? []).filter((i) => !i.cargoExtra && i.estado !== 'CANCELADO')
+  return platillos.length > 0 && platillos.every((i) => i.estado === 'ENTREGADO')
+}
 
 /** Etapa del envío para el repartidor, de la más temprana a la más avanzada. */
 function etapa(o) {
   if (o.enCaminoAt) return { label: '🛵 En camino', cls: 'bg-purple-100 text-purple-800' }
+  // Sin platillos todavía (solo el envío): aún se está capturando, no "ya te lo entregaron".
+  if (!(o.items ?? []).some((i) => !i.cargoExtra && i.estado !== 'CANCELADO')) {
+    return { label: '📝 Registrando orden', cls: 'bg-gray-100 text-gray-700' }
+  }
   if (entregadoAlRepartidor(o)) return { label: '📦 Ya te lo entregaron — sal cuando estés listo', cls: 'bg-blue-100 text-blue-800' }
   if (listoEnCocina(o)) return { label: '✅ Listo en cocina — espera a que te lo entreguen', cls: 'bg-green-100 text-green-800' }
   return { label: '⏳ En preparación', cls: 'bg-yellow-100 text-yellow-800' }

@@ -51,6 +51,7 @@ const GRUPOS = [
     titulo: 'Gestión',
     items: [
       { section: 'MENU', to: '/menu', label: 'Menú', icon: 'menu' },
+      { section: 'MENU', to: '/platillos', label: 'Platillos', icon: 'platillos' },
       { section: 'INVENTORY', to: '/inventory', label: 'Inventario', icon: 'inventario' },
       { section: 'REPORTS', to: '/reports', label: 'Reportes', icon: 'reportes' },
       { section: 'REPORTS', to: '/opiniones', label: 'Opiniones', icon: 'opiniones' },

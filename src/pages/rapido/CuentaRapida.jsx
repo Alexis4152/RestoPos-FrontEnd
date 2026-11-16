@@ -25,7 +25,7 @@ function billetes(total) {
 }
 
 /** Imprime el ticket en la térmica; si no hay impresora configurada, abre el PDF. */
-async function imprimir(cuentaId) {
+export async function imprimir(cuentaId) {
   try {
     await printAccountTicket(cuentaId)
   } catch {

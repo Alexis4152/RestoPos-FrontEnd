@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { cancelPayment, correctPaymentMethod, refundPayment, verifyTransfer } from '../api/pagos'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
+import IconButton from './IconButton'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const METODOS = { CASH: 'Efectivo', CARD: 'Tarjeta', TRANSFER: 'Transferencia' }
@@ -76,7 +77,6 @@ export default function PagosCuenta({ cuenta, ordenCerrada, onCambio }) {
         const vigente = !p.cancelado && !devolucion
         const devuelto = devueltoDe(p)
         const estado = VERIFICACION[p.verificacion]
-        const linkBtn = 'text-xs font-bold text-purple-700 hover:underline'
         return (
           <div key={p.id} className="rounded-lg bg-[#F6F5F1] px-2.5 py-1.5 text-xs">
             <div className="flex items-center justify-between gap-2">
@@ -94,14 +94,14 @@ export default function PagosCuenta({ cuenta, ordenCerrada, onCambio }) {
               </p>
             )}
             {isAdmin && vigente && (
-              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                {!ordenCerrada && corteAbierto && <button type="button" className={linkBtn} onClick={() => abrir('cancelar', p)}>Cancelar pago</button>}
-                {corteAbierto && devuelto === 0 && <button type="button" className={linkBtn} onClick={() => abrir('corregir', p)}>Corregir método</button>}
-                {(ordenCerrada || !corteAbierto) && devuelto < Number(p.monto) && <button type="button" className={linkBtn} onClick={() => abrir('devolver', p)}>Devolver</button>}
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {!ordenCerrada && corteAbierto && <IconButton icon="xCirculo" label="Cancelar pago" variant="danger" onClick={() => abrir('cancelar', p)} />}
+                {corteAbierto && devuelto === 0 && <IconButton icon="lapiz" label="Corregir método de pago" variant="primary" onClick={() => abrir('corregir', p)} />}
+                {(ordenCerrada || !corteAbierto) && devuelto < Number(p.monto) && <IconButton icon="deshacer" label="Devolver dinero" variant="warning" onClick={() => abrir('devolver', p)} />}
                 {(p.verificacion === 'POR_VERIFICAR' || p.verificacion === 'NO_RECIBIDA') && (
                   <>
-                    <button type="button" disabled={busy} className={linkBtn} onClick={() => ejecutar(() => verifyTransfer(p.id, 'VERIFICADA'), 'Transferencia verificada')}>Sí llegó</button>
-                    {p.verificacion === 'POR_VERIFICAR' && <button type="button" disabled={busy} className={linkBtn} onClick={() => ejecutar(() => verifyTransfer(p.id, 'NO_RECIBIDA'), 'Marcada como no recibida')}>No llegó</button>}
+                    <IconButton icon="checkCirculo" label="Sí llegó la transferencia" variant="success" disabled={busy} onClick={() => ejecutar(() => verifyTransfer(p.id, 'VERIFICADA'), 'Transferencia verificada')} />
+                    {p.verificacion === 'POR_VERIFICAR' && <IconButton icon="alerta" label="No llegó la transferencia" variant="danger" disabled={busy} onClick={() => ejecutar(() => verifyTransfer(p.id, 'NO_RECIBIDA'), 'Marcada como no recibida')} />}
                   </>
                 )}
               </div>

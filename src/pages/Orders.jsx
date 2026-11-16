@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getOrders } from '../api/ordenes'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
+import IconButton from '../components/IconButton'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—'
@@ -102,7 +103,7 @@ export default function Orders() {
                     }`}>{o.estado}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <button className="text-blue-600 hover:underline text-xs" onClick={() => navigate(`/orders/${o.id}`)}>Ver</button>
+                    <IconButton icon="ver" label="Ver orden" variant="primary" onClick={() => navigate(`/orders/${o.id}`)} />
                   </td>
                 </tr>
               ))}

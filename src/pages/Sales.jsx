@@ -8,6 +8,7 @@ import { printAccountTicket } from '../utils/printer'
 import { useNotify } from '../context/NotifyContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
+import IconButton from '../components/IconButton'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—'
@@ -217,7 +218,7 @@ export default function Sales() {
                     <span className={`text-xs font-medium px-2 py-1 rounded-full ${ESTADO_STYLE[v.estado] ?? 'bg-gray-100 text-gray-500'}`}>{v.estado}</span>
                   </td>
                   <td className="px-4 py-3">
-                    <button className="text-blue-600 hover:underline text-xs" onClick={() => setDetail(v)}>Ver</button>
+                    <IconButton icon="ver" label="Ver venta" variant="primary" onClick={() => setDetail(v)} />
                   </td>
                 </tr>
               ))}

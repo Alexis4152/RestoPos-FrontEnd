@@ -4,6 +4,7 @@ import { getPendingShortageTotal, getShortagePayments, getShortages, payShortage
 import { useNotify } from '../../context/NotifyContext'
 import { resolveMediaUrl } from '../../utils/media'
 import { filaClick, FILA_CLICK } from '../../utils/filaClick'
+import IconButton from '../../components/IconButton'
 import { AmountField, Modal, Pagination, ReceiptInput, SummaryRow, fmt, fmtDate, toAmount, MAX_AMOUNT } from './common'
 
 export const SHORTAGE_METHOD_LABELS = {
@@ -93,7 +94,7 @@ export default function ShortagesTab({ onChanged }) {
                         </>
                       )}
                       {Number(s.paidAmount) > 0 && (
-                        <button className="text-xs text-purple-700 hover:underline whitespace-nowrap" onClick={() => setHistory(s)}>Ver pagos</button>
+                        <IconButton icon="recibo" label="Ver pagos" variant="purple" onClick={() => setHistory(s)} />
                       )}
                     </div>
                   </td>
@@ -256,7 +257,7 @@ function ShortagePaymentsModal({ shortage, onClose }) {
               <span>
                 <span className="block font-medium">{SHORTAGE_METHOD_LABELS[p.method]}{p.cashCutId ? ` · corte #${p.cashCutId}` : ''}</span>
                 <span className="block text-xs text-gray-500">{fmtDate(p.createdAt)} · registró {p.registeredBy?.name ?? '—'}{p.reference ? ` · ref. ${p.reference}` : ''}</span>
-                {p.receiptPath && <a className="text-xs text-purple-700 hover:underline" href={resolveMediaUrl(p.receiptPath)} target="_blank" rel="noopener noreferrer">Ver comprobante</a>}
+                {p.receiptPath && <span className="block mt-1"><IconButton icon="documento" label="Ver comprobante" variant="purple" href={resolveMediaUrl(p.receiptPath)} /></span>}
               </span>
               <span className="font-semibold text-green-700">{fmt(p.amount)}</span>
             </li>

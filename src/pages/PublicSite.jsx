@@ -142,11 +142,13 @@ export default function PublicSite() {
     setTab('reservar')
     searchParams.delete('reservacion'); setSearchParams(searchParams, { replace: true })
   }, [])
-  // QR de opiniones (?ver=opiniones): abre la pestaña directo, sin pasar por el acceso.
+  // QR de opiniones (?ver=opiniones) y del menú impreso (?ver=menu): abren la pestaña directo,
+  // sin pasar por el acceso (entra como invitado; puede iniciar sesión después desde "Cuenta").
   useEffect(() => {
-    if (searchParams.get('ver') !== 'opiniones') return
+    const ver = searchParams.get('ver')
+    if (ver !== 'opiniones' && ver !== 'menu') return
     if (!clienteSesion) setInvitado(true)
-    setTab('opiniones')
+    setTab(ver)
     searchParams.delete('ver'); setSearchParams(searchParams, { replace: true })
   }, [])
   const [menuCuenta, setMenuCuenta] = useState(false)

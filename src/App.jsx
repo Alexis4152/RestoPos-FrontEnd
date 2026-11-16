@@ -16,7 +16,8 @@ import OrdenRapida from './pages/rapido/OrdenRapida'
 import { useModoToma } from './utils/modoToma'
 import Orders from './pages/Orders'
 import Kitchen from './pages/Kitchen'
-import Menu from './pages/Menu'
+import Platillos from './pages/Platillos'
+import MenuDelDia from './pages/MenuDelDia'
 import Inventory from './pages/Inventory'
 import Reports from './pages/Reports'
 import CashCuts from './pages/CashCuts'
@@ -75,7 +76,8 @@ function AppRoutes() {
                 <Route path="/orders" element={<PrivateRoute section="ORDERS"><Orders /></PrivateRoute>} />
                 <Route path="/orders/:id" element={<PrivateRoute section={['ORDERS', 'TAKEAWAY']}><OrdenSegunModo /></PrivateRoute>} />
                 <Route path="/kitchen" element={<PrivateRoute section="KITCHEN"><Kitchen /></PrivateRoute>} />
-                <Route path="/menu" element={<PrivateRoute section="MENU"><Menu /></PrivateRoute>} />
+                <Route path="/menu" element={<PrivateRoute section="MENU"><MenuDelDia /></PrivateRoute>} />
+                <Route path="/platillos" element={<PrivateRoute section="MENU"><Platillos /></PrivateRoute>} />
                 <Route path="/menu-imprimible" element={<PrivateRoute section="MENU"><MenuImprimible /></PrivateRoute>} />
                 <Route path="/inventory" element={<PrivateRoute section="INVENTORY"><Inventory /></PrivateRoute>} />
                 <Route path="/cash-cuts" element={<PrivateRoute section="CASH_CUTS"><CashCuts /></PrivateRoute>} />

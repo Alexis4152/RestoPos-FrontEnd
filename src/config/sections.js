@@ -27,7 +27,7 @@ export const SECTIONS = [
   { code: 'ORDERS', label: 'Órdenes', icon: '📋', to: '/orders' },
   { code: 'KITCHEN', label: 'Cocina', icon: '🍳', to: '/kitchen' },
   { code: 'DELIVERY', label: 'Entregas', icon: '🛵', to: '/entregas' },
-  { code: 'MENU', label: 'Menú', icon: '📖', to: '/menu' },
+  { code: 'MENU', label: 'Menú y platillos', icon: '📖', to: '/menu' },
   { code: 'INVENTORY', label: 'Inventario', icon: '📦', to: '/inventory' },
   { code: 'CASH_CUTS', label: 'Cortes de Caja', icon: '💰', to: '/cash-cuts' },
   { code: 'SALES', label: 'Ventas', icon: '💵', to: '/sales' },

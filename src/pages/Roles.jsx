@@ -4,6 +4,7 @@ import { SECTIONS } from '../config/sections'
 import { useNotify } from '../context/NotifyContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
+import IconButton from '../components/IconButton'
 
 const emptyForm = { name: '', description: '', sections: [] }
 
@@ -194,11 +195,9 @@ export default function Roles() {
                   {r.sections?.length === SECTIONS.length ? 'Todas' : `${r.sections?.length ?? 0} de ${SECTIONS.length}`}
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-2">
-                    <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(r)}>Editar</button>
-                    {!r.isSystem && (
-                      <button className="text-red-500 hover:underline text-xs" onClick={() => handleDelete(r)}>Eliminar</button>
-                    )}
+                  <div className="flex gap-1.5">
+                    <IconButton icon="lapiz" label="Editar" variant="primary" onClick={() => openEdit(r)} />
+                    {!r.isSystem && <IconButton icon="basura" label="Eliminar" variant="danger" onClick={() => handleDelete(r)} />}
                   </div>
                 </td>
               </tr>

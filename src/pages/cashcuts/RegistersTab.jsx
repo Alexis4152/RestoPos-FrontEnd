@@ -3,6 +3,7 @@ import { getCashPeople, getCashRegisters, getHandovers, reopenCashRegisterDay } 
 import { useNotify } from '../../context/NotifyContext'
 import { ClosedMovementModal, ForceCloseModal, RegisterFormModal, ResolveHandoverModal } from './RegisterModals'
 import { CountBadge, Pagination, PendingBreakdown, fmt, fmtDate, fmtTime } from './common'
+import IconButton from '../../components/IconButton'
 
 
 const STATUS_BADGE = {
@@ -81,7 +82,7 @@ export default function RegistersTab({ onChanged }) {
                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${!r.isActive ? 'bg-gray-200 text-gray-700' : r.openCut ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>
                     {!r.isActive ? 'Desactivada' : r.openCut ? 'En uso' : r.dayClosed ? 'Fin de día' : 'Cerrada'}
                   </span>
-                  <button type="button" className="text-xs text-purple-700 hover:underline" onClick={() => setModal({ kind: 'form', register: r })}>Editar</button>
+                  <IconButton icon="lapiz" label="Editar caja" variant="primary" onClick={() => setModal({ kind: 'form', register: r })} />
                 </span>
               </div>
 

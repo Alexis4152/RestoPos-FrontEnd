@@ -19,16 +19,22 @@ const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('es-MX', { hour: '2-di
 const LISTO = ['LISTO', 'ENTREGADO_MESERO', 'ENTREGADO']
 const PAGO_LABEL = { EFECTIVO: 'Efectivo', TARJETA: 'Tarjeta', TRANSFERENCIA: 'Transferencia' }
 
-/** Etapa del pedido en el tablero: por aceptar → en preparación → listo → en camino (domicilio). */
+/**
+ * Etapa del pedido en el tablero: por aceptar → registrando (aún sin nada enviado a cocina) →
+ * en preparación → listo → en camino (domicilio).
+ */
 function etapa(o) {
   if (o.pendienteAceptar) return 'ACEPTAR'
   if (o.tipoEntrega === 'DOMICILIO' && o.enCaminoAt) return 'CAMINO'
   const items = (o.items ?? []).filter((i) => !i.cargoExtra && i.estado !== 'CANCELADO')
-  if (items.length > 0 && items.every((i) => LISTO.includes(i.estado))) return 'LISTO'
+  if (items.length === 0) return 'REGISTRO'
+  if (items.every((i) => LISTO.includes(i.estado))) return 'LISTO'
   return 'PREP'
 }
+// `soloConPedidos`: la columna se muestra solo cuando tiene algo (no ocupa lugar vacía).
 const COLUMNAS = [
   { key: 'ACEPTAR', titulo: 'Por aceptar', dot: 'bg-red-700' },
+  { key: 'REGISTRO', titulo: 'Registrando orden', dot: 'bg-gray-400', soloConPedidos: true },
   { key: 'PREP', titulo: 'En preparación', dot: 'bg-[#24519E]' },
   { key: 'LISTO', titulo: 'Listo para entregar', dot: 'bg-[#C77700]' },
   { key: 'CAMINO', titulo: 'En camino', dot: 'bg-purple-600' },
@@ -150,7 +156,9 @@ export default function Takeaway() {
       else if (clienteTelefono.length > 30) errors.clienteTelefono = 'No puede tener más de 30 caracteres'
     }
     if (t.direccion) Object.assign(errors, validarDireccion(direccion))
-    if (t.key === 'COMER_AQUI' && !mesaId) errors.mesa = 'Elige la mesa donde se va a sentar'
+    // Comer aquí: la mesa es obligatoria solo si la tienda tiene mesas (en una plaza comercial
+    // con espacios libres no hay mesas y se vende solo con el nombre). Mismo criterio en el backend.
+    if (t.key === 'COMER_AQUI' && mesas.length > 0 && !mesaId) errors.mesa = 'Elige la mesa donde se va a sentar'
     setFieldErrors(errors)
     if (Object.keys(errors).length > 0) return
     setLoading(true)
@@ -174,6 +182,7 @@ export default function Takeaway() {
   // Los envíos ya entregados (por recibir el dinero) salen del tablero: van en el panel de arriba.
   const enTablero = orders.filter((o) => !o.entregadaAt)
   const visibles = enTablero.filter(filtroActual.pasa)
+  const columnas = COLUMNAS.filter((c) => !c.soloConPedidos || visibles.some((o) => etapa(o) === c.key))
 
   return (
     <div className="space-y-5">
@@ -240,8 +249,8 @@ export default function Takeaway() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3.5 items-start">
-        {COLUMNAS.map((col) => {
+      <div className={`grid grid-cols-1 md:grid-cols-2 gap-3.5 items-start ${columnas.length > 4 ? 'xl:grid-cols-5' : 'xl:grid-cols-4'}`}>
+        {columnas.map((col) => {
           const lista = visibles.filter((o) => etapa(o) === col.key)
           return (
             <section key={col.key} aria-label={col.titulo} className="bg-[#ECEAE4] rounded-2xl p-3.5 space-y-3">
@@ -288,7 +297,8 @@ export default function Takeaway() {
                         className={`min-h-[56px] rounded-xl border-2 px-3 py-2 text-left disabled:opacity-50 disabled:cursor-not-allowed ${tipo === op.key ? 'border-purple-600 bg-purple-50' : 'border-[#E4E1DA] hover:bg-gray-50'}`}>
                         <span className="block text-sm font-bold">{op.label}</span>
                         <span className="block text-[11px] text-gray-600">
-                          {sinEnvio ? 'Configura el costo de envío en Datos de la tienda' : op.hint}
+                          {sinEnvio ? 'Configura el costo de envío en Datos de la tienda'
+                            : op.key === 'COMER_AQUI' && mesas.length === 0 ? 'Pide en caja y se sienta donde guste' : op.hint}
                         </span>
                       </button>
                     )
@@ -408,7 +418,11 @@ function ElegirMesa({ mesas, zonaSel, setZonaSel, mesaId, onMesa, error }) {
   const zona = zonaSel ?? zonas[0]?.id ?? null
   const libre = (m) => m.estado === 'DISPONIBLE' || m.estado === 'RESERVADA'
   const deZona = mesas.filter((m) => (m.zona?.id ?? 0) === zona)
-  if (mesas.length === 0) return <p className="text-sm text-gray-600">No hay mesas dadas de alta.</p>
+  if (mesas.length === 0) return (
+    <p className="rounded-lg bg-[#F7F6F2] px-3 py-2 text-sm text-gray-700">
+      No tienes mesas dadas de alta, así que no hace falta elegir una: el cliente se sienta en cualquier lugar libre.
+    </p>
+  )
   return (
     <div className="space-y-2">
       <p className="text-xs font-medium text-gray-600">Mesa <span className="text-red-500">*</span></p>

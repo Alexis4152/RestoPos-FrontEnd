@@ -28,6 +28,7 @@ import { useVolver } from '../utils/navegacion'
 import { leerPorEnviar, guardarPorEnviar } from '../utils/porEnviar'
 import SelectorModoToma from '../components/SelectorModoToma'
 import { recibirDineroEntrega } from '../api/deliveries'
+import IconButton from '../components/IconButton'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 /** Suma de los extras (modificadores con costo) de UNA unidad de la línea. */
@@ -193,8 +194,9 @@ export default function OrderDetail() {
   useEffect(() => {
     if (!showAddItem) return
     const loadProducts = productQuery
-      ? searchProducts({ q: productQuery, categoryId: productCat || undefined, size: 60 })
-      : getTopSellingProducts({ categoryId: productCat || undefined, limit: 24 })
+      // paraOrdenar: solo lo del menú de hoy (si la tienda tiene uno).
+      ? searchProducts({ q: productQuery, categoryId: productCat || undefined, size: 60, paraOrdenar: true })
+      : getTopSellingProducts({ categoryId: productCat || undefined, limit: 24, paraOrdenar: true })
     // Además del 86'd manual (disponible), se excluyen los productos cuya categoría no esté
     // disponible EN ESTE MOMENTO (ver Category#isAvailableNow en el backend, ya viene
     // calculado en cada producto como category.availableNow) — ej. items de "Desayuno" fuera
@@ -1364,7 +1366,7 @@ export default function OrderDetail() {
               <p className="text-sm text-gray-700">
                 Cliente registrado · {order.cliente.nombre} ({order.cliente.email})
                 {order.origen !== 'WEB' && (
-                  <button type="button" onClick={handleUnlinkClient} className="ml-2 text-xs font-semibold text-red-700 hover:underline">Quitar</button>
+                  <span className="ml-2 inline-flex align-middle"><IconButton icon="xCirculo" label="Quitar cliente de la orden" variant="danger" onClick={handleUnlinkClient} /></span>
                 )}
               </p>
             ) : order.origen !== 'WEB' && order.estado !== 'CANCELADA' && (

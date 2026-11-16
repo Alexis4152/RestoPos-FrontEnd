@@ -7,6 +7,7 @@ import { useNotify } from '../context/NotifyContext'
 import PasswordInput from '../components/PasswordInput'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
+import IconButton from '../components/IconButton'
 
 const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—'
 
@@ -302,11 +303,9 @@ export default function Users() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-2">
-                    <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(u)}>Editar</button>
-                    {u.isActive && (
-                      <button className="text-red-500 hover:underline text-xs" onClick={() => handleDelete(u)}>Desact.</button>
-                    )}
+                  <div className="flex gap-1.5">
+                    <IconButton icon="lapiz" label="Editar" variant="primary" onClick={() => openEdit(u)} />
+                    {u.isActive && <IconButton icon="archivar" label="Desactivar" variant="danger" onClick={() => handleDelete(u)} />}
                   </div>
                 </td>
               </tr>

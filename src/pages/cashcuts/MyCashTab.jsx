@@ -9,6 +9,7 @@ import CloseCutModal from './CloseCutModal'
 import { EntryModal, ExitModal } from './MovementModals'
 import { ChooseRegisterModal, ReceiveModal } from './OpenCutModals'
 import { MovementBadge, Pagination, SignedAmount, fmt, fmtDate, fmtTime } from './common'
+import IconButton from '../../components/IconButton'
 
 /**
  * Pestaña "Mi caja": el corte del usuario en sesión. Sin corte abierto, ofrece abrir uno
@@ -204,7 +205,7 @@ export default function MyCashTab({ onChanged }) {
                       </td>
                       <td className="px-4 py-2">{m.registeredBy?.name ?? '—'}</td>
                       <td className="px-4 py-2">
-                        {m.receiptPath ? <a className="text-purple-700 hover:underline" href={resolveMediaUrl(m.receiptPath)} target="_blank" rel="noopener noreferrer">Ver foto</a> : <span className="text-gray-400">—</span>}
+                        {m.receiptPath ? <IconButton icon="documento" label="Ver foto del comprobante" variant="purple" href={resolveMediaUrl(m.receiptPath)} /> : <span className="text-gray-400">—</span>}
                       </td>
                       <td className="px-4 py-2 text-right"><SignedAmount type={m.type} amount={m.amount} /></td>
                     </tr>

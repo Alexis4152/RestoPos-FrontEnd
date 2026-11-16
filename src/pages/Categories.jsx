@@ -3,6 +3,7 @@ import { getCategories, createCategory, updateCategory, deleteCategory, updateCa
 import { useNotify } from '../context/NotifyContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
+import IconButton from '../components/IconButton'
 
 const emptyForm = { name: '', description: '', scheduleStart: '', scheduleEnd: '' }
 
@@ -199,9 +200,9 @@ export default function Categories() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(c)}>Editar</button>
-                      <button className="text-red-500 hover:underline text-xs" onClick={() => handleDelete(c)}>Eliminar</button>
+                    <div className="flex gap-1.5">
+                      <IconButton icon="lapiz" label="Editar" variant="primary" onClick={() => openEdit(c)} />
+                      <IconButton icon="basura" label="Eliminar" variant="danger" onClick={() => handleDelete(c)} />
                     </div>
                   </td>
                 </tr>

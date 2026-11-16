@@ -104,7 +104,7 @@ export default function Dashboard() {
           <span className="text-3xl">📖</span>
           <div>
             <p className="font-semibold text-gray-900">Menú</p>
-            <p className="text-sm text-gray-500">Gestionar platillos</p>
+            <p className="text-sm text-gray-500">Armar el menú de hoy</p>
           </div>
         </Link>
         <Link to="/reports" className="card hover:shadow-md transition-shadow flex items-center gap-4 cursor-pointer">

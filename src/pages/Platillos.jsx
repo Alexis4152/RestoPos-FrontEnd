@@ -8,18 +8,20 @@ import { useNotify } from '../context/NotifyContext'
 import { resolveMediaUrl } from '../utils/media'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
+import IconButton from '../components/IconButton'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
 const emptyForm = { name: '', description: '', price: '', disponible: true, categoryId: '', controlaInventario: false }
 
 /**
- * Página "Menú": administración de categorías y platillos/productos de la tienda.
- * El control de stock (opcional, pensado para un futuro módulo de insumos) sigue
- * disponible vía "Ajustar stock", pero no es obligatorio para operar un menú normal
+ * Página "Platillos": el catálogo completo de la tienda (categorías, platillos, fotos,
+ * modificadores). Qué se vende cada día se elige aparte en "Menú" (MenuDelDia.jsx), a partir
+ * de este catálogo. El control de stock (opcional, pensado para un futuro módulo de insumos)
+ * sigue disponible vía "Ajustar stock", pero no es obligatorio para operar un menú normal
  * (por eso "Disponible" — 86'd temporal — es el campo relevante del día a día, no el stock).
  */
-export default function Menu() {
+export default function Platillos() {
   const { isAdmin } = useAuth()
   const { notify, confirmDialog } = useNotify()
   const [products, setProducts] = useState([])
@@ -475,8 +477,11 @@ export default function Menu() {
   return (
     <div>
       <div className="flex flex-wrap items-center gap-3 mb-6">
-        <h1 className="flex-1 text-[28px] font-extrabold tracking-tight text-gray-900">Menú</h1>
-        <Link to="/menu-imprimible" className="btn-secondary inline-flex items-center gap-2">🖨️ Menú imprimible con QR</Link>
+        <div className="flex-1 min-w-[200px]">
+          <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900">Platillos</h1>
+          <p className="text-sm text-gray-600">Todo lo que sabe preparar tu cocina. Lo que se vende hoy lo eliges en <Link to="/menu" className="font-semibold text-purple-700 hover:underline">Menú</Link>.</p>
+        </div>
+        <Link to="/menu" className="btn-secondary inline-flex items-center gap-2">📖 Armar el menú de hoy</Link>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
@@ -526,18 +531,12 @@ export default function Menu() {
                   </button>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-2 justify-end">
-                    {isAdmin && (
-                      <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(p)}>Editar</button>
-                    )}
-                    {isAdmin && (
-                      <button className="text-purple-600 hover:underline text-xs" onClick={() => openModModal(p)}>Modif.</button>
-                    )}
-                    <button className="text-purple-600 hover:underline text-xs"
-                      onClick={() => { setAdjustModal(p); setAdjustQty(''); setAdjustReason('') }}>Stock</button>
-                    {isAdmin && (
-                      <button className="text-red-500 hover:underline text-xs" onClick={() => handleDelete(p)}>Desact.</button>
-                    )}
+                  <div className="flex gap-1.5 justify-end">
+                    {isAdmin && <IconButton icon="lapiz" label="Editar" variant="primary" onClick={() => openEdit(p)} />}
+                    {isAdmin && <IconButton icon="opciones" label="Modificadores (opciones)" variant="purple" onClick={() => openModModal(p)} />}
+                    <IconButton icon="ajustar" label="Ajustar stock" variant="purple"
+                      onClick={() => { setAdjustModal(p); setAdjustQty(''); setAdjustReason('') }} />
+                    {isAdmin && <IconButton icon="archivar" label="Desactivar" variant="danger" onClick={() => handleDelete(p)} />}
                   </div>
                 </td>
               </tr>
@@ -686,9 +685,9 @@ export default function Menu() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex gap-2 shrink-0">
-                      <button className="text-blue-600 hover:underline text-xs" onClick={() => openEditGrupo(g)}>Editar</button>
-                      <button className="text-red-500 hover:underline text-xs" onClick={() => handleDeleteGrupo(g)}>Eliminar</button>
+                    <div className="flex gap-1.5 shrink-0">
+                      <IconButton icon="lapiz" label="Editar grupo" variant="primary" onClick={() => openEditGrupo(g)} />
+                      <IconButton icon="basura" label="Eliminar grupo" variant="danger" onClick={() => handleDeleteGrupo(g)} />
                     </div>
                   </div>
                   <ul className="mt-3 space-y-1">

@@ -4,6 +4,7 @@ import { getCashPeople } from '../../api/cashRegisters'
 import ResolveArqueoModal, { ARQUEO_RESOLUTION_LABELS } from './ResolveArqueoModal'
 import { resolveMediaUrl } from '../../utils/media'
 import { filaClick, FILA_CLICK } from '../../utils/filaClick'
+import IconButton from '../../components/IconButton'
 import { CountBadge, Modal, MovementBadge, Pagination, SignedAmount, SummaryRow, fmt, fmtDate, fmtTime } from './common'
 
 const EMPTY_FILTERS = { from: '', to: '', status: '', userId: '', arqueoStatus: '' }
@@ -136,7 +137,7 @@ export default function HistoryTab({ onChanged }) {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <button type="button" onClick={() => setDetail(c)} className="min-h-[36px] px-3 rounded-lg border border-purple-300 bg-purple-50 text-purple-800 text-[13px] font-bold hover:bg-purple-100">Ver</button>
+                      <IconButton icon="ver" label="Ver corte" variant="primary" onClick={() => setDetail(c)} />
                     </td>
                   </tr>
                 )

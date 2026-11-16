@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
+import IconButton from '../components/IconButton'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
@@ -589,14 +590,10 @@ export default function Inventory() {
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  <div className="flex gap-2 justify-end">
-                    {isAdmin && (
-                      <button className="text-blue-600 hover:underline text-xs" onClick={() => openEdit(p)}>Editar</button>
-                    )}
-                    <button className="text-purple-600 hover:underline text-xs" onClick={() => openAdjust(p)}>Ajustar</button>
-                    {isAdmin && (
-                      <button className="text-red-500 hover:underline text-xs" onClick={() => handleDelete(p)}>Desact.</button>
-                    )}
+                  <div className="flex gap-1.5 justify-end">
+                    {isAdmin && <IconButton icon="lapiz" label="Editar" variant="primary" onClick={() => openEdit(p)} />}
+                    <IconButton icon="ajustar" label="Ajustar stock" variant="purple" onClick={() => openAdjust(p)} />
+                    {isAdmin && <IconButton icon="archivar" label="Desactivar" variant="danger" onClick={() => handleDelete(p)} />}
                   </div>
                 </td>
               </tr>
