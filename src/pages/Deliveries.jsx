@@ -403,7 +403,7 @@ function efectivoDe(o) {
 function CobroModal({ orden, onClose, onDone }) {
   const { notify } = useNotify()
   const pagado = orden.estado === 'PAGADA'
-  const [metodo, setMetodo] = useState(orden.metodoPago === 'TRANSFERENCIA' ? 'TRANSFER' : 'CASH')
+  const [metodo, setMetodo] = useState(orden.metodoPago === 'TRANSFERENCIA' ? 'TRANSFER' : orden.metodoPago === 'TARJETA' ? 'CARD' : 'CASH')
   const [recibido, setRecibido] = useState(orden.pagaCon != null ? String(Number(orden.pagaCon)) : '')
   const [referencia, setReferencia] = useState('')
   const [banco, setBanco] = useState(null)
@@ -427,7 +427,8 @@ function CobroModal({ orden, onClose, onDone }) {
   const cambio = pideEfectivo && recibidoNum != null && !Number.isNaN(recibidoNum) ? recibidoNum - montoEfectivo : null
   const recibidoExcede = pideEfectivo && recibidoNum != null && recibidoNum > 9999999999.99
   const faltaEfectivo = pideEfectivo && (cambio === null || cambio < 0)
-  const bloqueado = saving || (!pagado && (faltaEfectivo || recibidoExcede || sinComprobante))
+  const faltaFolio = metodo === 'TRANSFER' && !transferWeb && !referencia.trim()
+  const bloqueado = saving || (!pagado && (faltaEfectivo || recibidoExcede || sinComprobante || faltaFolio))
 
   async function confirmar() {
     setSaving(true)
@@ -435,10 +436,10 @@ function CobroModal({ orden, onClose, onDone }) {
       await deliverOrder(orden.id, pagado ? {} : {
         metodo,
         recibido: pideEfectivo ? recibidoNum : undefined,
-        referencia: metodo === 'TRANSFER' && !transferWeb ? referencia.trim() || undefined : undefined,
+        referencia: metodo === 'CARD' || (metodo === 'TRANSFER' && !transferWeb) ? referencia.trim() || undefined : undefined,
       })
       notify(pagado ? `Pedido #${orden.id} entregado`
-        : `Pedido #${orden.id} entregado. ${montoEfectivo > 0 ? `Lleva ${fmt(montoEfectivo)} en efectivo a la caja.` : 'Avisa en caja que se pagó por transferencia.'}`, 'success')
+        : `Pedido #${orden.id} entregado. ${montoEfectivo > 0 ? `Lleva ${fmt(montoEfectivo)} en efectivo a la caja.` : `Avisa en caja que se pagó ${metodo === 'CARD' ? 'con tarjeta' : 'por transferencia'}.`}`, 'success')
       onDone()
     } catch (err) {
       notify(err.response?.data?.message ?? 'No se pudo marcar como entregado', 'error')
@@ -460,8 +461,8 @@ function CobroModal({ orden, onClose, onDone }) {
 
         {!pagado && (
           <>
-            <div className="grid grid-cols-2 gap-2 mt-4">
-              {[['CASH', '💵 Efectivo'], ['TRANSFER', '🏦 Transferencia']].map(([k, label]) => (
+            <div className="grid grid-cols-3 gap-2 mt-4">
+              {[['CASH', '💵 Efectivo'], ['CARD', '💳 Tarjeta'], ['TRANSFER', '🏦 Transfer.']].map(([k, label]) => (
                 <button key={k} type="button" onClick={() => setMetodo(k)}
                   className={`rounded-xl border-2 py-3 font-bold ${metodo === k ? 'border-purple-600 bg-purple-50 text-purple-800' : 'border-gray-200 text-gray-700'}`}>{label}</button>
               ))}
@@ -475,6 +476,12 @@ function CobroModal({ orden, onClose, onDone }) {
               <div className="mt-4">
                 <EfectivoRecibido label="¿Con cuánto paga el cliente?" recibido={recibido} setRecibido={setRecibido}
                   recibidoExcede={recibidoExcede} cambio={cambio} falta={montoEfectivo - (recibidoNum ?? 0)} />
+              </div>
+            ) : metodo === 'CARD' ? (
+              <div className="mt-4">
+                <p className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-sm text-blue-900">Cobra el total en la terminal antes de entregar.</p>
+                <label htmlFor="voucher" className="block text-sm font-medium text-gray-700 mt-3">Número de voucher (opcional)</label>
+                <input id="voucher" className="input mt-1" maxLength={100} value={referencia} onChange={(e) => setReferencia(e.target.value)} />
               </div>
             ) : transferWeb ? (
               <div className="mt-4">
@@ -512,7 +519,7 @@ function CobroModal({ orden, onClose, onDone }) {
                     </>
                   ) : <p>La tienda no tiene datos bancarios configurados (Configuración → Página web).</p>}
                 </div>
-                <label className="block text-sm font-medium text-gray-700 mt-3">Referencia / folio de la transferencia (opcional)</label>
+                <label className="block text-sm font-medium text-gray-700 mt-3">Referencia / folio de la transferencia (obligatoria)</label>
                 <input className="input mt-1" maxLength={100} value={referencia} onChange={(e) => setReferencia(e.target.value)} />
                 <p className="text-xs text-gray-500 mt-1">Confirma en el celular del cliente que la transferencia se hizo antes de entregar.</p>
               </div>
@@ -527,7 +534,8 @@ function CobroModal({ orden, onClose, onDone }) {
             title={pagado ? undefined
               : sinComprobante ? 'El cliente todavía no sube el comprobante de su transferencia'
               : recibidoExcede ? 'El monto capturado es excesivamente grande'
-              : faltaEfectivo ? 'Captura cuánto pagó el cliente en efectivo' : undefined}>
+              : faltaEfectivo ? 'Captura cuánto pagó el cliente en efectivo'
+              : faltaFolio ? 'Captura la referencia de la transferencia' : undefined}>
             {saving ? 'Procesando...' : 'Confirmar entrega'}
           </button>
         </div>

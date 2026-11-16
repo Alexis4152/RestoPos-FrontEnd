@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { createAccount, getTicketPdf } from '../../api/cuentas'
-import { createPayment } from '../../api/pagos'
+import { createPayment, nuevaLlavePago } from '../../api/pagos'
+import { deliverAllItems } from '../../api/ordenes'
+import { cobroAnticipado } from '../../utils/tipoPedido'
 import { printAccountTicket, printCuentaPorPagar } from '../../utils/printer'
 import { useNotify } from '../../context/NotifyContext'
 import { useVolver } from '../../utils/navegacion'
@@ -36,17 +38,35 @@ async function imprimir(cuentaId) {
 export function CobroExitoso({ cobro }) {
   const { notify } = useNotify()
   const volver = useVolver()
+  const destino = cobro.lugar ? '/takeaway' : '/tables'
+  const [entregando, setEntregando] = useState(false)
+
+  async function yaSeEntrego() {
+    setEntregando(true)
+    try {
+      await deliverAllItems(cobro.ordenId)
+      volver(destino)
+    } catch (err) {
+      notify(err.response?.data?.message ?? 'No se pudo marcar como entregado', 'error')
+      setEntregando(false)
+    }
+  }
+
   return (
     <div className="max-w-md mx-auto bg-white border border-[#E4E1DA] rounded-2xl p-6 text-center space-y-3">
       <p className="text-sm font-bold text-[#22603C]">
-        Cobrado · {cobro.lugar ?? `${/^mesa\b/i.test(String(cobro.mesa)) ? cobro.mesa : `Mesa ${cobro.mesa}`} liberada`}
+        Cobrado · {cobro.lugar ?? `${/^mesa\b/i.test(String(cobro.mesa)) ? cobro.mesa : `Mesa ${cobro.mesa}`}${cobro.porEntregar ? '' : ' liberada'}`}
       </p>
       <p className="text-3xl font-extrabold">{fmt(cobro.total)}</p>
       {cobro.cambio > 0 && <p className="text-2xl font-extrabold">Cambio: {fmt(cobro.cambio)}</p>}
+      {cobro.porEntregar && <p className="text-sm text-gray-700">Falta entregar: cocina lo sigue viendo y la orden se cierra al entregarlo.</p>}
       <div className="flex flex-wrap gap-2 justify-center pt-2">
         <button type="button" className="btn-secondary min-h-[44px]" onClick={() => imprimir(cobro.cuentaId).catch(() => notify('No se pudo imprimir', 'error'))}>Reimprimir ticket</button>
         {/* Regresa a donde venía (Mis mesas, Órdenes, Para llevar...). */}
-        <button type="button" className="btn-primary min-h-[44px]" onClick={() => volver(cobro.lugar ? '/takeaway' : '/tables')}>Listo</button>
+        {cobro.porEntregar && (
+          <button type="button" className="btn-secondary min-h-[44px]" disabled={entregando} onClick={yaSeEntrego}>{entregando ? '...' : 'Ya se entregó'}</button>
+        )}
+        <button type="button" className="btn-primary min-h-[44px]" onClick={() => volver(destino)}>Listo</button>
       </div>
     </div>
   )
@@ -56,7 +76,8 @@ export function CobroExitoso({ cobro }) {
  * Modo rápido · cuenta de una mesa en un paso: "Cobrar y liberar mesa" genera la cuenta total,
  * registra el pago y libera la mesa. Lo que el sistema no tenga como entregado (cocina no
  * siempre lo marca) se marca solo al cobrar, sin pasos extra (CuentaCreateRequest.marcarEntregados,
- * queda en la auditoría). Dividir por persona o en
+ * queda en la auditoría). Para llevar, comer aquí y recoger no: se paga antes de recibir, cobrar no
+ * toca cocina y la orden se cierra al entregar. Dividir por persona o en
  * partes, o una mesa que ya tiene varias cuentas, se hace en la vista detallada.
  */
 export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio, onCobrada }) {
@@ -76,6 +97,10 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
   const [otroMonto, setOtroMonto] = useState('')
   const [referencia, setReferencia] = useState('')
   const [busy, setBusy] = useState(false)
+  const [entregando, setEntregando] = useState(false)
+  // Una llave por cobro: un reintento o doble toque no crea otro pago. Se renueva al terminar.
+  const llavePago = useRef(nuevaLlavePago())
+  const anticipado = cobroAnticipado(order)
 
   const vivos = (order.items ?? []).filter((i) => i.estado !== 'CANCELADO')
   const restante = (i) => Number(i.cantidad) - Number(i.cantidadFacturada || 0)
@@ -114,7 +139,7 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
     let cuenta = cuentaLista
     try {
       if (!cuenta) {
-        const r = await createAccount(order.id, { tipo: 'TOTAL', marcarEntregados: true })
+        const r = await createAccount(order.id, { tipo: 'TOTAL', marcarEntregados: !anticipado })
         cuenta = r.data.data
       }
       await createPayment(cuenta.id, {
@@ -122,12 +147,15 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
         monto: r2(Number(cuenta.total) + propina),
         recibido: metodo === 'CASH' ? recibidoNum : undefined,
         referencia: metodo === 'TRANSFER' && referencia.trim() ? referencia.trim() : undefined,
+        idempotencyKey: llavePago.current,
         propinaPorcentaje: propina > 0 && propinaTipo === 'PORCENTAJE' ? propinaNum : undefined,
         propinaMonto: propina > 0 && propinaTipo === 'MONTO' ? propina : undefined,
       })
+      llavePago.current = nuevaLlavePago()
       imprimir(cuenta.id).catch(() => notify('No se pudo imprimir el ticket', 'error'))
       onCobrada?.({
-        cuentaId: cuenta.id, mesa: order.mesa?.numero, total: r2(Number(cuenta.total) + propina),
+        cuentaId: cuenta.id, ordenId: order.id, mesa: order.mesa?.numero,
+        porEntregar: anticipado && vivos.some((i) => !i.cargoExtra && i.estado !== 'ENTREGADO'), total: r2(Number(cuenta.total) + propina),
         lugar: order.mesa ? null : `Pedido #${order.id}${order.clienteNombre ? ` · ${order.clienteNombre}` : ''}`,
         cambio: metodo === 'CASH' ? r2(recibidoNum - Number(cuenta.total) - propina) : 0,
       })
@@ -141,7 +169,7 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
   async function soloImprimir() {
     setBusy(true)
     try {
-      const r = await createAccount(order.id, { tipo: 'TOTAL', marcarEntregados: true })
+      const r = await createAccount(order.id, { tipo: 'TOTAL', marcarEntregados: !anticipado })
       await printCuentaPorPagar(r.data.data.id)
       notify('Cuenta impresa: entrégale su copia al cliente para que pague en caja', 'success')
       onCambio?.()
@@ -158,6 +186,20 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
       </div>
     )
   }
+  if (order.pagadoAt && !cuentaLista && porCobrar.length === 0) {
+    return (
+      <div className="bg-white border border-[#E4E1DA] rounded-2xl p-5 space-y-3">
+        <p className="font-extrabold text-[#22603C]">Pagado · falta entregar</p>
+        <p className="text-sm text-gray-700">Cocina lo sigue viendo. La orden se cierra al entregarlo.</p>
+        <button type="button" className="btn-primary w-full min-h-[48px]" disabled={entregando} onClick={async () => {
+          setEntregando(true)
+          try { await deliverAllItems(order.id); onCambio?.() }
+          catch (err) { notify(err.response?.data?.message ?? 'No se pudo marcar como entregado', 'error') }
+          finally { setEntregando(false) }
+        }}>{entregando ? '...' : 'Ya se entregó'}</button>
+      </div>
+    )
+  }
   if (!cuentaLista && porCobrar.length === 0) {
     return <p className="bg-white border border-[#E4E1DA] rounded-2xl p-5 text-sm text-gray-700">No hay nada por cobrar todavía.</p>
   }
@@ -167,7 +209,7 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
       <div className="space-y-3">
         {sinEntregar.length > 0 && !cuentaLista && (
           <p className="rounded-2xl bg-[#F1EFEA] px-4 py-3 text-sm text-gray-700">
-            {piezasSinEntregar} platillo{piezasSinEntregar === 1 ? '' : 's'} sin marcar como entregado{piezasSinEntregar === 1 ? '' : 's'}: al generar la cuenta se marcan solos.
+            {piezasSinEntregar} platillo{piezasSinEntregar === 1 ? '' : 's'} sin marcar como entregado{piezasSinEntregar === 1 ? '' : 's'}: {anticipado ? 'cocina los sigue viendo.' : 'al generar la cuenta se marcan solos.'}
           </p>
         )}
         <section className="bg-white border border-[#E4E1DA] rounded-2xl p-4 space-y-2 text-sm">
@@ -202,7 +244,7 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
       {sinEntregar.length > 0 && !cuentaLista && (
         <p className="rounded-2xl bg-[#F1EFEA] px-4 py-3 text-sm text-gray-700">
           {piezasSinEntregar} platillo{piezasSinEntregar === 1 ? '' : 's'} sin marcar como entregado{piezasSinEntregar === 1 ? '' : 's'}
-          ({[...new Set(sinEntregar.map((i) => i.productoNombre))].join(', ')}): al cobrar se marcan solos.
+          ({[...new Set(sinEntregar.map((i) => i.productoNombre))].join(', ')}): {anticipado ? 'cocina los sigue viendo; la orden se cierra al entregarlos.' : 'al cobrar se marcan solos.'}
         </p>
       )}
 
@@ -297,15 +339,16 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
         )}
         {metodo === 'TRANSFER' && (
           <div>
-            <label htmlFor="ref-transfer" className="text-sm font-semibold text-gray-600">Referencia (opcional)</label>
+            <label htmlFor="ref-transfer" className="text-sm font-semibold text-gray-600">Referencia o folio (obligatoria)</label>
             <input id="ref-transfer" className="input" maxLength={100} value={referencia} onChange={(e) => setReferencia(e.target.value)} />
+            <p className="text-xs text-gray-600 mt-1">Queda por verificar hasta que un administrador confirme que llegó al banco.</p>
           </div>
         )}
       </section>
 
-      <button type="button" disabled={busy || faltaEfectivo || propinaInvalida} onClick={cobrar}
+      <button type="button" disabled={busy || faltaEfectivo || propinaInvalida || (metodo === 'TRANSFER' && !referencia.trim())} onClick={cobrar}
         className="w-full min-h-[56px] rounded-2xl bg-gray-900 text-white text-base font-extrabold disabled:opacity-50 disabled:cursor-not-allowed">
-        {busy ? 'Cobrando…' : `Cobrar ${fmt(total)}${order.mesa ? ' y liberar mesa' : ''}`}
+        {busy ? 'Cobrando…' : `Cobrar ${fmt(total)}${order.mesa && !anticipado ? ' y liberar mesa' : ''}`}
       </button>
       {!cuentaLista && (
         <button type="button" disabled={busy} onClick={soloImprimir}

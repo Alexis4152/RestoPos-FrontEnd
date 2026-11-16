@@ -12,5 +12,11 @@ export const TIPOS_PEDIDO = [
 
 export const tipoPedido = (key) => TIPOS_PEDIDO.find((t) => t.key === key) ?? TIPOS_PEDIDO[0]
 
+/**
+ * ¿Esta orden se puede pagar antes de recibirla? Para llevar, comer aquí y recoger (no mesa ni
+ * domicilio). Misma regla que OrdenService#cobroAnticipado.
+ */
+export const cobroAnticipado = (o) => ['PARA_LLEVAR', 'COMER_AQUI', 'RECOGER'].includes(o?.tipoEntrega) || (!o?.tipoEntrega && !o?.mesa)
+
 /** Texto corto del tipo de una orden sin mesa ("Para llevar", "Comer aquí"...). */
 export const etiquetaTipoPedido = (o) => tipoPedido(o?.tipoEntrega).label

@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
-import { getSales } from '../api/sales'
+import { Link } from 'react-router-dom'
+import { getSale, getSales } from '../api/sales'
+import { getTransfersToVerify, verifyTransfer } from '../api/pagos'
+import PagosCuenta from '../components/PagosCuenta'
+import { useAuth } from '../context/AuthContext'
 import { printAccountTicket } from '../utils/printer'
 import { useNotify } from '../context/NotifyContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
@@ -38,6 +42,29 @@ export default function Sales() {
   const [pageData, setPageData] = useState({ content: [], totalElements: 0, totalPages: 0 })
   const [detail, setDetail] = useState(null)
   const [printingId, setPrintingId] = useState(null)
+  const { isAdmin } = useAuth()
+  const [porVerificar, setPorVerificar] = useState([])
+
+  function cargarPorVerificar() {
+    if (!isAdmin) return
+    getTransfersToVerify().then((r) => setPorVerificar(r.data.data ?? [])).catch(() => setPorVerificar([]))
+  }
+  useEffect(() => { cargarPorVerificar() }, [isAdmin])
+
+  async function verificar(id, resultado) {
+    try {
+      await verifyTransfer(id, resultado)
+      cargarPorVerificar()
+      load()
+    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo actualizar la transferencia', 'error') }
+  }
+
+  /** Recarga el detalle abierto y la lista tras cancelar, corregir, devolver o verificar un pago. */
+  function refrescarDetalle() {
+    load()
+    cargarPorVerificar()
+    if (detail) getSale(detail.ordenId).then((r) => setDetail(r.data.data)).catch(() => setDetail(null))
+  }
 
   function load() {
     const params = {
@@ -111,6 +138,32 @@ export default function Sales() {
   return (
     <div>
       <h1 className="text-[28px] font-extrabold tracking-tight text-gray-900 mb-6">Ventas</h1>
+
+      {porVerificar.length > 0 && (
+        <section aria-label="Transferencias por verificar" className="card mb-4">
+          <h2 className="font-extrabold text-gray-900">Transferencias por verificar ({porVerificar.length})</h2>
+          <p className="text-xs text-gray-600 mb-3">Confirma en el banco que el dinero llegó.</p>
+          <div className="divide-y divide-[#ECE9E2]">
+            {porVerificar.map((t) => (
+              <div key={t.pagoId} className="py-2 flex flex-wrap items-center justify-between gap-2 text-sm">
+                <div className="min-w-0">
+                  <p className="font-bold">{fmt(t.monto)} · <Link className="text-purple-700 hover:underline" to={`/orders/${t.ordenId}`}>Orden #{t.ordenId}</Link>{t.cliente ? ` · ${t.cliente}` : ''}</p>
+                  <p className="text-xs text-gray-600 break-words">
+                    {t.referencia} · cobró {t.cobro ?? '—'} · {fmtDate(t.fecha)}{t.comprobante ? ' · con comprobante' : ''}
+                  </p>
+                  {t.verificacion === 'NO_RECIBIDA' && <p className="text-xs font-bold text-red-700">Marcada como no recibida: resuélvela desde la orden</p>}
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" className="btn-primary min-h-[36px] !py-1 text-xs" onClick={() => verificar(t.pagoId, 'VERIFICADA')}>Sí llegó</button>
+                  {t.verificacion === 'POR_VERIFICAR' && (
+                    <button type="button" className="btn-secondary min-h-[36px] !py-1 text-xs" onClick={() => verificar(t.pagoId, 'NO_RECIBIDA')}>No llegó</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <form onSubmit={handleApplyFilters} className="card mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
         <div>
@@ -252,16 +305,13 @@ export default function Sales() {
                     <span className="font-semibold text-gray-900">{fmt(cuenta.total)}</span>
                   </div>
 
-                  {(cuenta.pagos ?? []).length > 0 && (
-                    <div className="space-y-0.5 mb-2">
-                      {cuenta.pagos.map((p) => (
-                        <div key={p.id} className="flex items-center justify-between text-xs">
-                          <span className={p.cancelado ? 'text-gray-400 line-through' : 'text-gray-600'}>{METODOS[p.metodo] ?? p.metodo}</span>
-                          <span className={p.cancelado ? 'text-gray-400 line-through' : 'text-gray-800'}>{fmt(p.monto)}</span>
-                        </div>
-                      ))}
+                  {Number(cuenta.totalDevuelto) > 0 && (
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-red-700">Devuelto</span>
+                      <span className="font-semibold text-red-700">{fmt(cuenta.totalDevuelto)}</span>
                     </div>
                   )}
+                  <div className="mb-2"><PagosCuenta cuenta={cuenta} ordenCerrada={detail.ordenEstado === 'PAGADA'} onCambio={refrescarDetalle} /></div>
 
                   {cuenta.estado === 'PAGADA' && (
                     <button

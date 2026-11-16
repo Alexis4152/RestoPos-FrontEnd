@@ -29,7 +29,10 @@ export const updateOrderItemStatus = (orderId, itemId, estado) =>
 export const cancelOrderItem = (orderId, itemId, motivo) =>
   api.delete(`/orders/${orderId}/items/${itemId}`, { data: { motivo } })
 
-/** Cancela la orden completa (solo si todavía no tiene pagos registrados). */
+/** Marca como entregado todo lo que falte: con eso se cierra una orden ya pagada. */
+export const deliverAllItems = (orderId) => api.post(`/orders/${orderId}/entregar-todo`)
+
+/** Cancela la orden completa (solo si no tiene pagos vigentes). */
 export const cancelOrder = (orderId, motivo) => api.post(`/orders/${orderId}/cancel`, { motivo })
 
 /** Edita una línea ya agregada: comensal, cantidad, notas y (opcional) modificadores. */

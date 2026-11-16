@@ -358,6 +358,7 @@ function TarjetaPedido({ o, busy, onAbrir, onAceptar, onRechazar }) {
           <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{tipoLabel}</span>
           {o.mesa && <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#E6EDF8] text-[#1E4585]">{nombreMesa(o.mesa.numero)}</span>}
           {o.metodoPago && <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#F1EFEA] text-gray-700">{PAGO_LABEL[o.metodoPago] ?? o.metodoPago}</span>}
+          {o.pagadoAt && <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#E7F3EC] text-[#22603C]">Pagado · falta entregar</span>}
           {o.metodoPago === 'EFECTIVO' && o.pagaCon != null && Number(o.pagaCon) > Number(o.total) && (
             <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-[#E7F3EC] text-[#22603C]">Paga con {fmt(o.pagaCon)} · cambio {fmt(Number(o.pagaCon) - Number(o.total))}</span>
           )}

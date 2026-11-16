@@ -6,7 +6,9 @@ import Icon, { Persona } from '../components/Icon'
 import EntregaSeguimiento from '../components/EntregaSeguimiento'
 import { moveOrderTable, joinOrderTable, splitOrderTable } from '../api/ordenes'
 import { createAccount, getAccountsByOrder, cancelAccount, getTicketPdf, getOpinionQr } from '../api/cuentas'
-import { createPayment } from '../api/pagos'
+import { createPayment, nuevaLlavePago } from '../api/pagos'
+import PagosCuenta from '../components/PagosCuenta'
+import { cobroAnticipado as admiteCobroAnticipado } from '../utils/tipoPedido'
 import { getCategories, updateCategoryAvailabilityMode } from '../api/categories'
 import { searchProducts, getTopSellingProducts } from '../api/products'
 import { getOpenCashCut } from '../api/cashCuts'
@@ -132,6 +134,9 @@ export default function OrderDetail() {
   const [payMetodo, setPayMetodo] = useState('CASH')
   const [payMonto, setPayMonto] = useState('')
   const [payRecibido, setPayRecibido] = useState('')
+  const [payReferencia, setPayReferencia] = useState('')
+  // Una llave por cobro: si la petición se repite (doble toque, mala red) no se crea otro pago.
+  const payLlave = useRef(null)
   // Propina opcional, solo capturable junto con el PRIMER pago de la cuenta (mientras
   // totalPagado siga en 0 — ver PagoService#registrar, que la ignora después de eso). 'NONE'
   // (default), 'MONTO' (fijo) o 'PORCENTAJE' del subtotal ya generado de la cuenta.
@@ -275,11 +280,14 @@ export default function OrderDetail() {
   }
   const activeItems = order.items?.filter((i) => i.estado !== 'CANCELADO') ?? []
   const billableItems = activeItems.filter((i) => remaining(i) > 0)
-  // En caja solo se cobra lo ya entregado (regla de CuentaService#crearEnCaja); los cargos
-  // como el envío no pasan por cocina. Si TODO lo pendiente está sin entregar no hay nada
-  // que cobrar todavía; si es solo una parte, se puede cobrar lo entregado (p. ej. un comensal).
-  const sinEntregar = billableItems.filter((i) => !i.cargoExtra && i.estado !== 'ENTREGADO')
-  const nadaEntregado = billableItems.length > 0 && billableItems.every((i) => i.cargoExtra || i.estado !== 'ENTREGADO')
+  // En mesa solo se cobra lo ya entregado (regla de CuentaService#crearEnCaja); los cargos como
+  // el envío no pasan por cocina. Si TODO lo pendiente está sin entregar no hay nada que cobrar
+  // todavía; si es solo una parte, se puede cobrar lo entregado (p. ej. un comensal). Para llevar,
+  // comer aquí y recoger se pueden pagar antes de recibir.
+  const cobroAnticipado = admiteCobroAnticipado(order)
+  const sinEntregar = cobroAnticipado ? [] : billableItems.filter((i) => !i.cargoExtra && i.estado !== 'ENTREGADO')
+  const nadaEntregado = !cobroAnticipado && billableItems.length > 0 && billableItems.every((i) => i.cargoExtra || i.estado !== 'ENTREGADO')
+  const pagadoPorEntregar = !!order.pagadoAt && !isClosed
   // Filtro de la tabla de productos (ver `itemFilter`): por comensal muestra tanto lo que
   // va a consumir (activo) como lo que se le canceló, para que el mesero revise ambos de
   // un vistazo; "Todo lo cancelado" ignora el comensal y junta lo cancelado de todos.
@@ -752,6 +760,8 @@ export default function OrderDetail() {
     setPayMetodo('CASH')
     setPayMonto((Number(cuenta.total) - Number(cuenta.totalPagado)).toFixed(2))
     setPayRecibido('')
+    setPayReferencia('')
+    payLlave.current = nuevaLlavePago()
     setPayEmail('')
     setTicketType('physical')
     setPaySuccess(null)
@@ -778,7 +788,7 @@ export default function OrderDetail() {
     e.preventDefault()
     if (payMontoMissing || payMontoExceedsLimit || payMontoExceedsSaldo || payCashAmountMissing
       || payRecibidoExceedsLimit || payDigitalEmailMissing || payEmailTooLong || payEmailInvalid
-      || payPropinaValorInvalid) return
+      || payPropinaValorInvalid || payReferenciaMissing) return
     if (!(await confirmDialog(`¿Deseas registrar este pago por ${fmt(payMontoNum)}?`, { confirmText: 'Registrar pago', danger: false }))) return
     setLoading(true)
     try {
@@ -786,6 +796,8 @@ export default function OrderDetail() {
         metodo: payMetodo,
         monto: payMontoNum,
         recibido: payMetodo === 'CASH' && payRecibidoNum != null ? payRecibidoNum : undefined,
+        referencia: payReferencia.trim() || undefined,
+        idempotencyKey: payLlave.current,
         emailTicket: ticketType === 'digital' ? payEmail.trim() : undefined,
         propinaPorcentaje: payPropinaTipo === 'PORCENTAJE' && payPropinaValorNum ? payPropinaValorNum : undefined,
         propinaMonto: payPropinaTipo === 'MONTO' && payPropinaValorNum ? payPropinaValorNum : undefined,
@@ -868,6 +880,7 @@ export default function OrderDetail() {
     ? payRecibidoNum - payMontoNum
     : null
   const payCashAmountMissing = payMetodo === 'CASH' && (payChange === null || payChange < 0)
+  const payReferenciaMissing = payMetodo === 'TRANSFER' && !payReferencia.trim()
   const payMontoMissing = payMontoNum == null || payMontoNum <= 0
   // Mismo límite que Pago.monto/recibido en el backend (NUMERIC(12,2), ver PagoRequest).
   const payMontoExceedsLimit = payMontoNum != null && payMontoNum > 9999999999.99
@@ -1183,6 +1196,12 @@ export default function OrderDetail() {
                 <p className="mt-1">Solo se puede cobrar lo que ya se entregó.</p>
               </div>
             )}
+            {pagadoPorEntregar && (
+              <div role="status" className="rounded-xl bg-[#E7F3EC] px-3.5 py-3 text-[13px] text-[#22603C] leading-snug">
+                <p className="font-extrabold">Pagado · falta entregar</p>
+                <p className="mt-0.5">Cocina lo sigue viendo. La orden se cierra al marcar lo último como entregado.</p>
+              </div>
+            )}
             {!isClosed && billableItems.length > 0 && !cobraRepartidor && (
               <button type="button" className="btn-primary w-full min-h-[44px]" disabled={nadaEntregado}
                 title={nadaEntregado ? `Primero marca los productos como ${entregadoLabel.toLowerCase()}` : undefined}
@@ -1233,7 +1252,10 @@ export default function OrderDetail() {
                       c.estado === 'PAGADA' ? 'bg-[#E7F3EC] text-[#22603C]' : c.estado === 'CANCELADA' ? 'bg-gray-100 text-gray-600' : 'bg-[#FBF0DC] text-[#7A4A00]'
                     }`}>{({ PAGADA: 'Pagada', CANCELADA: 'Cancelada', PENDIENTE: 'Pendiente' })[c.estado] ?? c.estado}</span>
                   </div>
-                  <p className="mt-1 text-gray-700">Total <b>{fmt(c.total)}</b> · Pagado {fmt(c.totalPagado)}</p>
+                  <p className="mt-1 text-gray-700">Total <b>{fmt(c.total)}</b> · Pagado {fmt(c.totalPagado)}
+                    {Number(c.totalDevuelto) > 0 && <span className="text-red-700"> · Devuelto {fmt(c.totalDevuelto)}</span>}
+                  </p>
+                  <PagosCuenta cuenta={c} ordenCerrada={order.estado === 'PAGADA'} onCambio={load} />
                   <div className="mt-3 space-y-2">
                     {c.estado === 'PENDIENTE' && puedeCobrar && (
                       <button type="button" className="btn-primary w-full min-h-[40px]" onClick={() => openPayModal(c)}>Registrar pago</button>
@@ -1246,7 +1268,8 @@ export default function OrderDetail() {
                         Imprimir cuenta (2 copias)
                       </button>
                     )}
-                    {c.estado === 'PENDIENTE' && (isAdmin || isMesero) && (
+                    {/* Con un abono no se cancela: primero un admin cancela el pago, con motivo. */}
+                    {c.estado === 'PENDIENTE' && Number(c.totalPagado) === 0 && (isAdmin || isMesero) && (
                       <button type="button" className="btn-secondary w-full min-h-[40px] text-red-700" onClick={() => handleCancelAccount(c)}>Cancelar cuenta</button>
                     )}
                     {c.estado === 'PAGADA' && (
@@ -2103,6 +2126,16 @@ export default function OrderDetail() {
                       <p className="text-red-600 text-xs mt-1">El monto no puede exceder el saldo pendiente ({fmt(paySaldoConPropina)})</p>
                     ) : null}
                   </div>
+
+                  {payMetodo !== 'CASH' && (
+                    <div>
+                      <label htmlFor="pay-referencia" className="text-xs font-medium text-gray-600">
+                        {payMetodo === 'TRANSFER' ? 'Referencia o folio de la transferencia (obligatoria)' : 'Número de voucher (opcional)'}
+                      </label>
+                      <input id="pay-referencia" className="input mt-1" maxLength={100} value={payReferencia} onChange={(e) => setPayReferencia(e.target.value)} />
+                      {payMetodo === 'TRANSFER' && <p className="text-xs text-gray-600 mt-1">Queda por verificar hasta que un administrador confirme que llegó al banco.</p>}
+                    </div>
+                  )}
 
                   {payMetodo === 'CASH' && (
                     <div>
