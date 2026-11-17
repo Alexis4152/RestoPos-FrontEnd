@@ -18,6 +18,17 @@ export const getTiendas = (supervisorId) => api.get('/tiendas', { params: { supe
 export const createTienda = (data) => api.post('/tiendas', data)
 
 /**
+ * Lista las tiendas asignadas a un SUPERVISOR en particular — solo tiene efecto llamada por
+ * un SUPER_ADMIN. La usa `Users.jsx` para precargar, al editar un Supervisor, cuáles tiendas
+ * administra hoy (esa info no viaja en el propio usuario: vive en `Tienda.supervisor`).
+ * @param {number|string} supervisorId Id del usuario Supervisor.
+ */
+export const getTiendasBySupervisor = (supervisorId) => api.get('/tiendas', { params: { supervisorId } })
+
+/** Plan del SUPERVISOR en sesión: `{ maxTiendas (null = sin límite), usedTiendas }`. Para SUPER_ADMIN ambos vienen en null. */
+export const getTiendaPlan = () => api.get('/tiendas/plan')
+
+/**
  * Actualiza el nombre (y, si el actor es `SUPER_ADMIN`, el supervisor a cargo) de una tienda.
  * @param {number|string} id Id de la tienda.
  * @param {{ name: string, supervisorId?: number|string }} data Nuevos datos de la tienda.

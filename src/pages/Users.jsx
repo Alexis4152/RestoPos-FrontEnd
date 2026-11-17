@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getUsers, createUser, updateUser, deleteUser } from '../api/users'
 import { getRoles } from '../api/roles'
-import { getTiendas } from '../api/tiendas'
+import { getTiendas, getTiendasBySupervisor } from '../api/tiendas'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import PasswordInput from '../components/PasswordInput'
@@ -11,7 +11,7 @@ import IconButton from '../components/IconButton'
 
 const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—'
 
-const emptyForm = { name: '', email: '', password: '', roleId: '', tiendaId: '' }
+const emptyForm = { name: '', email: '', password: '', roleId: '', tiendaId: '', supervisedTiendaIds: [], maxTiendas: '' }
 const EMPTY_FILTERS = { from: '', to: '', name: '', email: '', roleId: '', isActive: '' }
 
 // Mismo mapa de jerarquía que UserService#ROLE_RANK en el backend — se usa SOLO para
@@ -43,6 +43,11 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
  * `PrivateRoute` lo manda directo a `/change-password` antes de dejarlo usar el resto de la
  * app (ver `ChangePasswordRequired.jsx`). Editar sí permite resetear la contraseña de un
  * usuario existente (deja vacío para no tocarla) — igual queda marcado `mustChangePassword`.
+ *
+ * Registrar un SUPERVISOR (solo `SUPER_ADMIN`): al elegir ese rol de plataforma el usuario
+ * queda sin tienda propia y aparecen dos campos más — qué tiendas va a administrar
+ * (`supervisedTiendaIds`) y el máximo de tiendas de su plan contratado (`maxTiendas`, vacío
+ * = sin límite), que el backend valida cuando el supervisor da de alta tiendas nuevas.
  */
 export default function Users() {
   const { isSuperAdmin, user } = useAuth()
@@ -121,12 +126,22 @@ export default function Users() {
 
   // Abre el modal precargado con los datos del usuario a editar. La contraseña se deja
   // vacía a propósito: en edición, un campo vacío significa "no cambiar la contraseña".
+  // Si es un SUPERVISOR, precarga además qué tiendas administra hoy (esa info no viaja en
+  // el propio usuario — vive en Tienda.supervisor) para que el selector arranque marcado.
   function openEdit(u) {
     setEditUser(u)
-    setForm({ name: u.name, email: u.email, password: '', roleId: u.role?.id ?? '', tiendaId: u.tienda?.id ?? '' })
+    setForm({
+      name: u.name, email: u.email, password: '', roleId: u.role?.id ?? '', tiendaId: u.tienda?.id ?? '',
+      supervisedTiendaIds: [], maxTiendas: u.maxTiendas ?? '',
+    })
     setError('')
     setFieldErrors({})
     setShowModal(true)
+    if (isSuperAdmin && u.role?.name === 'SUPERVISOR' && !u.tienda) {
+      getTiendasBySupervisor(u.id).then((r) => {
+        setForm((f) => ({ ...f, supervisedTiendaIds: (r.data.data ?? []).map((t) => t.id) }))
+      })
+    }
   }
 
   /**
@@ -151,6 +166,10 @@ export default function Users() {
       errors.password = 'La contraseña debe tener entre 6 y 72 caracteres'
     }
     if (!form.roleId) errors.roleId = 'Selecciona un rol'
+    if (showTiendaPicker && !form.tiendaId && !user?.tienda) errors.tiendaId = 'Selecciona una tienda'
+    if (showSupervisorTiendaPicker && form.maxTiendas !== '' && Number(form.maxTiendas) > 1000) {
+      errors.maxTiendas = 'El máximo de tiendas no puede ser mayor a 1000'
+    }
     return errors
   }
 
@@ -177,7 +196,14 @@ export default function Users() {
     setLoading(true)
     setError('')
     setFieldErrors({})
-    const payload = { ...form, tiendaId: isSuperAdmin && form.tiendaId ? form.tiendaId : undefined }
+    const payload = {
+      ...form,
+      tiendaId: showTiendaPicker && form.tiendaId ? Number(form.tiendaId) : undefined,
+      // Solo viajan para un SUPERVISOR registrado/editado por SUPER_ADMIN (el backend los
+      // ignora en cualquier otro caso). maxTiendas vacío = sin límite.
+      supervisedTiendaIds: showSupervisorTiendaPicker ? form.supervisedTiendaIds : undefined,
+      maxTiendas: showSupervisorTiendaPicker ? (form.maxTiendas === '' ? null : Number(form.maxTiendas)) : undefined,
+    }
     try {
       if (editUser) await updateUser(editUser.id, payload)
       else await createUser(payload)
@@ -232,6 +258,22 @@ export default function Users() {
   // por debajo del suyo. El filtro de búsqueda de la tabla sigue usando `roles` completo —
   // ahí sí tiene sentido poder filtrar por "ADMIN" aunque no puedas crear uno.
   const assignableRoles = roles.filter((r) => rankOf(r.name) > rankOf(user?.role))
+
+  // El rol SUPERVISOR de plataforma es el único sin `tienda` (una tienda podría tener un rol
+  // personalizado con el mismo nombre), así que se distingue por eso, no solo por el nombre.
+  const formRole = roles.find((r) => String(r.id) === String(form.roleId))
+  const isPlatformFormRole = !!formRole && !formRole.tienda
+  const showSupervisorTiendaPicker = isSuperAdmin && isPlatformFormRole && formRole.name === 'SUPERVISOR'
+  // Selector de tienda: solo SUPER_ADMIN, y solo para roles que sí pertenecen a una tienda.
+  const showTiendaPicker = isSuperAdmin && !!formRole && !isPlatformFormRole
+
+  /** Marca/desmarca una tienda en el selector de "tiendas que administra". */
+  function toggleSupervisedTienda(tiendaId) {
+    setForm((f) => {
+      const has = f.supervisedTiendaIds.includes(tiendaId)
+      return { ...f, supervisedTiendaIds: has ? f.supervisedTiendaIds.filter((id) => id !== tiendaId) : [...f.supervisedTiendaIds, tiendaId] }
+    })
+  }
 
   return (
     <div>
@@ -295,6 +337,11 @@ export default function Users() {
                 <td className="px-4 py-3 text-gray-500">{u.email}</td>
                 <td className="px-4 py-3">
                   <span className={`text-xs font-medium px-2 py-1 rounded-full ${roleColor(u.role?.name)}`}>{u.role?.name}</span>
+                  {u.role?.name === 'SUPERVISOR' && !u.tienda && (
+                    <span className="block text-xs text-gray-500 mt-1">
+                      Plataforma · {u.maxTiendas != null ? `plan de ${u.maxTiendas} tienda${u.maxTiendas === 1 ? '' : 's'}` : 'sin límite de tiendas'}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-gray-600">{fmtDate(u.createdAt)}</td>
                 <td className="px-4 py-3">
@@ -366,12 +413,66 @@ export default function Users() {
                   )
                 })()}
               </div>
-              {isSuperAdmin && (
-                <div><label className="text-xs font-medium text-gray-600">Tienda</label>
+              {showSupervisorTiendaPicker && (
+                <div>
+                  <label className="text-xs font-medium text-gray-600">¿Qué tiendas va a administrar?</label>
+                  <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-40 overflow-y-auto mt-1">
+                    {tiendas.length === 0 ? (
+                      <p className="text-xs text-gray-400 px-3 py-2">Todavía no hay tiendas registradas.</p>
+                    ) : tiendas.map((t) => (
+                      <label key={t.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-50">
+                        <input type="checkbox" checked={form.supervisedTiendaIds.includes(t.id)} onChange={() => toggleSupervisedTienda(t.id)} />
+                        <span className="flex-1">{t.name}</span>
+                        {t.supervisor && t.supervisor.id !== editUser?.id && (
+                          <span className="text-xs text-amber-600">a cargo de {t.supervisor.name}</span>
+                        )}
+                        {!t.isActive && <span className="text-xs text-gray-400">inactiva</span>}
+                      </label>
+                    ))}
+                  </div>
+                  {form.supervisedTiendaIds.length === 0 && (
+                    <p className="text-xs text-amber-600 mt-1">Sin ninguna marcada, este supervisor no podrá ver ni administrar ninguna tienda hasta que cree la suya.</p>
+                  )}
+                  <p className="text-xs text-gray-400 mt-1">Cada tienda tiene un solo supervisor: si marcas una que ya está a cargo de otro, pasa a este.</p>
+                </div>
+              )}
+              {showSupervisorTiendaPicker && (
+                <div>
+                  <label htmlFor="user-max-tiendas" className="text-xs font-medium text-gray-600">Máximo de tiendas (plan contratado)</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <button type="button" aria-label="Una tienda menos" className="w-9 h-9 rounded-lg border text-gray-600 hover:bg-gray-100 text-lg leading-none"
+                      onClick={() => setForm((f) => ({ ...f, maxTiendas: f.maxTiendas === '' ? '' : String(Math.max(0, Number(f.maxTiendas) - 1)) }))}>−</button>
+                    <input
+                      id="user-max-tiendas" className="input text-center !w-28" type="text" inputMode="numeric" placeholder="Sin límite"
+                      value={form.maxTiendas}
+                      onChange={(e) => setForm({ ...form, maxTiendas: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                    />
+                    <button type="button" aria-label="Una tienda más" className="w-9 h-9 rounded-lg border text-gray-600 hover:bg-gray-100 text-lg leading-none"
+                      onClick={() => setForm((f) => ({ ...f, maxTiendas: String(Math.min(1000, (Number(f.maxTiendas) || 0) + 1)) }))}>+</button>
+                    {form.maxTiendas !== '' && (
+                      <button type="button" className="text-xs text-gray-500 hover:text-gray-700 underline" onClick={() => setForm({ ...form, maxTiendas: '' })}>Sin límite</button>
+                    )}
+                  </div>
+                  {fieldErrors.maxTiendas && <p className="text-red-600 text-xs mt-1">{fieldErrors.maxTiendas}</p>}
+                  <p className="text-xs text-gray-400 mt-1">
+                    {form.maxTiendas === ''
+                      ? 'Vacío = sin límite. El supervisor puede crear todas las tiendas que quiera.'
+                      : `El supervisor podrá tener hasta ${form.maxTiendas} tienda${Number(form.maxTiendas) === 1 ? '' : 's'} activa${Number(form.maxTiendas) === 1 ? '' : 's'}; al llegar al límite ya no podrá crear más.`}
+                  </p>
+                  {form.maxTiendas !== '' && form.supervisedTiendaIds.length > Number(form.maxTiendas) && (
+                    <p className="text-xs text-amber-600 mt-1">Ya tiene {form.supervisedTiendaIds.length} tiendas asignadas: las conserva, pero no podrá crear más.</p>
+                  )}
+                </div>
+              )}
+              {showTiendaPicker && (
+                <div><label className="text-xs font-medium text-gray-600">Tienda <span className={fieldErrors.tiendaId ? 'text-red-600' : ''}>*</span></label>
                   <select className="input" value={form.tiendaId} onChange={(e) => setForm({ ...form, tiendaId: e.target.value })}>
-                    <option value="">Sin tienda (usuario de plataforma)</option>
+                    <option value="">{user?.tienda ? `Tienda actual (${user.tienda.name})` : 'Selecciona una tienda'}</option>
                     {tiendas.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select></div>
+                  </select>
+                  {fieldErrors.tiendaId && <p className="text-red-600 text-xs mt-1">{fieldErrors.tiendaId}</p>}
+                  {editUser && <p className="text-xs text-gray-400 mt-1">Si tiene un corte de caja abierto, primero debe cerrarlo antes de poder moverlo a otra tienda.</p>}
+                </div>
               )}
               {error && <p className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</p>}
               <div className="flex gap-2 justify-end pt-2">

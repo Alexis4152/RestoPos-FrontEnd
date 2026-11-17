@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
-import { getTiendas, createTienda, updateTienda, deactivateTienda, getTiendasResumen } from '../api/tiendas'
+import { getTiendas, createTienda, updateTienda, deactivateTienda, getTiendasResumen, getTiendaPlan, uploadTiendaLogo, removeTiendaLogo } from '../api/tiendas'
 import { getUsers } from '../api/users'
 import defaultLogo from '../assets/logo.png'
 import { resolveMediaUrl } from '../utils/media'
@@ -14,6 +14,10 @@ const iniciales = (nombre = '') => nombre.split(' ').filter(Boolean).slice(0, 2)
 
 const emptyForm = { name: '', supervisorId: '' }
 
+// Mismo límite que el backend (TiendaLogoService) — evita el viaje redondo al servidor solo
+// para enterarse de que la imagen pesa de más.
+const MAX_IMAGE_MB = 5
+
 /**
  * Pantalla de tiendas para actores de plataforma (`SUPER_ADMIN`/`SUPERVISOR`, usuarios sin
  * tienda propia): cumple dos funciones a la vez.
@@ -22,15 +26,16 @@ const emptyForm = { name: '', supervisorId: '' }
  *    null`), `PrivateRoute` lo trae aquí de forma forzosa antes de dejarlo usar el resto de
  *    la app — a partir de elegir una, el resto del sistema lo trata como el ADMIN de esa
  *    tienda (ver `AuthContext.selectTienda` y el header `X-Acting-Tienda-Id` en `api/axios.js`).
- * 2. CRUD de tiendas: alta de tiendas nuevas (un `SUPER_ADMIN` puede asignarles un
- *    `SUPERVISOR`; un `SUPERVISOR` que crea una queda automáticamente a cargo de ella),
- *    edición del nombre/supervisor, y baja lógica.
+ * 2. CRUD de tiendas: alta de tiendas nuevas con nombre y logo opcional (un `SUPER_ADMIN`
+ *    puede asignarles un `SUPERVISOR`; un `SUPERVISOR` que crea una queda automáticamente a
+ *    cargo de ella, hasta el máximo de tiendas de su plan contratado — ver `getTiendaPlan`),
+ *    edición del nombre/logo/supervisor, y baja lógica.
  *
  * También es la pantalla de "Cambiar tienda" (botón en el sidebar) para volver a elegir
  * sobre cuál tienda actuar en cualquier momento.
  */
 export default function SelectTienda() {
-  const { user, isSuperAdmin, selectTienda, logout } = useAuth()
+  const { user, isSuperAdmin, selectTienda, logout, patchTienda } = useAuth()
   const { notify, confirmDialog } = useNotify()
   const navigate = useNavigate()
 
@@ -45,11 +50,25 @@ export default function SelectTienda() {
   // Resumen en vivo por tienda ({ [tiendaId]: { mesasOcupadas, mesasTotal, porAceptar, ventasHoy, corteAbierto } }).
   const [resumen, setResumen] = useState({})
   const [busqueda, setBusqueda] = useState('')
+  // Plan del SUPERVISOR ({ maxTiendas, usedTiendas }); null para SUPER_ADMIN (sin límite).
+  const [plan, setPlan] = useState(null)
+  // Logo: al crear, el archivo elegido se sube justo después de crear la tienda; al editar,
+  // se sube/quita al instante y aquí solo se refleja la ruta actual.
+  const [logoFile, setLogoFile] = useState(null)
+  const [logoPath, setLogoPath] = useState(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+
+  function loadPlan() {
+    if (isSuperAdmin) return
+    getTiendaPlan().then((r) => setPlan(r.data.data ?? null)).catch(() => setPlan(null))
+  }
 
   function load() {
+    loadPlan()
     setLoading(true)
     getTiendas()
       .then((r) => setTiendas(r.data.data ?? []))
+      .catch(() => notify('No se pudo cargar la lista de tiendas', 'error'))
       .finally(() => setLoading(false))
     getTiendasResumen()
       .then((r) => setResumen(Object.fromEntries((r.data.data ?? []).map((x) => [x.tiendaId, x]))))
@@ -67,7 +86,7 @@ export default function SelectTienda() {
 
   // Cierra con ESC el modal de tienda, descartando lo capturado — mismo efecto que "Cancelar".
   useEscapeKey(() => {
-    setShowModal(false)
+    if (!uploadingLogo) closeModal()
   }, !!showModal)
 
   function handleSelect(tienda) {
@@ -77,8 +96,11 @@ export default function SelectTienda() {
   }
 
   function openNew() {
+    if (planFull) return
     setEditTienda(null)
     setForm(emptyForm)
+    setLogoFile(null)
+    setLogoPath(null)
     setError('')
     setShowModal(true)
   }
@@ -87,8 +109,59 @@ export default function SelectTienda() {
     e.stopPropagation()
     setEditTienda(tienda)
     setForm({ name: tienda.name, supervisorId: tienda.supervisor?.id ?? '' })
+    setLogoFile(null)
+    setLogoPath(tienda.logoPath ?? null)
     setError('')
     setShowModal(true)
+  }
+
+  /** `true` si el archivo es una imagen aceptable; si no, avisa y regresa `false`. */
+  function checkImage(file) {
+    if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
+      notify(`La imagen pesa demasiado — el máximo permitido es ${MAX_IMAGE_MB} MB`, 'error')
+      return false
+    }
+    return true
+  }
+
+  // Edición: sube el logo al instante, sin esperar a "Guardar".
+  async function handleLogoChange(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !checkImage(file)) return
+    setUploadingLogo(true)
+    setError('')
+    try {
+      const res = await uploadTiendaLogo(editTienda.id, file)
+      setLogoPath(res.data.data.logoPath)
+      if (user?.tienda?.id === editTienda.id) patchTienda({ logoPath: res.data.data.logoPath })
+      notify('Logo actualizado', 'success')
+    } catch (err) {
+      setError(err.response?.data?.message ?? 'No se pudo subir el logo')
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
+  async function handleRemoveLogo() {
+    setUploadingLogo(true)
+    setError('')
+    try {
+      await removeTiendaLogo(editTienda.id)
+      setLogoPath(null)
+      if (user?.tienda?.id === editTienda.id) patchTienda({ logoPath: null })
+      notify('Logo eliminado, se usará el logo por default', 'success')
+    } catch (err) {
+      setError(err.response?.data?.message ?? 'No se pudo quitar el logo')
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
+  // Cerrar el modal de edición después de cambiar el logo también refresca la lista.
+  function closeModal() {
+    setShowModal(false)
+    if (editTienda && logoPath !== (editTienda.logoPath ?? null)) load()
   }
 
   async function handleSave(e) {
@@ -105,8 +178,21 @@ export default function SelectTienda() {
     setError('')
     const payload = { name: form.name.trim(), supervisorId: form.supervisorId || undefined }
     try {
-      if (editTienda) await updateTienda(editTienda.id, payload)
-      else await createTienda(payload)
+      if (editTienda) {
+        const res = await updateTienda(editTienda.id, payload)
+        if (user?.tienda?.id === editTienda.id) patchTienda({ name: res.data.data.name })
+      } else {
+        const res = await createTienda(payload)
+        // El logo es opcional y se sube después de crearla (necesita el id). Si falla, la
+        // tienda ya quedó creada: se avisa y se puede subir después desde "Editar".
+        if (logoFile) {
+          try {
+            await uploadTiendaLogo(res.data.data.id, logoFile)
+          } catch (err) {
+            notify(err.response?.data?.message ?? 'La tienda se creó, pero no se pudo subir el logo', 'error')
+          }
+        }
+      }
       setShowModal(false)
       notify(editTienda ? 'Tienda actualizada' : 'Tienda creada', 'success')
       load()
@@ -132,6 +218,9 @@ export default function SelectTienda() {
   const q = busqueda.trim().toLowerCase()
   const visibles = tiendas.filter((t) => !q || t.name.toLowerCase().includes(q))
   const activas = tiendas.filter((t) => t.isActive).length
+  const maxTiendas = plan?.maxTiendas ?? null
+  const usedTiendas = plan?.usedTiendas ?? 0
+  const planFull = maxTiendas != null && usedTiendas >= maxTiendas
 
   return (
     <div className="min-h-screen bg-[#F4F3EF]">
@@ -163,6 +252,14 @@ export default function SelectTienda() {
           </div>
         </div>
 
+        {maxTiendas != null && (
+          <div className={`rounded-2xl px-4 py-3 text-[14px] border ${planFull ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-white border-[#E4E1DA] text-gray-700'}`}>
+            De acuerdo con tu plan contratado puedes tener <strong>{maxTiendas} tienda{maxTiendas === 1 ? '' : 's'}</strong> activa{maxTiendas === 1 ? '' : 's'}.
+            {' '}Tienes {usedTiendas} activa{usedTiendas === 1 ? '' : 's'}.
+            {planFull && ' Ya llegaste al límite: para agregar más, pide que amplíen tu plan.'}
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-2.5">
           <label className="flex items-center gap-2 min-h-[44px] px-3.5 rounded-xl border border-[#D9D5CC] bg-white flex-[1_1_260px] max-w-[420px]">
             <Icon name="buscar" className="w-[18px] h-[18px] text-gray-600" />
@@ -171,8 +268,9 @@ export default function SelectTienda() {
               className="flex-1 min-w-0 bg-transparent outline-none text-[15px]" />
           </label>
           <span className="flex-1" />
-          <button type="button" className="btn-primary inline-flex items-center gap-2 min-h-[44px]" onClick={openNew}>
-            <Icon name="mas" className="w-4 h-4" strokeWidth={2} /> Nueva tienda
+          <button type="button" className="btn-primary inline-flex items-center gap-2 min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={openNew} disabled={planFull} title={planFull ? 'Llegaste al máximo de tiendas de tu plan' : undefined}>
+            <Icon name="mas" className="w-4 h-4" strokeWidth={2} /> {planFull ? `Nueva tienda (límite de ${maxTiendas})` : 'Nueva tienda'}
           </button>
         </div>
 
@@ -248,13 +346,40 @@ export default function SelectTienda() {
       </main>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !uploadingLogo && closeModal()}>
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold mb-4">{editTienda ? 'Editar tienda' : 'Nueva tienda'}</h3>
             <form onSubmit={handleSave} className="space-y-3">
               <div>
                 <label className="text-xs font-medium text-gray-600">Nombre *</label>
                 <input className="input" maxLength={150} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} autoFocus />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">Logo (opcional)</label>
+                {editTienda ? (
+                  <div className="flex items-center gap-3 mt-1">
+                    <img src={resolveMediaUrl(logoPath) || defaultLogo} alt="" className="w-14 h-14 rounded-xl object-cover border border-[#E4E1DA]" />
+                    <div className="flex flex-col gap-1.5">
+                      <label className="btn-secondary text-xs cursor-pointer inline-block text-center">
+                        {uploadingLogo ? 'Subiendo...' : logoPath ? 'Cambiar logo' : 'Subir logo'}
+                        <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleLogoChange} disabled={uploadingLogo} />
+                      </label>
+                      {logoPath && (
+                        <button type="button" className="text-xs text-red-700 hover:underline text-left" onClick={handleRemoveLogo} disabled={uploadingLogo}>
+                          Quitar logo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="block text-sm mt-1"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file && !checkImage(file)) { e.target.value = ''; setLogoFile(null); return }
+                      setLogoFile(file ?? null)
+                    }} />
+                )}
+                <p className="text-xs text-gray-500 mt-1">Si no subes uno, se usa el logo por default. PNG, JPG o WEBP, máximo {MAX_IMAGE_MB} MB.</p>
               </div>
               {isSuperAdmin && (
                 <div>
@@ -267,8 +392,8 @@ export default function SelectTienda() {
               )}
               {error && <p className="text-red-600 text-sm">{error}</p>}
               <div className="flex gap-2 justify-end pt-2">
-                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancelar</button>
-                <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
+                <button type="button" className="btn-secondary" onClick={closeModal} disabled={saving || uploadingLogo}>Cancelar</button>
+                <button type="submit" className="btn-primary" disabled={saving || uploadingLogo}>{saving ? 'Guardando...' : editTienda ? 'Guardar' : 'Crear tienda'}</button>
               </div>
             </form>
           </div>
