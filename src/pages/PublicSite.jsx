@@ -16,6 +16,7 @@ import CamposDireccion, { validarDireccion, direccionPayload } from '../componen
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { useModo, usarModoEnPaginaWeb } from '../utils/themeMode'
 
+import ModalCloseButton from '../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 
 const PAGO_LABEL = { EFECTIVO: '💵 Efectivo', TARJETA: '💳 Tarjeta', TRANSFERENCIA: '🏦 Transferencia' }
@@ -698,8 +699,9 @@ export default function PublicSite() {
 
       {preguntaReserva && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div role="dialog" aria-modal="true" aria-labelledby="pregunta-reserva" className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-3">
-            <h2 id="pregunta-reserva" className="text-lg font-bold">¿Este pedido es para tu reservación?</h2>
+          <div role="dialog" aria-modal="true" aria-labelledby="pregunta-reserva" className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-5 space-y-3">
+            <ModalCloseButton onClick={() => setPreguntaReserva(false)} />
+            <h2 id="pregunta-reserva" className="text-lg font-bold pr-10">¿Este pedido es para tu reservación?</h2>
             <p className="text-sm text-gray-600">Si es para tu reservación, lo preparamos cuando llegues y lo pagas en el restaurante.</p>
             {reservasActivas.map((r) => (
               <button key={r.token} type="button"
@@ -768,8 +770,9 @@ function CustomizeModal({ producto, onClose, onAdd }) {
   const unit = Number(producto.precio) + mods.reduce((s, m) => s + Number(m.precioExtra), 0)
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center" onClick={onClose}>
-      <div className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center">
+      <div className="relative bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[92vh] flex flex-col">
+        <ModalCloseButton onClick={onClose} />
         {producto.imageUrl && <img src={resolveMediaUrl(producto.imageUrl)} alt="" className="w-full h-44 object-cover sm:rounded-t-2xl rounded-t-2xl" />}
         <div className="p-5 border-b border-gray-100">
           <h3 className="text-xl font-bold">{producto.nombre}</h3>
@@ -922,8 +925,8 @@ function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, 
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onClose}>
-      <aside className="bg-white w-full sm:max-w-md h-full flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/40 flex justify-end">
+      <aside className="bg-white w-full sm:max-w-md h-full flex flex-col shadow-2xl">
         <div className="h-16 px-5 flex items-center justify-between border-b border-gray-100">
           {checkout ? (
             <button onClick={() => setCheckout(false)} className="text-sm font-medium text-gray-600 hover:text-gray-900">← Volver al carrito</button>

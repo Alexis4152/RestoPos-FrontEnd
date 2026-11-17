@@ -11,6 +11,7 @@ import NecesidadesEspeciales from '../components/NecesidadesEspeciales'
 import Icon, { Persona } from '../components/Icon'
 import { ESTADO_RESERVA, necesidades, fechaLarga, horaCorta, ymd, sumarDias } from '../utils/reservaciones'
 
+import ModalCloseButton from '../components/ModalCloseButton'
 /**
  * Reservaciones de mesa (sección Mesas): bandeja de las que llegaron de la página web y están
  * por confirmar, y la agenda del día. Al confirmar se asigna mesa (avisando si es chica o ya
@@ -282,9 +283,10 @@ function ModalMesa({ r, mesas, llegada, onClose, onGuardar }) {
   const elegida = mesas.find((m) => String(m.id) === mesaId)
   const chips = necesidades(r)
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-bold">{llegada ? '¿En qué mesa se sientan?' : r.estado === 'PENDIENTE' ? 'Confirmar reservación' : 'Mesa de la reservación'}</h3>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+        <ModalCloseButton onClick={onClose} />
+        <h3 className="text-lg font-bold pr-10">{llegada ? '¿En qué mesa se sientan?' : r.estado === 'PENDIENTE' ? 'Confirmar reservación' : 'Mesa de la reservación'}</h3>
         {llegada && <p className="text-sm text-gray-700 mt-1">Traen pedido anticipado: se abre en esta mesa y entra a cocina.</p>}
         <p className="text-sm text-gray-600 mt-1 capitalize">{fechaLarga(r.fechaHora)} · {horaCorta(r.fechaHora)} · {r.nombre} · 👥 {r.personas}</p>
         {chips.length > 0 && (
@@ -326,9 +328,10 @@ function ModalMotivo({ r, accion, onClose, onGuardar }) {
   const [motivo, setMotivo] = useState(accion === 'rechazar' ? 'No tenemos lugar disponible en ese horario' : '')
   useEscapeKey(onClose, true)
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-bold">{accion === 'rechazar' ? 'Rechazar reservación' : 'Cancelar reservación'}</h3>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+        <ModalCloseButton onClick={onClose} />
+        <h3 className="text-lg font-bold pr-10">{accion === 'rechazar' ? 'Rechazar reservación' : 'Cancelar reservación'}</h3>
         <p className="text-sm text-gray-600 mt-1 capitalize">{fechaLarga(r.fechaHora)} · {horaCorta(r.fechaHora)} · {r.nombre}</p>
         <label className="block text-sm font-medium text-gray-700 mt-4 mb-1">Motivo (el cliente lo verá)</label>
         <textarea className="input" rows={3} maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)} />
@@ -378,9 +381,10 @@ function ModalNueva({ mesas, zonas, fechaInicial, onClose, onCreada }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
-      <form onSubmit={guardar} className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[92vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-bold">Nueva reservación</h3>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+      <form onSubmit={guardar} className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[92vh] overflow-y-auto p-6">
+        <ModalCloseButton onClick={onClose} />
+        <h3 className="text-lg font-bold pr-10">Nueva reservación</h3>
         <p className="text-sm text-gray-500">Para clientes que llaman o vienen a reservar. Queda confirmada.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
           <label className="block"><span className="block text-sm font-medium text-gray-700 mb-1">Nombre *</span>

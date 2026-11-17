@@ -9,6 +9,7 @@ import { resolveMediaUrl } from '../utils/media'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import Icon from '../components/Icon'
 
+import ModalCloseButton from '../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 const iniciales = (nombre = '') => nombre.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?'
 
@@ -352,9 +353,10 @@ export default function SelectTienda() {
       </main>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => !uploadingLogo && closeModal()}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{editTienda ? 'Editar tienda' : 'Nueva tienda'}</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <ModalCloseButton onClick={() => !uploadingLogo && closeModal()} />
+            <h3 className="text-lg font-bold mb-4 pr-10">{editTienda ? 'Editar tienda' : 'Nueva tienda'}</h3>
             <form onSubmit={handleSave} className="space-y-3">
               <div>
                 <label className="text-xs font-medium text-gray-600">Nombre *</label>

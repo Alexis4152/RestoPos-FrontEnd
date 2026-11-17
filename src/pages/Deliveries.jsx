@@ -7,6 +7,7 @@ import { useLiveRefresh } from '../utils/liveEvents'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import ComprobanteImagen from '../components/ComprobanteImagen'
 
+import ModalCloseButton from '../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 const fmtTime = (d) => (d ? new Date(d).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '—')
 const PAGO_PREF = { EFECTIVO: '💵 Efectivo', TARJETA: '💳 Tarjeta', TRANSFERENCIA: '🏦 Transferencia' }
@@ -324,10 +325,11 @@ export default function Deliveries() {
       )}
 
       {soltando && (
-        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4" onClick={() => setSoltando(null)}>
-          <div role="dialog" aria-modal="true" aria-labelledby="soltar-titulo" onClick={(e) => e.stopPropagation()}
-            className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl p-5 space-y-3">
-            <h3 id="soltar-titulo" className="text-lg font-extrabold">Soltar el pedido #{soltando.id}</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="soltar-titulo"
+            className="relative bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl p-5 space-y-3">
+            <ModalCloseButton onClick={() => setSoltando(null)} />
+            <h3 id="soltar-titulo" className="text-lg font-extrabold pr-10">Soltar el pedido #{soltando.id}</h3>
             {soltando.enCaminoAt && (
               <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">
                 <b>Ya vas en camino con este pedido.</b> Si lo sueltas, el cliente verá que le estamos buscando otro repartidor y
@@ -452,9 +454,10 @@ function CobroModal({ orden, onClose, onDone }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center" onClick={onClose}>
-      <div className="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-xl font-bold">Entregar pedido #{orden.id}</h3>
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center">
+      <div className="relative bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 max-h-[92vh] overflow-y-auto">
+        <ModalCloseButton onClick={onClose} />
+        <h3 className="text-xl font-bold pr-10">Entregar pedido #{orden.id}</h3>
         <p className="text-sm text-gray-500">{orden.clienteNombre}</p>
 
         {pagado && (
@@ -559,8 +562,8 @@ function DetalleEntrega({ o, onClose }) {
     ['Pedido', o.openedAt], ['Lo tomaste', o.tomadaAt], ['Salió en camino', o.enCaminoAt], ['Entregado', o.entregadaAt],
   ].filter(([, t]) => t)
   return (
-    <div className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="detalle-entrega-titulo" onClick={(e) => e.stopPropagation()}
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center">
+      <div role="dialog" aria-modal="true" aria-labelledby="detalle-entrega-titulo"
         className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl max-h-[92vh] overflow-y-auto p-5 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>

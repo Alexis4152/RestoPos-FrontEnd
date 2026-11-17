@@ -6,6 +6,7 @@ import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { gruposActivos } from './OpcionesSheet'
 import { GruposModificadoresAbiertos } from '../../components/GruposModificadores'
 
+import ModalCloseButton from '../../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const ENTREGADO = ['ENTREGADO_MESERO', 'ENTREGADO']
 const AVISO_COCINA = { PREPARANDO: 'Cocina ya lo está preparando', LISTO: 'Cocina ya lo terminó' }
@@ -103,11 +104,12 @@ export default function EditarLineaSheet({ ordenId, item, comensales, onCerrar, 
   }
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/40 flex items-end sm:items-center justify-center" onClick={onCerrar}>
-      <div role="dialog" aria-modal="true" aria-labelledby="editar-titulo" onClick={(e) => e.stopPropagation()}
-        className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto px-4 pt-3 pb-5 space-y-4">
+    <div className="fixed inset-0 z-[60] bg-black/40 flex items-end sm:items-center justify-center">
+      <div role="dialog" aria-modal="true" aria-labelledby="editar-titulo"
+        className="relative bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto px-4 pt-3 pb-5 space-y-4">
+        <ModalCloseButton onClick={onCerrar} />
         <span aria-hidden="true" className="block mx-auto w-11 h-1.5 rounded-full bg-[#D9D5CC] sm:hidden" />
-        <div className="flex items-baseline justify-between gap-3">
+        <div className="flex items-baseline justify-between gap-3 pr-10">
           <h2 id="editar-titulo" className="text-xl font-extrabold">{item.productoNombre}</h2>
           <span className="text-base font-extrabold">{fmt(item.subtotal)}</span>
         </div>

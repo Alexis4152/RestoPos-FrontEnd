@@ -13,6 +13,7 @@ import { useEscapeKey } from '../hooks/useEscapeKey'
 import { TIPOS_PEDIDO, tipoPedido, etiquetaTipoPedido } from '../utils/tipoPedido'
 import CamposDireccion, { validarDireccion, direccionPayload } from '../components/CamposDireccion'
 
+import ModalCloseButton from '../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' }) : '—'
 
@@ -268,9 +269,10 @@ export default function Takeaway() {
       </div>
 
       {rechazando && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setRechazando(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-extrabold">Rechazar pedido #{rechazando.id}</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <ModalCloseButton onClick={() => setRechazando(null)} />
+            <h3 className="text-lg font-extrabold pr-10">Rechazar pedido #{rechazando.id}</h3>
             <label htmlFor="motivo-rechazo" className="block text-xs font-semibold text-gray-700 mt-4 mb-1">Motivo (el cliente lo ve en su página)</label>
             <textarea id="motivo-rechazo" className="input" rows={3} maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)} />
             <div className="flex gap-2 justify-end mt-4">
@@ -282,9 +284,10 @@ export default function Takeaway() {
       )}
 
       {showNewModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowNewModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">Nuevo pedido</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <ModalCloseButton onClick={() => setShowNewModal(false)} />
+            <h3 className="text-lg font-bold mb-4 pr-10">Nuevo pedido</h3>
             <form onSubmit={handleNewOrder} className="space-y-3">
               <fieldset>
                 <legend className="text-xs font-medium text-gray-600 mb-1.5">Tipo de pedido</legend>

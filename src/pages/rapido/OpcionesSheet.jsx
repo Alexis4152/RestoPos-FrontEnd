@@ -3,6 +3,7 @@ import { getProductSuggestions } from '../../api/products'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { GruposModificadoresAbiertos } from '../../components/GruposModificadores'
 
+import ModalCloseButton from '../../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
 /** Grupos activos de un producto, con sus opciones activas. */
@@ -79,11 +80,12 @@ export default function OpcionesSheet({ producto, anterior, onAgregar, onCerrar 
   const resumen = elegidas.map((o) => o.nombre).join(' · ')
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/40 flex items-end sm:items-center justify-center" onClick={onCerrar}>
-      <div role="dialog" aria-modal="true" aria-labelledby="opciones-titulo" onClick={(e) => e.stopPropagation()}
-        className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto px-4 pt-3 pb-5 space-y-4">
+    <div className="fixed inset-0 z-[60] bg-black/40 flex items-end sm:items-center justify-center">
+      <div role="dialog" aria-modal="true" aria-labelledby="opciones-titulo"
+        className="relative bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto px-4 pt-3 pb-5 space-y-4">
+        <ModalCloseButton onClick={onCerrar} />
         <span aria-hidden="true" className="block mx-auto w-11 h-1.5 rounded-full bg-[#D9D5CC] sm:hidden" />
-        <div className="flex items-baseline justify-between gap-3">
+        <div className="flex items-baseline justify-between gap-3 pr-10">
           <h2 id="opciones-titulo" className="text-xl font-extrabold">{producto.name}</h2>
           <span className="text-base font-extrabold">{fmt(producto.price)}</span>
         </div>

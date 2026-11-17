@@ -5,6 +5,7 @@ import NecesidadesEspeciales from '../../components/NecesidadesEspeciales'
 import { usePublicLiveRefresh, publicStreamBase } from '../../utils/liveEvents'
 import { ESTADO_RESERVA, necesidades, fechaLarga, horaCorta, ymd, sumarDias, horariosDelDia } from '../../utils/reservaciones'
 
+import ModalCloseButton from '../../components/ModalCloseButton'
 /** Códigos de las reservaciones hechas en este navegador (invitado o con cuenta). */
 export const reservasKey = (slug) => `restopos_web_${slug}_reservaciones`
 export function leerCodigosReserva(slug) {
@@ -209,8 +210,8 @@ export default function Reservaciones({ slug, tienda, cliente, clienteToken, onS
       )}
 
       {detalle && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setAbierta(null)}>
-          <div className="w-full max-w-md max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-md max-h-[92vh] overflow-y-auto">
             <div className="flex justify-end mb-2">
               <button type="button" onClick={() => setAbierta(null)} aria-label="Cerrar" className="w-9 h-9 rounded-full bg-white text-gray-600 shadow">✕</button>
             </div>
@@ -250,8 +251,8 @@ export function ModalNuevaReserva({ slug, tienda, cliente, clienteToken, onSesio
       .catch((err) => setError(err.response?.data?.message ?? 'Las reservaciones no están disponibles por ahora'))
   }, [slug])
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="nueva-reserva-titulo" onClick={(e) => e.stopPropagation()}
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center sm:p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="nueva-reserva-titulo"
         className="bg-gray-50 w-full sm:max-w-2xl rounded-t-3xl sm:rounded-2xl max-h-[94vh] overflow-y-auto p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -295,9 +296,10 @@ function ModalCambios({ slug, r, maxPersonas, onClose, onGuardada }) {
     } finally { setSaving(false) }
   }
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <form onSubmit={guardar} className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
-        <div>
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <form onSubmit={guardar} className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-5 space-y-4">
+        <ModalCloseButton onClick={onClose} />
+        <div className="pr-10">
           <h3 className="text-lg font-bold">Cambiar mi reservación</h3>
           <p className="text-sm text-gray-500 capitalize">{fechaLarga(r.fechaHora)} · {horaCorta(r.fechaHora)}</p>
         </div>

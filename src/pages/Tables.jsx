@@ -14,6 +14,7 @@ import SelectorModoToma from '../components/SelectorModoToma'
 import MisMesas from './rapido/MisMesas'
 import { useModoToma } from '../utils/modoToma'
 
+import ModalCloseButton from '../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 
 /**
@@ -493,9 +494,10 @@ function TablesDetallado() {
 
       {/* Mover la orden a otra mesa libre */}
       {moverDe && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setMoverDe(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-extrabold">Mover la orden de la mesa {moverDe.numero}</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto">
+            <ModalCloseButton onClick={() => setMoverDe(null)} />
+            <h3 className="text-lg font-extrabold pr-10">Mover la orden de la mesa {moverDe.numero}</h3>
             <p className="text-sm text-gray-600 mt-1">Elige una mesa libre. Productos, comensales y cuentas se van con la orden.</p>
             <div className="mt-4 space-y-4">
               {zonas.map((z) => {
@@ -524,9 +526,10 @@ function TablesDetallado() {
 
       {/* Unir otra mesa a la orden de la mesa elegida */}
       {unirA && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setUnirA(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-extrabold">Unir una mesa a la mesa {unirA.numero}</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto">
+            <ModalCloseButton onClick={() => setUnirA(null)} />
+            <h3 className="text-lg font-extrabold pr-10">Unir una mesa a la mesa {unirA.numero}</h3>
             <p className="text-sm text-gray-600 mt-1">
               Solo mesas de la misma zona. Una mesa libre queda ocupada por esta orden; si ya tiene su orden, sus productos y comensales pasan aquí.
             </p>
@@ -560,9 +563,10 @@ function TablesDetallado() {
 
       {/* Nueva/editar mesa */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-extrabold mb-4">{editTable ? 'Editar mesa' : 'Nueva mesa'}</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <ModalCloseButton onClick={() => setShowModal(false)} />
+            <h3 className="text-lg font-extrabold mb-4 pr-10">{editTable ? 'Editar mesa' : 'Nueva mesa'}</h3>
             <form onSubmit={handleSave} className="space-y-3">
               <div>
                 <label htmlFor="mesa-numero" className="text-xs font-semibold text-gray-700">Número/nombre <span className={fieldErrors.numero ? 'text-red-600' : ''}>*</span></label>
@@ -594,9 +598,10 @@ function TablesDetallado() {
 
       {/* Nueva/editar zona */}
       {showZonaModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowZonaModal(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-extrabold mb-4">{editZona ? 'Editar zona' : 'Nueva zona'}</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <ModalCloseButton onClick={() => setShowZonaModal(false)} />
+            <h3 className="text-lg font-extrabold mb-4 pr-10">{editZona ? 'Editar zona' : 'Nueva zona'}</h3>
             <form onSubmit={handleSaveZona} className="space-y-3">
               <div>
                 <label htmlFor="zona-nombre" className="text-xs font-semibold text-gray-700">Nombre <span className={zonaFieldError ? 'text-red-600' : ''}>*</span></label>

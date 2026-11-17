@@ -30,6 +30,7 @@ import SelectorModoToma from '../components/SelectorModoToma'
 import { recibirDineroEntrega } from '../api/deliveries'
 import IconButton from '../components/IconButton'
 
+import ModalCloseButton from '../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 /** Suma de los extras (modificadores con costo) de UNA unidad de la línea. */
 const extrasDe = (item) => (item.modificadores ?? []).reduce((s, m) => s + Number(m.precioExtra || 0), 0)
@@ -1406,9 +1407,10 @@ export default function OrderDetail() {
 
       {/* Unir otra mesa a esta orden */}
       {unirAbierto && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setUnirAbierto(false)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-extrabold">Unir una mesa a esta orden</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto">
+            <ModalCloseButton onClick={() => setUnirAbierto(false)} />
+            <h3 className="text-lg font-extrabold pr-10">Unir una mesa a esta orden</h3>
             <p className="text-sm text-gray-600 mt-1">Solo mesas de la misma zona. Una mesa libre queda ocupada por esta orden; si ya tiene su orden, sus productos y comensales pasan aquí.</p>
             {(() => {
               const opciones = mesasTienda.filter((m) => m.ordenActiva?.id !== order.id && m.estado !== 'FUERA_DE_SERVICIO'
@@ -1443,9 +1445,10 @@ export default function OrderDetail() {
 
       {/* Mover la orden a otra mesa libre */}
       {mesasLibres && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setMesasLibres(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-extrabold">Mover a otra mesa</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto">
+            <ModalCloseButton onClick={() => setMesasLibres(null)} />
+            <h3 className="text-lg font-extrabold pr-10">Mover a otra mesa</h3>
             <p className="text-sm text-gray-600 mt-1">Productos, comensales y cuentas se van con la orden; la mesa {order.mesa?.numero} queda libre.</p>
             {mesasLibres.length === 0 && <p className="text-sm text-gray-700 py-6 text-center">No hay mesas libres en este momento.</p>}
             <div className="mt-4 space-y-4">
@@ -1470,9 +1473,10 @@ export default function OrderDetail() {
 
       {/* QR "califica tu visita" en pantalla */}
       {qrOpinion && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => setQrOpinion(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 text-center" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold">¿Qué tal estuvo su visita?</h3>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6 text-center">
+            <ModalCloseButton onClick={() => setQrOpinion(null)} />
+            <h3 className="text-lg font-bold pr-10">¿Qué tal estuvo su visita?</h3>
             <p className="text-sm text-gray-500 mt-1">Que el cliente escanee este código para calificar (también viene en su ticket).</p>
             <img src={qrOpinion.qrDataUrl} alt="QR para opinar" className="mx-auto mt-4 w-60 h-60" />
             <p className="text-xs text-gray-400 break-all mt-2">{qrOpinion.url}</p>
@@ -1487,9 +1491,10 @@ export default function OrderDetail() {
 
       {/* Add item modal */}
       {showAddItem && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowAddItem(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl p-6 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-3xl p-6 max-h-[90vh] flex flex-col">
+            <ModalCloseButton onClick={() => setShowAddItem(false)} />
+            <div className="flex items-center justify-between gap-2 mb-3 pr-10">
               <h3 className="text-lg font-bold">Agregar producto</h3>
               <button type="button" onClick={() => setAgotadosAbierto(true)}
                 className="text-xs font-bold px-3 min-h-[36px] rounded-full border border-[#D9D5CC] text-gray-700 hover:bg-gray-50">
@@ -1638,9 +1643,10 @@ export default function OrderDetail() {
           aquí sin ser ADMIN (basta con llegar a esta pantalla, ya gateada por Órdenes/Para
           llevar/Menú). */}
       {categoryModeTarget && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => setCategoryModeTarget(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-1">{categoryModeTarget.name}</h3>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <ModalCloseButton onClick={() => setCategoryModeTarget(null)} />
+            <h3 className="text-lg font-bold mb-1 pr-10">{categoryModeTarget.name}</h3>
             <p className="text-sm text-gray-500 mb-4">
               {categoryModeTarget.scheduleStart && categoryModeTarget.scheduleEnd
                 ? `Horario configurado: ${toDisplayTime(categoryModeTarget.scheduleStart)}–${toDisplayTime(categoryModeTarget.scheduleEnd)}`
@@ -1669,9 +1675,10 @@ export default function OrderDetail() {
 
       {/* Editar producto ya agregado — comensal, cantidad, modificadores y notas. */}
       {editItem && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => setEditItem(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="p-5 border-b border-gray-100">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <ModalCloseButton onClick={() => setEditItem(null)} />
+            <div className="p-5 pr-14 border-b border-gray-100">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Editar producto</p>
               <h3 className="text-lg font-bold text-gray-900 mt-0.5">{editItem.productoNombre}</h3>
               {editEntregado && (
@@ -1753,9 +1760,10 @@ export default function OrderDetail() {
       {/* Selector de modificadores — apilado sobre "Agregar producto" (z-[60] > 50) para el
           producto elegido; confirma agregando UNA unidad ya personalizada a la orden. */}
       {modPicker && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={() => setModPicker(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="p-5 border-b border-gray-100">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <ModalCloseButton onClick={() => setModPicker(null)} />
+            <div className="p-5 pr-14 border-b border-gray-100">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Personalizar</p>
               <h3 className="text-lg font-bold text-gray-900 mt-0.5">{modPicker.name}</h3>
               <p className="text-sm text-gray-500 mt-1">Precio base: {fmt(modPicker.price)}</p>
@@ -1803,9 +1811,10 @@ export default function OrderDetail() {
 
       {/* Create account modal */}
       {showAccount && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowAccount(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">Generar cuenta</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <ModalCloseButton onClick={() => setShowAccount(false)} />
+            <h3 className="text-lg font-bold mb-4 pr-10">Generar cuenta</h3>
             <form onSubmit={handleCreateAccount} className="space-y-3">
               {/* Sin mesa (orden "para llevar") no hay a quién repartirle la cuenta — el
                   cobro es siempre por el total, sin selector de tipo. */}
@@ -1945,8 +1954,9 @@ export default function OrderDetail() {
       {/* Pay modal — mismo flujo/estilo/validaciones que el cobro del POS de DemoPV,
           adaptado a que aquí una cuenta puede pagarse en varias partes (pagos parciales). */}
       {payModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={closePayModal}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto">
+            <ModalCloseButton onClick={closePayModal} />
             {paySuccess ? (
               <div className="text-center py-2">
                 <div className="text-5xl mb-4">✅</div>

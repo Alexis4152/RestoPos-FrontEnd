@@ -10,6 +10,7 @@ import { useEscapeKey } from '../hooks/useEscapeKey'
 import { playChime } from '../utils/sound'
 import Icon from './Icon'
 
+import ModalCloseButton from './ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 const PAGO = { EFECTIVO: 'efectivo', TARJETA: 'tarjeta', TRANSFERENCIA: 'transferencia' }
 
@@ -322,7 +323,7 @@ export default function NotificationCenter() {
 
       {abierto && (
         <div className="fixed inset-0 z-[90]">
-          <div className="absolute inset-0 bg-black/25" onClick={() => setAbierto(false)} />
+          <div className="absolute inset-0 bg-black/25" />
           <aside aria-label="Notificaciones" className="absolute top-0 right-0 bottom-0 w-[440px] max-w-full bg-white border-l border-[#E4E1DA] shadow-2xl flex flex-col">
             <div className="px-5 pt-5 pb-3 border-b border-[#ECE9E2] space-y-3">
               <div className="flex items-center gap-2">
@@ -385,9 +386,10 @@ export default function NotificationCenter() {
       )}
 
       {rechazando && (
-        <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4" onClick={() => setRechazando(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-extrabold">Rechazar pedido #{rechazando.id}</h3>
+        <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4">
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <ModalCloseButton onClick={() => setRechazando(null)} />
+            <h3 className="text-lg font-extrabold pr-10">Rechazar pedido #{rechazando.id}</h3>
             <label htmlFor="notif-motivo" className="block text-xs font-semibold text-gray-700 mt-3 mb-1">Motivo ({rechazando.clienteNombre} lo verá en su página)</label>
             <textarea id="notif-motivo" className="input" rows={3} maxLength={255} value={motivo} onChange={(e) => setMotivo(e.target.value)} />
             <div className="flex gap-2 justify-end mt-4">

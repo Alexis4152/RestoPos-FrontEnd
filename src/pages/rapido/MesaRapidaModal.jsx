@@ -69,8 +69,8 @@ export default function MesaRapidaModal({ ordenId, modo: modoInicial, onCerrar, 
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-stretch sm:items-center justify-center sm:p-4" onClick={cerrar}>
-      <div role="dialog" aria-modal="true" aria-labelledby="mesa-modal-titulo" onClick={(e) => e.stopPropagation()}
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-stretch sm:items-center justify-center sm:p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="mesa-modal-titulo"
         className="bg-[#F7F6F2] w-full sm:max-w-4xl sm:rounded-2xl shadow-xl flex flex-col h-full sm:h-auto sm:max-h-[90vh] overflow-hidden">
         <header className="bg-white border-b border-[#E4E1DA] px-4 sm:px-5 pt-4 pb-3 space-y-3">
           <div className="flex items-start gap-3">

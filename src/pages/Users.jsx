@@ -9,6 +9,7 @@ import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
 import IconButton from '../components/IconButton'
 
+import ModalCloseButton from '../components/ModalCloseButton'
 const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—'
 
 const emptyForm = { name: '', email: '', password: '', roleId: '', tiendaId: '', supervisedTiendaIds: [], maxTiendas: '' }
@@ -366,9 +367,10 @@ export default function Users() {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{editUser ? 'Editar usuario' : 'Nuevo usuario'}</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <ModalCloseButton onClick={() => setShowModal(false)} />
+            <h3 className="text-lg font-bold mb-4 pr-10">{editUser ? 'Editar usuario' : 'Nuevo usuario'}</h3>
             {/* Sin `required`/`type="email"` a propósito: esos disparan la validación nativa
                 del navegador (globo/tooltip fuera del estilo de la app, y que además no
                 sabe que la contraseña solo es obligatoria al crear) — en su lugar,

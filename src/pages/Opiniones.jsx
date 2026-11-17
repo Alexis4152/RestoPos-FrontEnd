@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getOpiniones, getQrOpinionesPublicas } from '../api/opiniones'
 
+import ModalCloseButton from '../components/ModalCloseButton'
 const fmtFecha = (d) => (d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '')
 const hoy = () => new Date().toISOString().slice(0, 10)
 const haceDias = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10) }
@@ -46,9 +47,10 @@ export default function Opiniones() {
       </div>
       {qrError && <p className="mb-3 text-sm text-red-700 bg-red-50 rounded-lg px-3 py-2">{qrError}</p>}
       {qr && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setQr(null)}>
-          <div role="dialog" aria-modal="true" aria-labelledby="qr-opiniones" className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h2 id="qr-opiniones" className="text-lg font-extrabold">QR de opiniones</h2>
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="qr-opiniones" className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center space-y-3">
+            <ModalCloseButton onClick={() => setQr(null)} />
+            <h2 id="qr-opiniones" className="text-lg font-extrabold pr-10">QR de opiniones</h2>
             <p className="text-sm text-gray-600">Imprímelo o compártelo: abre las opiniones de tus clientes en tu página web, las mejores primero.</p>
             <img src={qr.qrDataUrl} alt="Código QR de las opiniones" className="mx-auto w-60 h-60" />
             <p className="text-xs text-gray-500 break-all">{qr.url}</p>

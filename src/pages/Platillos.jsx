@@ -10,6 +10,7 @@ import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
 import IconButton from '../components/IconButton'
 
+import ModalCloseButton from '../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
 const emptyForm = { name: '', description: '', price: '', disponible: true, categoryId: '', controlaInventario: false }
@@ -551,9 +552,10 @@ export default function Platillos() {
 
       {/* Product modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={closeProductModal}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{editProduct ? 'Editar platillo' : 'Nuevo platillo'}</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <ModalCloseButton onClick={closeProductModal} />
+            <h3 className="text-lg font-bold mb-4 pr-10">{editProduct ? 'Editar platillo' : 'Nuevo platillo'}</h3>
             <form onSubmit={handleSave} className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="text-xs font-medium text-gray-600">Nombre <span className={fieldErrors.name ? 'text-red-600' : ''}>*</span></label>
@@ -628,9 +630,10 @@ export default function Platillos() {
 
       {/* Adjust stock modal (opcional, futuro control de insumos) */}
       {adjustModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setAdjustModal(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-1">Ajustar stock</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <ModalCloseButton onClick={() => setAdjustModal(null)} />
+            <h3 className="text-lg font-bold mb-1 pr-10">Ajustar stock</h3>
             <p className="text-sm text-gray-500 mb-4">{adjustModal.name} — actual: {adjustModal.stock} {adjustModal.unit}</p>
             <form className="space-y-3">
               <div>
@@ -654,8 +657,8 @@ export default function Platillos() {
       {/* Modificadores del producto: grupos (ej. "Término de cocción", "Extras") — ver
           ModificadorGrupoController en el backend. */}
       {modModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={closeModModal}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-1">
               <h3 className="text-lg font-bold">Modificadores</h3>
               <button className="text-gray-400 hover:text-gray-600" onClick={closeModModal}>✕</button>
@@ -718,9 +721,10 @@ export default function Platillos() {
 
       {/* Alta/edición de un grupo de modificadores — apilado sobre el modal de arriba. */}
       {modGrupoForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4" onClick={() => setModGrupoForm(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{modGrupoForm.id ? 'Editar grupo' : 'Nuevo grupo de modificadores'}</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <ModalCloseButton onClick={() => setModGrupoForm(null)} />
+            <h3 className="text-lg font-bold mb-4 pr-10">{modGrupoForm.id ? 'Editar grupo' : 'Nuevo grupo de modificadores'}</h3>
             <form onSubmit={handleSaveGrupo} className="space-y-3">
               <div>
                 <label className="text-xs font-medium text-gray-600">Nombre <span className={modNombreError ? 'text-red-600' : ''}>*</span></label>
@@ -792,8 +796,8 @@ export default function Platillos() {
           acumula entre productos: "Copiar seleccionados" copia todos de un jalón. Cada copia
           queda independiente (ver ModificadorGrupoService). */}
       {modCopyModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4" onClick={closeCopyModal}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
             <div className="p-6 pb-4 border-b border-gray-100">
               <div className="flex items-center justify-between mb-1">
                 <h3 className="text-lg font-bold flex items-center gap-2">

@@ -10,6 +10,7 @@ import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
 import IconButton from '../components/IconButton'
 
+import ModalCloseButton from '../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
 const emptyForm = { name: '', description: '', barcode: '', price: '', cost: '', stock: '', minStock: '', unit: 'pieza', categoryId: '', disponible: true, controlaInventario: true }
@@ -640,9 +641,10 @@ export default function Inventory() {
 
       {/* Product modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{editProduct ? 'Editar producto' : 'Nuevo producto'}</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <ModalCloseButton onClick={() => setShowModal(false)} />
+            <h3 className="text-lg font-bold mb-4 pr-10">{editProduct ? 'Editar producto' : 'Nuevo producto'}</h3>
             <form onSubmit={handleSave} className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="text-xs font-medium text-gray-600">Nombre <span className={fieldErrors.name ? 'text-red-600' : ''}>*</span></label>
@@ -712,9 +714,10 @@ export default function Inventory() {
 
       {/* Choice modal: tras un escaneo de un código ya existente, pregunta qué hacer (solo admin llega aquí) */}
       {choiceModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setChoiceModal(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-1">Producto encontrado</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
+            <ModalCloseButton onClick={() => setChoiceModal(null)} />
+            <h3 className="text-lg font-bold mb-1 pr-10">Producto encontrado</h3>
             <p className="text-sm text-gray-500 mb-4">{choiceModal.name} — código {choiceModal.barcode}</p>
             <div className="grid grid-cols-1 gap-2">
               <button type="button" className="btn-secondary" onClick={() => { const p = choiceModal; setChoiceModal(null); openEdit(p) }}>✏️ Editar producto</button>
@@ -728,9 +731,10 @@ export default function Inventory() {
 
       {/* Adjust modal */}
       {adjustModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setAdjustModal(null)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-1">Ajustar stock</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6 max-h-[90vh] overflow-y-auto">
+            <ModalCloseButton onClick={() => setAdjustModal(null)} />
+            <h3 className="text-lg font-bold mb-1 pr-10">Ajustar stock</h3>
             <p className="text-sm text-gray-500 mb-4">{adjustModal.name} — actual: {adjustModal.stock} {adjustModal.unit} · mínimo: {adjustModal.minStock} {adjustModal.unit}</p>
             <form onSubmit={handleAdjust} className="space-y-3">
               <div>
@@ -796,9 +800,10 @@ export default function Inventory() {
 
       {/* Carga masiva de productos por Excel — solo SUPER_ADMIN (ver el botón que lo abre). */}
       {bulkImportModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setBulkImportModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-1">Carga masiva de productos</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <ModalCloseButton onClick={() => setBulkImportModal(false)} />
+            <h3 className="text-lg font-bold mb-1 pr-10">Carga masiva de productos</h3>
 
             {!bulkImportResult ? (
               <>
@@ -897,9 +902,10 @@ function SiblingStockModal({ onClose }) {
   }, [q])
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-bold mb-1">🏬 Buscar en tiendas asociadas</h3>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[80vh] overflow-y-auto">
+        <ModalCloseButton onClick={onClose} />
+        <h3 className="text-lg font-bold mb-1 pr-10">🏬 Buscar en tiendas asociadas</h3>
         <p className="text-sm text-gray-500 mb-4">
           Busca un producto por nombre o código para ver si hay existencias en otras sucursales de tu mismo grupo.
         </p>

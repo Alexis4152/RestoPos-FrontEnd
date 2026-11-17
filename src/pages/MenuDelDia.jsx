@@ -12,6 +12,7 @@ import MenuHoja, { HojaEscalada, PLANTILLAS, plantillaGuardada, guardarPlantilla
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
 
+import ModalCloseButton from '../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const mismos = (a, b) => a.size === b.size && [...a].every((x) => b.has(x))
 const SIN_CATEGORIA = 'sin'
@@ -404,11 +405,12 @@ function NuevoMenuModal({ nuevo, setNuevo, busy, onCrear, menus, totalPlatillos 
     ...(menus.length ? [['copia', 'Copia de un menú guardado', copia ? `${copia.productoIds.length} platillos de “${copia.nombre}”` : 'Elige cuál']] : []),
   ]
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setNuevo(null)}>
-      <form role="dialog" aria-modal="true" aria-labelledby="nuevo-menu-titulo" onClick={(e) => e.stopPropagation()}
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+      <form role="dialog" aria-modal="true" aria-labelledby="nuevo-menu-titulo"
         onSubmit={(e) => { e.preventDefault(); onCrear() }}
-        className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
-        <h3 id="nuevo-menu-titulo" className="text-lg font-extrabold">Nuevo menú</h3>
+        className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+        <ModalCloseButton onClick={() => setNuevo(null)} />
+        <h3 id="nuevo-menu-titulo" className="text-lg font-extrabold pr-10">Nuevo menú</h3>
         <label className="block">
           <span className="text-sm font-semibold text-gray-700">Nombre</span>
           <input className="input mt-1" autoFocus maxLength={100} placeholder="Ej. Entre semana, Fin de semana, Cuaresma"
@@ -496,8 +498,9 @@ function VistaPrevia({ secciones, qr, plantilla, onPlantilla, total, tienda, nom
 function PreviaModal({ onCerrar, children }) {
   useEscapeKey(onCerrar)
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-3" onClick={onCerrar}>
-      <div role="dialog" aria-modal="true" aria-label="Vista previa del menú" onClick={(e) => e.stopPropagation()} className="w-full max-w-3xl space-y-2">
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-3">
+      <div role="dialog" aria-modal="true" aria-label="Vista previa del menú" className="relative w-full max-w-3xl space-y-2">
+        <ModalCloseButton onClick={onCerrar} />
         {children}
         <button type="button" onClick={onCerrar} className="w-full min-h-[48px] rounded-2xl bg-white text-sm font-extrabold">Cerrar vista previa</button>
       </div>

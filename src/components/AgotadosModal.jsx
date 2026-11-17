@@ -3,6 +3,7 @@ import { getProducts, setProductAvailable } from '../api/products'
 import { useNotify } from '../context/NotifyContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 
+import ModalCloseButton from './ModalCloseButton'
 /**
  * "Agotados": el mesero (o el admin) marca un platillo como agotado cuando ya no hay para
  * prepararlo, y lo regresa cuando vuelve a haber. Mientras esté agotado no aparece al agregar
@@ -40,10 +41,11 @@ export default function AgotadosModal({ onClose, onChanged }) {
     .filter((p) => !texto || p.name.toLowerCase().includes(texto) || (p.category?.name ?? '').toLowerCase().includes(texto))
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[85vh] flex flex-col"
         role="dialog" aria-modal="true" aria-labelledby="agotados-titulo">
-        <h3 id="agotados-titulo" className="text-lg font-extrabold">Platillos agotados</h3>
+        <ModalCloseButton onClick={onClose} />
+        <h3 id="agotados-titulo" className="text-lg font-extrabold pr-10">Platillos agotados</h3>
         <p className="text-sm text-gray-600 mt-1">
           Si ya no hay para prepararlo, márcalo como agotado: no se podrá agregar a órdenes ni pedir en la página web hasta que lo regreses.
         </p>

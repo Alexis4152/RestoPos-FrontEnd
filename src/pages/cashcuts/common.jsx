@@ -146,11 +146,10 @@ export function Modal({ title, subtitle, onClose, children, wide = false }) {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div
         role="dialog" aria-modal="true"
         className={`bg-white rounded-xl shadow-xl w-full ${wide ? 'max-w-lg' : 'max-w-md'} p-6 max-h-[90vh] overflow-y-auto`}
-        onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-start gap-3 mb-4">
           <div>

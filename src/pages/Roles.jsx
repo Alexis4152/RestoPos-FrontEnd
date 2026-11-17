@@ -6,6 +6,7 @@ import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
 import IconButton from '../components/IconButton'
 
+import ModalCloseButton from '../components/ModalCloseButton'
 const emptyForm = { name: '', description: '', sections: [] }
 
 /**
@@ -211,9 +212,10 @@ export default function Roles() {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold mb-4">{editRole ? 'Editar rol' : 'Nuevo rol'}</h3>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+            <ModalCloseButton onClick={() => setShowModal(false)} />
+            <h3 className="text-lg font-bold mb-4 pr-10">{editRole ? 'Editar rol' : 'Nuevo rol'}</h3>
             {/* Sin `required` nativo en Nombre a propósito (ver validateRoleForm): el
                 globo del navegador se disparaba antes de que este formulario corriera. */}
             <form onSubmit={handleSave} className="space-y-3">
