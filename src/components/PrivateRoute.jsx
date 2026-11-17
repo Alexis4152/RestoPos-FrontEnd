@@ -14,7 +14,8 @@ import { landingPath, esSoloRepartidor } from '../config/sections'
  *    ruta actual ya sea esa) — hasta que la cambie, el resto de la app no tiene sentido.
  * 4. Si el usuario es un actor de plataforma (`SUPER_ADMIN`/`SUPERVISOR`) sin tienda elegida
  *    todavía, redirige a `/select-tienda` (salvo que la ruta actual ya sea esa) — hasta que
- *    elige una, el resto de la app no tiene sentido para él.
+ *    elige una, el resto de la app no tiene sentido para él. No aplica mientras tenga
+ *    `mustChangePassword` (primero cambia la contraseña, luego elige tienda).
  * 5. Si se pasa `platformOnly` y el usuario no es un actor de plataforma, redirige a `/`.
  *    Se usa para la pantalla de Tiendas (`/select-tienda`), reservada a `SUPER_ADMIN`/`SUPERVISOR`.
  * 6. Si se pasa `section` (código de `AppSection`, o un arreglo de códigos — basta con
@@ -44,7 +45,13 @@ export default function PrivateRoute({ children, section, adminOnly, platformOnl
     return <RepartidorEnWeb />
   }
   // '/mail-config' es de plataforma (no de una tienda): se puede abrir sin elegir tienda.
-  if (isPlatformActor && !user.tienda && location.pathname !== '/select-tienda' && location.pathname !== '/mail-config') {
+  // `!user.mustChangePassword` (igual que Demo PV): un SUPERVISOR recién registrado tiene
+  // contraseña temporal Y ninguna tienda elegida a la vez — sin esta excepción, este chequeo
+  // lo sacaba de /change-password hacia /select-tienda, y el chequeo de arriba lo regresaba
+  // a /change-password: ciclo que terminaba en /select-tienda sin dejarle cambiar la
+  // contraseña. Ya con su contraseña propia, aquí mismo se le manda a elegir tienda.
+  if (isPlatformActor && !user.tienda && !user.mustChangePassword
+      && location.pathname !== '/select-tienda' && location.pathname !== '/mail-config') {
     return <Navigate to="/select-tienda" replace />
   }
   if (platformOnly && !isPlatformActor) return <Navigate to="/" replace />
