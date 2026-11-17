@@ -43,7 +43,8 @@ export default function PrivateRoute({ children, section, adminOnly, platformOnl
   if (esSoloRepartidor(user) && location.pathname !== '/change-password') {
     return <RepartidorEnWeb />
   }
-  if (isPlatformActor && !user.tienda && location.pathname !== '/select-tienda') {
+  // '/mail-config' es de plataforma (no de una tienda): se puede abrir sin elegir tienda.
+  if (isPlatformActor && !user.tienda && location.pathname !== '/select-tienda' && location.pathname !== '/mail-config') {
     return <Navigate to="/select-tienda" replace />
   }
   if (platformOnly && !isPlatformActor) return <Navigate to="/" replace />

@@ -28,6 +28,7 @@ import Categories from './pages/Categories'
 import Appearance from './pages/Appearance'
 import StoreInfo from './pages/StoreInfo'
 import CashCutSchedule from './pages/CashCutSchedule'
+import MailSettings from './pages/MailSettings'
 import SelectTienda from './pages/SelectTienda'
 import PublicSite from './pages/PublicSite'
 import OpinionPage from './pages/publicSite/OpinionPage'
@@ -91,6 +92,7 @@ function AppRoutes() {
                 <Route path="/store-info" element={<PrivateRoute adminOnly><StoreInfo /></PrivateRoute>} />
                 <Route path="/web-config" element={<PrivateRoute adminOnly><WebConfig /></PrivateRoute>} />
                 <Route path="/cash-cut-schedule" element={<PrivateRoute superAdminOnly><CashCutSchedule /></PrivateRoute>} />
+                <Route path="/mail-config" element={<PrivateRoute superAdminOnly><MailSettings /></PrivateRoute>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Layout>

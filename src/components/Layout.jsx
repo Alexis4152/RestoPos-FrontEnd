@@ -22,7 +22,7 @@ const navLinkClass = (collapsed) => ({ isActive }) =>
   }`
 
 // Rutas agrupadas bajo el submenú colapsable "Configuración" del sidebar.
-const CONFIG_ROUTES = ['/users', '/roles', '/categories', '/appearance', '/store-info', '/web-config', '/cash-cut-schedule']
+const CONFIG_ROUTES = ['/users', '/roles', '/categories', '/appearance', '/store-info', '/web-config', '/cash-cut-schedule', '/mail-config']
 
 /**
  * Grupos del menú principal: cada entrada aparece solo si el usuario tiene su sección
@@ -132,6 +132,7 @@ export default function Layout({ children }) {
     isAdmin && { to: '/store-info', label: 'Datos de la tienda' },
     isAdmin && { to: '/web-config', label: 'Página web' },
     isSuperAdmin && { to: '/cash-cut-schedule', label: 'Cierre automático de cortes' },
+    isSuperAdmin && { to: '/mail-config', label: 'Correo del sistema' },
   ].filter(Boolean)
   const configActive = CONFIG_ROUTES.includes(location.pathname)
   const sidebarLogo = resolveMediaUrl(user?.tienda?.logoPath) || defaultLogo

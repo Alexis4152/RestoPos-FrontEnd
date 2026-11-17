@@ -234,6 +234,12 @@ export default function SelectTienda() {
             <p className="text-xs text-gray-600">{isSuperAdmin ? 'Super admin' : 'Supervisor'}</p>
           </div>
         </div>
+        {isSuperAdmin && (
+          <button type="button" onClick={() => navigate('/mail-config')}
+            className="min-h-[40px] px-3 rounded-xl text-sm font-bold text-gray-700 hover:bg-[#F1EFEA] inline-flex items-center gap-1.5">
+            <Icon name="config" className="w-4 h-4" /> Correo del sistema
+          </button>
+        )}
         <button type="button" onClick={() => { logout(); navigate('/login') }}
           className="ml-2 min-h-[40px] px-3 rounded-xl text-sm font-bold text-red-700 hover:bg-red-50 inline-flex items-center gap-1.5">
           <Icon name="salir" className="w-4 h-4" /> Cerrar sesión
