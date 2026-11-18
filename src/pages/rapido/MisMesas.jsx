@@ -6,6 +6,7 @@ import { useNotify } from '../../context/NotifyContext'
 import { useLiveRefresh } from '../../utils/liveEvents'
 import SelectorModoToma from '../../components/SelectorModoToma'
 import MesaRapidaModal from './MesaRapidaModal'
+import OpcionesMesa from './OpcionesMesa'
 import MesaTemporalModal, { todasOcupadas, BotonMesaTemporal } from '../../components/MesaTemporal'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
@@ -157,8 +158,9 @@ export default function MisMesas() {
             const elegida = abriendo === m.id
             return (
               <article key={m.id} className={`bg-white border rounded-2xl p-4 ${elegida ? 'border-purple-600 sm:col-span-2 lg:col-span-1' : 'border-[#E4E1DA]'}`}>
+                <div className="flex items-center gap-2">
                 <button type="button" onClick={() => { setAbriendo(elegida ? null : m.id); setOtras(5) }} aria-expanded={elegida}
-                  className="w-full flex items-baseline justify-between gap-2 text-left min-h-[44px]">
+                  className="flex-1 min-w-0 flex items-baseline justify-between gap-2 text-left min-h-[44px]">
                   <span className="text-lg font-extrabold">{nombreMesa(m.numero)}</span>
                   <span className="flex items-center gap-2">
                     <span className="text-xs text-gray-600">{m.zona?.nombre}{m.capacidad ? ` · ${m.capacidad} lugares` : ''}</span>
@@ -167,6 +169,9 @@ export default function MisMesas() {
                     </span>
                   </span>
                 </button>
+                {/* Libre: editar / desactivar (solo admin; para los demás no se muestra). */}
+                <OpcionesMesa compacto mesa={m} ordenId={null} onCambio={load} onCerrada={load} />
+                </div>
                 {elegida && (
                   <div className="mt-2 space-y-2">
                     <p className="text-sm text-gray-600">¿Cuántas personas? Toca y empieza a ordenar</p>
@@ -221,6 +226,7 @@ export default function MisMesas() {
                   className={`flex-1 min-h-[44px] rounded-xl text-sm font-extrabold ${cuenta ? 'bg-gray-900 text-white' : 'border border-[#D9D5CC] bg-white text-gray-900 hover:bg-[#F1EFEA]'}`}>
                   {cuenta ? (puedeCobrar ? 'Cobrar' : 'Ver cuenta') : 'Cuenta'}
                 </button>
+                <OpcionesMesa compacto mesa={m} ordenId={o.id} onCambio={load} onCerrada={load} />
               </div>
             </article>
           )

@@ -10,6 +10,7 @@ import { admiteModoRapido } from '../../utils/modoToma'
 import PedirPanel from './PedirPanel'
 import CuentaRapida, { imprimir } from './CuentaRapida'
 import { nombreMesa } from './MisMesas'
+import OpcionesMesa from './OpcionesMesa'
 // Personas sentadas: los comensales que de verdad tiene la orden (al instante al agregar,
 // quitar o unir mesas); el contador guardado solo es respaldo.
 const personasDe = (order) => order.comensales?.length ?? order.numeroComensales ?? 0
@@ -85,6 +86,9 @@ export default function MesaRapidaModal({ ordenId, modo: modoInicial, onCerrar, 
                 </p>
               )}
             </div>
+            {order && !cobro && (
+              <OpcionesMesa mesa={order.mesa} ordenId={order.id} onCambio={() => { load(); onCambio?.() }} onCerrada={cerrar} />
+            )}
             {!cobro && (
               <button type="button" onClick={() => pantallaCompleta()}
                 className="min-h-[40px] px-2 text-sm font-bold text-purple-700 hover:underline shrink-0">

@@ -15,6 +15,7 @@ import PedirPanel from './PedirPanel'
 import CuentaRapida, { CobroExitoso } from './CuentaRapida'
 import { nombreMesa } from './MisMesas'
 import EditarLineaSheet from './EditarLineaSheet'
+import OpcionesMesa from './OpcionesMesa'
 // Personas sentadas: los comensales que de verdad tiene la orden (al instante al agregar,
 // quitar o unir mesas); el contador guardado solo es respaldo.
 const personasDe = (order) => order.comensales?.length ?? order.numeroComensales ?? 0
@@ -34,7 +35,8 @@ function minutos(desde) {
  *  - Pedir: PedirPanel (menú directo y comanda; el mismo que abre el modal de Mis mesas).
  *  - Lo pedido: lo ya enviado por estado, con "Ya los llevé" para lo que cocina terminó.
  *  - Cuenta: CuentaRapida (entregar y cobrar en un paso).
- * Editar o cancelar productos, dividir la cuenta, mover/unir mesas: "Vista detallada"
+ * Mover/unir/separar mesas y cancelar la orden: menú "Opciones" (OpcionesMesa). Dividir la
+ * cuenta y lo más fino: "Vista detallada"
  * (?vista=detalle), que es OrderDetail sobre la misma orden. Órdenes sin mesa o ya cerradas
  * se muestran siempre en la vista detallada.
  */
@@ -104,6 +106,7 @@ export default function OrdenRapida() {
             {conPersonas ? `${personasDe(order)} persona${personasDe(order) === 1 ? '' : 's'}` : `Pedido #${order.id}`} · {minutos(order.openedAt)} · {fmt(order.total)}
           </p>
         </div>
+        <OpcionesMesa mesa={order.mesa} ordenId={order.id} onCambio={load} onCerrada={() => volver(esMesa ? '/tables' : '/takeaway')} />
         {/* Para llevar: el modo se elige ya dentro del pedido. En mesas se elige en Mesas. */}
         {esMesa
           ? <Link to={vistaDetallada} className="text-sm font-bold text-purple-700 hover:underline">Vista detallada</Link>
