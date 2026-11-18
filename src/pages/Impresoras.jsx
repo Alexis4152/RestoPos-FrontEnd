@@ -5,6 +5,7 @@ import {
   listPrinters, getConfiguredPrinterName, setConfiguredPrinterName,
   getKitchenPrinterName, setKitchenPrinterName, isPrintStation, setPrintStation, printTest,
 } from '../utils/printer'
+import { EstadoEstacion } from '../components/PrintStation'
 
 /**
  * "Impresoras" (Configuración): qué impresoras usa ESTA computadora. Se guarda en el navegador
@@ -115,6 +116,8 @@ export default function Impresoras() {
             </span>
           </span>
         </label>
+
+        <EstadoEstacion />
 
         <button type="button" className="btn-primary" onClick={guardar}>Guardar</button>
       </div>

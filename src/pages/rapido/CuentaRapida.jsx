@@ -6,6 +6,7 @@ import { deliverAllItems } from '../../api/ordenes'
 import { cobroAnticipado } from '../../utils/tipoPedido'
 import { printCuentaPorPagar, abrirCajon, reimprimirCuenta } from '../../utils/printer'
 import { puedeImprimirCuenta, quienImprimeTexto } from '../../utils/imprimeCuenta'
+import { EstadoEstacion } from '../../components/PrintStation'
 import { useNotify } from '../../context/NotifyContext'
 import { useVolver } from '../../utils/navegacion'
 import { useAuth } from '../../context/AuthContext'
@@ -251,6 +252,8 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
 
   return (
     <div className="space-y-3">
+      {/* Aquí ya solo llega quien cobra (cajero/admin/supervisor). */}
+      <EstadoEstacion />
       {sinEntregar.length > 0 && !cuentaLista && (
         <p className="rounded-2xl bg-[#F1EFEA] px-4 py-3 text-sm text-gray-700">
           {piezasSinEntregar} platillo{piezasSinEntregar === 1 ? '' : 's'} sin marcar como entregado{piezasSinEntregar === 1 ? '' : 's'}

@@ -15,6 +15,7 @@ import { getOpenCashCut } from '../api/cashCuts'
 import { printCuentaPorPagar, abrirCajon, reimprimirCuenta } from '../utils/printer'
 import { esQuienImprime, puedeImprimirCuenta, quienImprimeTexto } from '../utils/imprimeCuenta'
 import { crearComanda } from '../api/comandas'
+import { EstadoEstacion } from '../components/PrintStation'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
@@ -1217,6 +1218,8 @@ export default function OrderDetail() {
                 <p className="mt-0.5">Cocina lo sigue viendo. La orden se cierra al marcar lo último como entregado.</p>
               </div>
             )}
+            {/* Estado de la estación de impresión: solo en la computadora que lo es, para cajero/admin/supervisor. */}
+            {!isClosed && <EstadoEstacion visible={puedeCobrar || isAdmin} />}
             {!isClosed && billableItems.length > 0 && !cobraRepartidor && (
               <button type="button" className="btn-primary w-full min-h-[44px]" disabled={nadaEntregado}
                 title={nadaEntregado ? `Primero marca los productos como ${entregadoLabel.toLowerCase()}` : undefined}

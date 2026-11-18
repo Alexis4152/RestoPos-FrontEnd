@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { getComandasPendientes, tomarComanda, liberarComanda } from '../api/comandas'
@@ -6,22 +6,29 @@ import { isPrintStation, getKitchenPrinterName, sendRaw } from '../utils/printer
 
 const CADA_MS = 4000
 
+// Estado compartido de la estación ({ activa, error, impresas }): PrintStation lo actualiza y
+// EstadoEstacion lo muestra donde se cobra — así no hace falta una pastilla flotante encima
+// del menú (tapaba el perfil y "Cerrar sesión").
+let estado = { activa: false, error: '', impresas: 0 }
+const oyentes = new Set()
+function publicar(patch) {
+  estado = { ...estado, ...patch }
+  oyentes.forEach((fn) => fn())
+}
+const suscribir = (fn) => { oyentes.add(fn); return () => oyentes.delete(fn) }
+const leer = () => estado
+
 /**
- * Estación de impresión de comandas. Corre en segundo plano SOLO en la computadora marcada
- * como estación (Configuración → Impresoras), normalmente la de caja con QZ Tray: cada pocos
- * segundos revisa si hay comandas nuevas de su tienda, toma cada una (el backend garantiza que
- * dos estaciones nunca impriman la misma) y la imprime — en la impresora de cocina si la
- * tienda tiene "Enviar a cocina", o en la impresora de tickets si no. Si la impresión falla,
- * la devuelve a la cola para reintentar y muestra el aviso en la pastilla de abajo.
- *
- * Así los meseros toman orden desde cualquier dispositivo (celular, tablet) y la comanda sale
- * impresa igual.
+ * Estación de impresión de comandas. Corre en segundo plano (montada en Layout, sin nada
+ * visible) SOLO en la computadora marcada como estación (Configuración → Impresoras),
+ * normalmente la de caja con QZ Tray: cada pocos segundos revisa si hay comandas nuevas de su
+ * tienda, toma cada una (el backend garantiza que dos estaciones nunca impriman la misma) y la
+ * imprime — en la impresora de cocina si la tienda tiene "Enviar a cocina", o en la de tickets
+ * si no. Si falla, la devuelve a la cola para reintentar. Su estado se ve en EstadoEstacion.
  */
 export default function PrintStation() {
   const { user } = useAuth()
   const [activa, setActiva] = useState(isPrintStation())
-  const [error, setError] = useState('')
-  const [impresas, setImpresas] = useState(0)
   const ocupado = useRef(false)
 
   useEffect(() => {
@@ -32,7 +39,9 @@ export default function PrintStation() {
 
   const tiendaId = user?.tienda?.id
   useEffect(() => {
-    if (!activa || !tiendaId) return undefined
+    const corriendo = activa && !!tiendaId
+    publicar({ activa: corriendo, ...(corriendo ? {} : { error: '' }) })
+    if (!corriendo) return undefined
     let vivo = true
 
     async function revisar() {
@@ -48,16 +57,15 @@ export default function PrintStation() {
           const impresora = job.destino === 'COCINA' ? (getKitchenPrinterName() || undefined) : undefined
           try {
             await sendRaw(job.hex, impresora)
-            setImpresas((n) => n + 1)
-            setError('')
+            publicar({ impresas: estado.impresas + 1, error: '' })
           } catch (err) {
             await liberarComanda(c.id).catch(() => {})
-            setError(err.message || 'No se pudo imprimir la comanda')
+            publicar({ error: err.message || 'No se pudo imprimir la comanda' })
             break
           }
         }
       } catch (err) {
-        if (err.response?.status !== 401) setError(err.response?.data?.message ?? err.message ?? 'Sin conexión con el servidor')
+        if (err.response?.status !== 401) publicar({ error: err.response?.data?.message ?? err.message ?? 'Sin conexión con el servidor' })
       } finally {
         ocupado.current = false
       }
@@ -68,12 +76,25 @@ export default function PrintStation() {
     return () => { vivo = false; clearInterval(t) }
   }, [activa, tiendaId])
 
-  if (!activa || !tiendaId) return null
+  return null
+}
+
+/**
+ * Estado de la estación de impresión, para la zona donde se genera la cuenta o se cobra. Solo
+ * aparece en la computadora que ES la estación, y solo para cajero, admin y supervisor (quien
+ * pasa `visible`). En rojo si la impresora falló, con enlace a Configuración → Impresoras.
+ */
+export function EstadoEstacion({ visible = true, className = '' }) {
+  const { activa, error, impresas } = useSyncExternalStore(suscribir, leer)
+  if (!visible || !activa) return null
   return (
     <Link to="/impresoras" title={error || 'Esta computadora imprime las comandas de los meseros'}
-      className={`fixed bottom-3 left-3 z-40 max-w-[calc(100vw-1.5rem)] truncate rounded-full px-3 py-1.5 text-xs font-bold shadow border ${
-        error ? 'bg-red-50 border-red-200 text-red-800' : 'bg-white border-[#E4E1DA] text-gray-700'}`}>
-      🖨️ {error ? `Comandas: ${error}` : `Estación de impresión activa${impresas ? ` · ${impresas} impresa${impresas === 1 ? '' : 's'}` : ''}`}
+      className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold border ${
+        error ? 'bg-red-50 border-red-200 text-red-800' : 'bg-[#F7F6F2] border-[#E4E1DA] text-gray-600'} ${className}`}>
+      <span aria-hidden="true">🖨️</span>
+      <span className="min-w-0 break-words">
+        {error ? <><b>Comandas:</b> {error}</> : <>Estación de impresión activa{impresas ? ` · ${impresas} impresa${impresas === 1 ? '' : 's'}` : ''}</>}
+      </span>
     </Link>
   )
 }
