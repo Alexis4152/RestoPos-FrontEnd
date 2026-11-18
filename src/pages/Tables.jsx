@@ -16,6 +16,7 @@ import { useModoToma } from '../utils/modoToma'
 
 import ModalCloseButton from '../components/ModalCloseButton'
 import MesaTemporalModal, { todasOcupadas, BotonMesaTemporal } from '../components/MesaTemporal'
+import AltaMasivaMesas from '../components/AltaMasivaMesas'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 
 /**
@@ -115,6 +116,8 @@ function TablesDetallado() {
   const [loading, setLoading] = useState(false)
   // Abrir mesa temporal (todas ocupadas): zona donde se pone, o null si el modal está cerrado.
   const [temporalEn, setTemporalEn] = useState(null)
+  // Alta rápida de varias mesas/zonas: false = cerrado; si no, la zona con la que arranca (o null).
+  const [altaMasiva, setAltaMasiva] = useState(false)
   const [moverDe, setMoverDe] = useState(null) // mesa cuya orden se mueve
   const [unirA, setUnirA] = useState(null) // mesa principal a la que se une otra
 
@@ -304,6 +307,11 @@ function TablesDetallado() {
 
   return (
     <div className="space-y-5">
+      {altaMasiva !== false && (
+        <AltaMasivaMesas zonas={zonas} tables={tables} zonaInicial={altaMasiva}
+          onClose={() => setAltaMasiva(false)}
+          onCreadas={() => { setAltaMasiva(false); load(); loadZonas() }} />
+      )}
       {temporalEn != null && (
         <MesaTemporalModal zonaId={temporalEn} onClose={() => setTemporalEn(null)}
           onAbierta={(orden) => { setTemporalEn(null); navigate(`/orders/${orden.id}`) }} />
@@ -321,6 +329,7 @@ function TablesDetallado() {
                 <Icon name="mas" className="w-4 h-4" />Mesa temporal
               </button>
             )}
+            {isAdmin && <button type="button" className="btn-secondary inline-flex items-center gap-2" onClick={() => setAltaMasiva(null)}><Icon name="mas" className="w-4 h-4" />Varias mesas y zonas</button>}
             {isAdmin && <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={openNewZona}><Icon name="mas" className="w-4 h-4" />Nueva zona</button>}
           </header>
 
@@ -425,6 +434,7 @@ function TablesDetallado() {
               <h1 className="text-[28px] font-extrabold tracking-tight mt-0.5">{activeZona.nombre}</h1>
             </div>
             <SelectorModoToma />
+            {isAdmin && <button type="button" className="btn-secondary inline-flex items-center gap-2" onClick={() => setAltaMasiva(activeZona.id)}><Icon name="mas" className="w-4 h-4" />Varias mesas</button>}
             {isAdmin && <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={openNewMesa}><Icon name="mas" className="w-4 h-4" />Nueva mesa</button>}
           </header>
 

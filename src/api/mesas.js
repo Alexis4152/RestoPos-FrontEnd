@@ -8,6 +8,8 @@ export const getTable = (id) => api.get(`/tables/${id}`)
 
 /** Crea una mesa nueva. */
 export const createTable = (data) => api.post('/tables', data)
+/** Alta de varias mesas y/o zonas de un golpe: `{ grupos: [{ zonaId | zonaNombre, cantidad, desde, prefijo?, capacidad? }] }`. */
+export const createTablesBulk = (data) => api.post('/tables/bulk', data)
 
 /** Actualiza número/capacidad/estado de una mesa. */
 export const updateTable = (id, data) => api.put(`/tables/${id}`, data)
