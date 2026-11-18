@@ -15,6 +15,9 @@ import PedirPanel from './PedirPanel'
 import CuentaRapida, { CobroExitoso } from './CuentaRapida'
 import { nombreMesa } from './MisMesas'
 import EditarLineaSheet from './EditarLineaSheet'
+// Personas sentadas: los comensales que de verdad tiene la orden (al instante al agregar,
+// quitar o unir mesas); el contador guardado solo es respaldo.
+const personasDe = (order) => order.comensales?.length ?? order.numeroComensales ?? 0
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const EN_COCINA = ['PENDIENTE', 'PREPARANDO']
@@ -98,7 +101,7 @@ export default function OrdenRapida() {
             {esMesa ? nombreMesa([order.mesa.numero, ...mesasUnidas.map((m) => m.numero)].join(' + ')) : `${etiquetaTipoPedido(order)} · ${order.clienteNombre ?? `#${order.id}`}`}
           </h1>
           <p className="text-sm text-gray-600">
-            {conPersonas ? `${order.numeroComensales} persona${order.numeroComensales === 1 ? '' : 's'}` : `Pedido #${order.id}`} · {minutos(order.openedAt)} · {fmt(order.total)}
+            {conPersonas ? `${personasDe(order)} persona${personasDe(order) === 1 ? '' : 's'}` : `Pedido #${order.id}`} · {minutos(order.openedAt)} · {fmt(order.total)}
           </p>
         </div>
         {/* Para llevar: el modo se elige ya dentro del pedido. En mesas se elige en Mesas. */}

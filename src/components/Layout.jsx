@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { WEB_ONLY_SECTIONS } from '../config/sections'
 import defaultLogo from '../assets/logo.png'
 import NotificationCenter from './NotificationCenter'
+import PrintStation from './PrintStation'
 import Icon from './Icon'
 import { resolveMediaUrl } from '../utils/media'
 import { useEscapeKey } from '../hooks/useEscapeKey'
@@ -22,7 +23,7 @@ const navLinkClass = (collapsed) => ({ isActive }) =>
   }`
 
 // Rutas agrupadas bajo el submenú colapsable "Configuración" del sidebar.
-const CONFIG_ROUTES = ['/users', '/roles', '/categories', '/appearance', '/store-info', '/web-config', '/cash-cut-schedule', '/mail-config']
+const CONFIG_ROUTES = ['/users', '/roles', '/categories', '/appearance', '/store-info', '/web-config', '/cash-cut-schedule', '/mail-config', '/impresoras']
 
 /**
  * Grupos del menú principal: cada entrada aparece solo si el usuario tiene su sección
@@ -131,6 +132,7 @@ export default function Layout({ children }) {
     isAdmin && { to: '/appearance', label: 'Apariencia' },
     isAdmin && { to: '/store-info', label: 'Datos de la tienda' },
     isAdmin && { to: '/web-config', label: 'Página web' },
+    isAdmin && { to: '/impresoras', label: 'Impresoras' },
     isSuperAdmin && { to: '/cash-cut-schedule', label: 'Cierre automático de cortes' },
     isSuperAdmin && { to: '/mail-config', label: 'Correo del sistema' },
   ].filter(Boolean)
@@ -266,6 +268,7 @@ export default function Layout({ children }) {
           <BotonModo />
           <NotificationCenter />
         </header>
+        <PrintStation />
         <main className="flex-1 overflow-y-auto flex flex-col">
           <div className="p-4 sm:p-6 lg:px-8 lg:py-7 flex-1">{children}</div>
           <footer className="px-4 sm:px-6 lg:px-8 py-4 text-center text-xs text-gray-500 border-t border-[#E4E1DA]">

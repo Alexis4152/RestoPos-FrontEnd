@@ -9,6 +9,9 @@ export const getOrder = (id) => api.get(`/orders/${id}`)
 /** Abre una orden nueva sobre una mesa (o para llevar si no se manda mesaId). */
 export const openOrder = (data) => api.post('/orders', data)
 
+/** Todas las mesas ocupadas: abre una mesa temporal ("Temporal N") con su orden. `{ zonaId?, numeroComensales }`. */
+export const openTemporalOrder = (data) => api.post('/orders/mesa-temporal', data)
+
 /** Órdenes para llevar (sin mesa) activas — ni pagadas ni canceladas —, más antiguas primero. */
 export const getTakeawayOrders = () => api.get('/orders/takeaway')
 

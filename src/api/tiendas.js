@@ -28,6 +28,12 @@ export const getTiendasBySupervisor = (supervisorId) => api.get('/tiendas', { pa
 /** Plan del SUPERVISOR en sesión: `{ maxTiendas (null = sin límite), usedTiendas }`. Para SUPER_ADMIN ambos vienen en null. */
 export const getTiendaPlan = () => api.get('/tiendas/plan')
 
+/** Quién imprime la cuenta por pagar en la tienda: 'CAJERO' | 'MESERO' | 'AMBOS'. Solo SUPER_ADMIN. */
+export const updateImprimeCuenta = (id, imprimeCuenta) => api.put(`/tiendas/${id}/imprime-cuenta`, { imprimeCuenta })
+
+/** "Enviar a cocina" activo/inactivo en la tienda. Solo SUPER_ADMIN. */
+export const updateEnviarACocina = (id, enviarACocina) => api.put(`/tiendas/${id}/enviar-cocina`, { enviarACocina })
+
 /**
  * Actualiza el nombre (y, si el actor es `SUPER_ADMIN`, el supervisor a cargo) de una tienda.
  * @param {number|string} id Id de la tienda.

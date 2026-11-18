@@ -27,6 +27,7 @@ import Roles from './pages/Roles'
 import Categories from './pages/Categories'
 import Appearance from './pages/Appearance'
 import StoreInfo from './pages/StoreInfo'
+import Impresoras from './pages/Impresoras'
 import CashCutSchedule from './pages/CashCutSchedule'
 import MailSettings from './pages/MailSettings'
 import SelectTienda from './pages/SelectTienda'
@@ -90,6 +91,7 @@ function AppRoutes() {
                 <Route path="/categories" element={<PrivateRoute adminOnly><Categories /></PrivateRoute>} />
                 <Route path="/appearance" element={<PrivateRoute adminOnly><Appearance /></PrivateRoute>} />
                 <Route path="/store-info" element={<PrivateRoute adminOnly><StoreInfo /></PrivateRoute>} />
+                <Route path="/impresoras" element={<PrivateRoute adminOnly><Impresoras /></PrivateRoute>} />
                 <Route path="/web-config" element={<PrivateRoute adminOnly><WebConfig /></PrivateRoute>} />
                 <Route path="/cash-cut-schedule" element={<PrivateRoute superAdminOnly><CashCutSchedule /></PrivateRoute>} />
                 <Route path="/mail-config" element={<PrivateRoute superAdminOnly><MailSettings /></PrivateRoute>} />

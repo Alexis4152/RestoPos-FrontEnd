@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { getTiendaInfo, updateTiendaInfo, uploadTiendaLogo, removeTiendaLogo } from '../api/tiendas'
+import { getTiendaInfo, updateTiendaInfo, uploadTiendaLogo, removeTiendaLogo, updateImprimeCuenta, updateEnviarACocina } from '../api/tiendas'
+import { MODOS_IMPRIME_CUENTA } from '../utils/imprimeCuenta'
 import { useNotify } from '../context/NotifyContext'
 import defaultLogo from '../assets/logo.png'
 import { resolveMediaUrl } from '../utils/media'
@@ -42,7 +43,7 @@ const FIELDS = [
  * para reflejar el cambio de inmediato en el sidebar sin recargar la página.
  */
 export default function StoreInfo() {
-  const { user, patchTienda } = useAuth()
+  const { user, patchTienda, isSuperAdmin } = useAuth()
   const { notify, confirmDialog } = useNotify()
   const tiendaId = user?.tienda?.id
 
@@ -319,6 +320,118 @@ export default function StoreInfo() {
           {saving ? 'Guardando...' : 'Guardar datos'}
         </button>
       </form>
+
+      {isSuperAdmin && <ImprimeCuentaCard />}
+      {isSuperAdmin && <EnviarCocinaCard />}
     </div>
+  )
+}
+
+/**
+ * "Impresión de la cuenta" — configuración de plataforma, solo la ve y la cambia el
+ * SUPER_ADMIN: quién imprime la cuenta por pagar en esta tienda (cajero, mesero o ambos).
+ * ADMIN y SUPERVISOR siempre pueden imprimirla. Se guarda aparte del formulario de arriba.
+ */
+function ImprimeCuentaCard() {
+  const { user, patchTienda } = useAuth()
+  const { notify } = useNotify()
+  const actual = user?.tienda?.imprimeCuenta || 'CAJERO'
+  const [modo, setModo] = useState(actual)
+  const [saving, setSaving] = useState(false)
+
+  async function guardar() {
+    setSaving(true)
+    try {
+      const r = await updateImprimeCuenta(user.tienda.id, modo)
+      patchTienda({ imprimeCuenta: r.data.data.imprimeCuenta })
+      notify('Configuración de impresión guardada', 'success')
+    } catch (err) {
+      notify(err.response?.data?.message ?? 'No se pudo guardar', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="card space-y-3 mt-6 border-l-4 border-l-purple-600">
+      <div>
+        <h2 className="text-base font-extrabold text-gray-900">Impresión de la cuenta</h2>
+        <p className="text-xs text-gray-600 mt-0.5">
+          Quién imprime la cuenta por pagar (copia cliente y copia comercio). Administradores y supervisores siempre
+          pueden. Solo el super admin cambia esto; los demás usuarios lo verán al volver a entrar o recargar.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {MODOS_IMPRIME_CUENTA.map((m) => (
+          <label key={m.key} className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer ${modo === m.key ? 'border-purple-600 bg-purple-50' : 'border-gray-200'}`}>
+            <input type="radio" name="imprimeCuenta" className="mt-1 w-4 h-4" checked={modo === m.key} onChange={() => setModo(m.key)} />
+            <span>
+              <span className="block text-sm font-semibold text-gray-800">{m.label}</span>
+              <span className="block text-xs text-gray-600 mt-0.5">{m.desc}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <button type="button" className="btn-primary" disabled={saving || modo === actual} onClick={guardar}>
+        {saving ? 'Guardando...' : 'Guardar impresión'}
+      </button>
+    </section>
+  )
+}
+
+/**
+ * "Envío a cocina" — configuración de plataforma, solo SUPER_ADMIN. Activo: el botón dice
+ * "Enviar a cocina" y la comanda sale en la impresora de cocina. Inactivo: dice "Crear orden"
+ * y la comanda sale en la impresora normal de tickets. La pantalla de Cocina sigue igual.
+ * Las impresoras se eligen en cada computadora (Configuración → Impresoras).
+ */
+function EnviarCocinaCard() {
+  const { user, patchTienda } = useAuth()
+  const { notify } = useNotify()
+  const actual = user?.tienda?.enviarACocina !== false
+  const [valor, setValor] = useState(actual)
+  const [saving, setSaving] = useState(false)
+
+  async function guardar() {
+    setSaving(true)
+    try {
+      const r = await updateEnviarACocina(user.tienda.id, valor)
+      patchTienda({ enviarACocina: r.data.data.enviarACocina })
+      notify('Envío a cocina guardado', 'success')
+    } catch (err) {
+      notify(err.response?.data?.message ?? 'No se pudo guardar', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const opciones = [
+    [true, 'Enviar a cocina', 'El botón dice "Enviar a cocina" y la comanda se imprime en la impresora de cocina.'],
+    [false, 'Crear orden', 'Sin impresora en cocina: el botón dice "Crear orden" y la comanda se imprime en la impresora de tickets.'],
+  ]
+  return (
+    <section className="card space-y-3 mt-6 border-l-4 border-l-purple-600">
+      <div>
+        <h2 className="text-base font-extrabold text-gray-900">Envío a cocina</h2>
+        <p className="text-xs text-gray-600 mt-0.5">
+          A qué impresora sale la comanda cuando el mesero manda la orden. La imprime la estación de impresión
+          (Configuración → Impresoras, en la computadora de caja). La pantalla de Cocina funciona igual en ambos casos.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {opciones.map(([key, label, desc]) => (
+          <label key={label} className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer ${valor === key ? 'border-purple-600 bg-purple-50' : 'border-gray-200'}`}>
+            <input type="radio" name="enviarACocina" className="mt-1 w-4 h-4" checked={valor === key} onChange={() => setValor(key)} />
+            <span>
+              <span className="block text-sm font-semibold text-gray-800">{label}</span>
+              <span className="block text-xs text-gray-600 mt-0.5">{desc}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <button type="button" className="btn-primary" disabled={saving || valor === actual} onClick={guardar}>
+        {saving ? 'Guardando...' : 'Guardar envío a cocina'}
+      </button>
+    </section>
   )
 }

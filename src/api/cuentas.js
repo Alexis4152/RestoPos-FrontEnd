@@ -25,7 +25,8 @@ export const emailTicket = (id, email) => api.post(`/accounts/${id}/ticket/email
  * Ticket de una cuenta en formato ESC/POS (cadena hexadecimal), listo para mandarse tal cual
  * a la impresora térmica vía QZ Tray (ver utils/printer.js).
  */
-export const getAccountTicketEscPos = (id, copias = 1) => api.get(`/accounts/${id}/ticket-escpos`, { params: { copias } })
+export const getAccountTicketEscPos = (id, copias = 1, { abrirCajon = true, soloCajon = false } = {}) =>
+  api.get(`/accounts/${id}/ticket-escpos`, { params: { copias, abrirCajon, soloCajon } })
 
 /** Enlace y QR "califica tu visita" de una cuenta de mesa: { url, qrDataUrl }. */
 export const getOpinionQr = (id) => api.get(`/accounts/${id}/opinion-qr`)

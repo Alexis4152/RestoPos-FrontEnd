@@ -90,6 +90,49 @@ export function setConfiguredPrinterName(name) {
   }
 }
 
+// ── Impresora de cocina y estación de impresión (por computadora) ─────────────────────
+// La comanda que mandan los meseros (desde cualquier dispositivo) la imprime una "estación de
+// impresión": una computadora fija con QZ Tray que deja RestoPOS abierto (ver PrintStation).
+// Si la tienda tiene "Enviar a cocina", sale en la impresora de cocina; si no, en la de tickets.
+const KITCHEN_PRINTER_KEY = 'pos_escpos_kitchen_printer_name'
+const STATION_KEY = 'pos_print_station'
+
+export function getKitchenPrinterName() {
+  try { return localStorage.getItem(KITCHEN_PRINTER_KEY) || '' } catch { return '' }
+}
+
+export function setKitchenPrinterName(name) {
+  try {
+    if (name) localStorage.setItem(KITCHEN_PRINTER_KEY, name)
+    else localStorage.removeItem(KITCHEN_PRINTER_KEY)
+  } catch { /* sin localStorage: no se recuerda */ }
+}
+
+/** ¿Esta computadora es la estación de impresión de comandas? */
+export function isPrintStation() {
+  try { return localStorage.getItem(STATION_KEY) === '1' } catch { return false }
+}
+
+export function setPrintStation(on) {
+  try {
+    if (on) localStorage.setItem(STATION_KEY, '1')
+    else localStorage.removeItem(STATION_KEY)
+  } catch { /* sin localStorage: no se recuerda */ }
+  window.dispatchEvent(new Event('pos-print-station'))
+}
+
+/** Hoja de prueba (para verificar que una impresora responde). */
+export async function printTest(printerName, titulo) {
+  const enc = (s) => Array.from(s).map((ch) => {
+    const c = ch.charCodeAt(0)
+    return (c <= 0xff ? c : 0x3f).toString(16).padStart(2, '0')
+  }).join('')
+  const NL = String.fromCharCode(10)
+  const hex = '1b40' + '1b6101' + '1d2111' + enc('PRUEBA' + NL) + '1d2100'
+    + enc(titulo + NL + new Date().toLocaleString('es-MX') + NL.repeat(4)) + '1d5601'
+  await sendRaw(hex, printerName)
+}
+
 /** Lista los nombres de impresoras que QZ Tray ve instaladas en esta computadora. */
 export async function listPrinters() {
   await ensureConnected()
@@ -105,15 +148,21 @@ export async function listPrinters() {
  * @throws {Error} con un mensaje en español listo para mostrarle al cajero, si QZ Tray no
  *   está disponible o la impresión falla.
  */
-export async function printAccountTicket(accountId, copias = 1) {
-  const res = await getAccountTicketEscPos(accountId, copias)
+export async function printAccountTicket(accountId, copias = 1, { abrirCajon = true } = {}) {
+  const res = await getAccountTicketEscPos(accountId, copias, { abrirCajon })
   const hex = res.data?.data
   if (!hex) throw new Error('El servidor no devolvió el contenido del ticket.')
+  await sendRaw(hex)
+}
 
+/**
+ * Manda comandos ESC/POS (hex) vía QZ Tray a `printerName`, o a la impresora de tickets
+ * configurada en esta computadora (o la predeterminada del sistema) si no se indica.
+ */
+export async function sendRaw(hex, printerName) {
   await ensureConnected()
 
-  const configuredName = getConfiguredPrinterName()
-  const printer = configuredName || (await qz.printers.getDefault())
+  const printer = printerName || getConfiguredPrinterName() || (await qz.printers.getDefault())
   const config = qz.configs.create(printer)
 
   const data = [
@@ -139,6 +188,38 @@ export async function printAccountTicket(accountId, copias = 1) {
  * lleva a la caja para pagar, y "COPIA COMERCIO"), ambas marcadas "CUENTA POR PAGAR". Sin
  * impresora térmica (QZ Tray), abre el PDF para imprimirlo desde el navegador.
  */
+/**
+ * Al cobrar ya NO se imprime ticket (el mesero imprimió la cuenta en 2 copias): solo se abre el
+ * cajón de dinero, y solo si el pago fue en efectivo (eso lo decide el backend). Sin impresora
+ * térmica configurada (QZ Tray) no hay cajón conectado: no hace nada ni avisa.
+ *
+ * @throws {Error} si hay QZ Tray pero el cajón/impresora no respondió (para avisarle al cajero)
+ */
+export async function abrirCajon(accountId) {
+  const res = await getAccountTicketEscPos(accountId, 1, { soloCajon: true })
+  const hex = res.data?.data
+  if (!hex) return // sin efectivo: nada que abrir
+  try {
+    await ensureConnected()
+  } catch {
+    return // sin QZ Tray en esta computadora: no hay cajón conectado
+  }
+  await sendRaw(hex)
+}
+
+/**
+ * Reimpresión después de cobrar: las mismas 2 copias (cliente / comercio), ya como ticket
+ * pagado, SIN volver a abrir el cajón. Sin impresora térmica, abre el PDF.
+ */
+export async function reimprimirCuenta(accountId) {
+  try {
+    await printAccountTicket(accountId, 2, { abrirCajon: false })
+  } catch {
+    const r = await getTicketPdf(accountId)
+    window.open(URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' })), '_blank', 'noopener')
+  }
+}
+
 export async function printCuentaPorPagar(accountId, copias = 2) {
   try {
     await printAccountTicket(accountId, copias)

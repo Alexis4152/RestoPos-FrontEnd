@@ -12,7 +12,9 @@ import { cobroAnticipado as admiteCobroAnticipado } from '../utils/tipoPedido'
 import { getCategories, updateCategoryAvailabilityMode } from '../api/categories'
 import { searchProducts, getTopSellingProducts } from '../api/products'
 import { getOpenCashCut } from '../api/cashCuts'
-import { printAccountTicket, printCuentaPorPagar } from '../utils/printer'
+import { printCuentaPorPagar, abrirCajon, reimprimirCuenta } from '../utils/printer'
+import { esQuienImprime, puedeImprimirCuenta, quienImprimeTexto } from '../utils/imprimeCuenta'
+import { crearComanda } from '../api/comandas'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
@@ -191,6 +193,12 @@ export default function OrderDetail() {
   // Silencioso a propósito: "no hay corte abierto" es un estado normal, no un error.
   // Cobrar = tener la sección CASH_CUTS (cajero/admin). El mesero solo genera e imprime la cuenta.
   const puedeCobrar = hasSection('CASH_CUTS')
+  // "Enviar a cocina" (impresora de cocina) o "Crear orden" (impresora de tickets): por tienda, lo define el SUPER_ADMIN.
+  const aCocina = user?.tienda?.enviarACocina !== false
+  // Quién imprime la cuenta por pagar lo define el SUPER_ADMIN por tienda (cajero, mesero o
+  // ambos; admin/supervisor siempre). A quien le toca, se le imprime sola al generarla.
+  const imprimeAlGenerar = esQuienImprime(user, puedeCobrar)
+  const puedeImprimir = puedeImprimirCuenta(user, puedeCobrar, isAdmin)
   useEffect(() => { if (puedeCobrar) getOpenCashCut().then((r) => setCashCut(r.data.data)).catch(() => {}) }, [puedeCobrar])
   useEffect(() => {
     if (!showAddItem) return
@@ -478,20 +486,24 @@ export default function OrderDetail() {
   async function enviarACocina() {
     setEnviando(true)
     let pendientes = [...porEnviar]
+    const enviados = []
     try {
       while (pendientes.length) {
         const l = pendientes[0]
-        await addOrderItem(id, {
+        const r = await addOrderItem(id, {
           productoId: l.productoId, comensalId: l.comensalId ?? null, cantidad: l.cantidad,
           observaciones: l.observaciones || undefined,
           modificadorOpcionIds: l.opcionIds?.length ? l.opcionIds : undefined,
         })
+        if (r.data.data?.id) enviados.push(r.data.data.id)
         pendientes = pendientes.slice(1)
       }
-      notify('Enviado a cocina', 'success')
+      notify(aCocina ? 'Enviado a cocina' : 'Orden creada', 'success')
     } catch (err) {
       notify(`${err.response?.data?.message ?? 'No se pudo enviar'}${pendientes.length < porEnviar.length ? ' (lo anterior sí se envió)' : ''}`, 'error')
     } finally {
+      // La comanda impresa (cocina o tickets, según la tienda) la saca la estación de impresión.
+      if (enviados.length) crearComanda(id, enviados).catch(() => notify('Se guardó, pero no se pudo mandar a imprimir la comanda', 'error'))
       setPorEnviar(pendientes)
       setEnviando(false)
       load()
@@ -708,8 +720,8 @@ export default function OrderDetail() {
       setAccountComensal('')
       setCustomSelection({})
       load()
-      // Quien no cobra imprime de una vez la cuenta para el cliente (paga en caja con ella).
-      if (!puedeCobrar) imprimirCuenta(r.data.data.id)
+      // A quien le toca imprimir la cuenta (según la tienda), se le imprime de una vez.
+      if (imprimeAlGenerar) imprimirCuenta(r.data.data.id)
     } catch (err) { notify(err.response?.data?.message ?? 'Error al generar la cuenta') }
     finally { setLoading(false) }
   }
@@ -731,7 +743,7 @@ export default function OrderDetail() {
       setShowAccount(false)
       load()
       notify('Cuentas generadas correctamente', 'success')
-      if (!puedeCobrar) for (const r of creadas) await imprimirCuenta(r.data.data.id)
+      if (imprimeAlGenerar) for (const r of creadas) await imprimirCuenta(r.data.data.id)
     } catch (err) {
       notify(err.response?.data?.message ?? 'Error al generar las cuentas', 'error')
     } finally {
@@ -807,10 +819,10 @@ export default function OrderDetail() {
       })
       setPaySuccess({ pago: res.data.data, cuenta: payModal, ticketType, email: payEmail.trim() })
       load()
-      // Se imprime "al vuelo" SOLO en modo físico: si la caja no tiene QZ Tray instalado/
-      // corriendo, o la impresora está apagada, no debe tumbar el pago ya registrado — solo
-      // se avisa para que el cajero pueda usar "Reimprimir" en cuanto lo resuelva.
-      if (ticketType === 'physical') printTicketNow(payModal.id)
+      // Al cobrar ya NO se imprime: el mesero imprimió la cuenta en 2 copias y el cliente
+      // paga con la suya. Solo se abre el cajón si fue en efectivo; si falla, no tumba el
+      // pago ya registrado (el cajero puede "Reimprimir" si de verdad lo necesita).
+      abrirCajon(payModal.id).catch((err) => notify(err.message ?? 'No se pudo abrir el cajón', 'error'))
     } catch (err) { notify(err.response?.data?.message ?? 'Error al registrar el pago') }
     finally { setLoading(false) }
   }
@@ -820,11 +832,11 @@ export default function OrderDetail() {
     setPaySuccess(null)
   }
 
-  /** Manda el ticket de una cuenta a la impresora térmica vía QZ Tray. Nunca bloquea el flujo de cobro. */
+  /** Reimprime la cuenta ya cobrada en sus 2 copias (cliente / comercio), sin volver a abrir el cajón. */
   async function printTicketNow(accountId) {
     setPrinting(true)
     try {
-      await printAccountTicket(accountId)
+      await reimprimirCuenta(accountId)
     } catch (err) {
       notify(err.message ?? 'No se pudo imprimir el ticket', 'error')
     } finally {
@@ -1069,7 +1081,7 @@ export default function OrderDetail() {
               Descartar
             </button>
             <button type="button" className="btn-primary min-h-[44px]" disabled={enviando} onClick={enviarACocina}>
-              {enviando ? 'Enviando…' : `Enviar a cocina · ${fmt(porEnviar.reduce((sum, l) => sum + l.precio * l.cantidad, 0))}`}
+              {enviando ? 'Enviando…' : `${aCocina ? 'Enviar a cocina' : 'Crear orden'} · ${fmt(porEnviar.reduce((sum, l) => sum + l.precio * l.cantidad, 0))}`}
             </button>
           </div>
         </section>
@@ -1264,9 +1276,11 @@ export default function OrderDetail() {
                       <button type="button" className="btn-primary w-full min-h-[40px]" onClick={() => openPayModal(c)}>Registrar pago</button>
                     )}
                     {c.estado === 'PENDIENTE' && !puedeCobrar && (
-                      <p className="text-xs text-gray-600">El cliente paga en caja con su ticket.</p>
+                      <p className="text-xs text-gray-600">
+                        {puedeImprimir ? 'El cliente paga en caja con su ticket.' : `${quienImprimeTexto(user) === 'el cajero' ? 'El cajero' : 'El mesero'} imprime la cuenta; el cliente paga en caja.`}
+                      </p>
                     )}
-                    {c.estado === 'PENDIENTE' && (
+                    {c.estado === 'PENDIENTE' && puedeImprimir && (
                       <button type="button" className={`${puedeCobrar ? 'btn-secondary' : 'btn-primary'} w-full min-h-[40px]`} onClick={() => imprimirCuenta(c.id)}>
                         Imprimir cuenta (2 copias)
                       </button>
@@ -1320,8 +1334,12 @@ export default function OrderDetail() {
               </div>
             )}
             {esMesa && (() => {
-              const sentados = order.numeroComensales ?? order.comensales?.length ?? 0
-              const cap = Math.max(order.mesa.capacidad || 0, sentados)
+              // Se cuentan los comensales que de verdad tiene la orden (se actualiza al instante
+              // al agregar/quitar uno o al unir mesas); el contador guardado es solo respaldo.
+              const sentados = order.comensales?.length ?? order.numeroComensales ?? 0
+              // Lugares: los de la mesa principal MÁS los de las mesas unidas.
+              const lugares = cupoMesas ?? [order.mesa, ...unidas].reduce((s, m) => s + (m.capacidad || 0), 0)
+              const cap = Math.max(lugares, sentados)
               return (
                 <div className="flex flex-wrap items-center gap-1">
                   {Array.from({ length: Math.min(cap, 12) }, (_, i) => (
@@ -1972,12 +1990,12 @@ export default function OrderDetail() {
                 {paySuccess.ticketType === 'digital' ? (
                   <p className="text-sm text-purple-700 mb-6">📧 Ticket enviado a {paySuccess.email}</p>
                 ) : (
-                  <p className="text-sm text-gray-400 mb-6">{printing ? '🖨️ Imprimiendo…' : '🖨️ Ticket enviado a la impresora'}</p>
+                  <p className="text-sm text-gray-500 mb-6">{printing ? '🖨️ Imprimiendo…' : 'No se imprimió ticket: el cliente ya tiene su copia de la cuenta.'}</p>
                 )}
                 <div className="flex gap-2">
                   {paySuccess.ticketType === 'physical' ? (
                     <button className="btn-secondary flex-1" disabled={printing} onClick={() => printTicketNow(paySuccess.cuenta.id)}>
-                      {printing ? 'Imprimiendo…' : '🖨️ Reimprimir'}
+                      {printing ? 'Imprimiendo…' : '🖨️ Reimprimir (2 copias)'}
                     </button>
                   ) : (
                     <button className="btn-secondary flex-1" onClick={() => handleViewTicket(paySuccess.cuenta)}>Ver ticket</button>

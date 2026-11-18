@@ -15,6 +15,7 @@ import MisMesas from './rapido/MisMesas'
 import { useModoToma } from '../utils/modoToma'
 
 import ModalCloseButton from '../components/ModalCloseButton'
+import MesaTemporalModal, { todasOcupadas, BotonMesaTemporal } from '../components/MesaTemporal'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(Number(n ?? 0))
 
 /**
@@ -112,6 +113,8 @@ function TablesDetallado() {
   const [selOrden, setSelOrden] = useState(null)
   const [comensales, setComensales] = useState(2)
   const [loading, setLoading] = useState(false)
+  // Abrir mesa temporal (todas ocupadas): zona donde se pone, o null si el modal está cerrado.
+  const [temporalEn, setTemporalEn] = useState(null)
   const [moverDe, setMoverDe] = useState(null) // mesa cuya orden se mueve
   const [unirA, setUnirA] = useState(null) // mesa principal a la que se une otra
 
@@ -278,6 +281,8 @@ function TablesDetallado() {
   const totales = conteo(tables)
   const mesasDe = (zonaId) => tables.filter((m) => m.zona?.id === zonaId).sort(porNumero)
   const mesasDeZona = activeZona ? mesasDe(activeZona.id) : []
+  // Sin ninguna mesa libre: se ofrece abrir una mesa temporal (no aplica en modo edición del admin).
+  const ofrecerTemporal = todasOcupadas(tables)
 
   const atencion = [
     ...tables.filter((m) => m.estado === 'PENDIENTE_PAGO').map((m) => ({
@@ -299,6 +304,10 @@ function TablesDetallado() {
 
   return (
     <div className="space-y-5">
+      {temporalEn != null && (
+        <MesaTemporalModal zonaId={temporalEn} onClose={() => setTemporalEn(null)}
+          onAbierta={(orden) => { setTemporalEn(null); navigate(`/orders/${orden.id}`) }} />
+      )}
       {!activeZona ? (
         <>
           <header className="flex flex-wrap items-center gap-3">
@@ -307,6 +316,11 @@ function TablesDetallado() {
               <p className="text-sm text-gray-600">{tables.length} mesas en {zonas.length} zona{zonas.length === 1 ? '' : 's'}</p>
             </div>
             <SelectorModoToma />
+            {ofrecerTemporal && zonas.length > 0 && (
+              <button type="button" className="btn-secondary inline-flex items-center gap-2 border-dashed" onClick={() => setTemporalEn(zonas[0].id)}>
+                <Icon name="mas" className="w-4 h-4" />Mesa temporal
+              </button>
+            )}
             {isAdmin && <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={openNewZona}><Icon name="mas" className="w-4 h-4" />Nueva zona</button>}
           </header>
 
@@ -471,6 +485,7 @@ function TablesDetallado() {
                   </button>
                 )
               })}
+              {ofrecerTemporal && <BotonMesaTemporal onClick={() => setTemporalEn(activeZona.id)} />}
               {mesasDeZona.length === 0 && (
                 <p className="text-gray-500 col-span-full text-center py-10">Sin mesas en esta zona{isAdmin ? ' — agrega la primera con "Nueva mesa"' : ''}</p>
               )}

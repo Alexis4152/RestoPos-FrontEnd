@@ -10,6 +10,9 @@ import { admiteModoRapido } from '../../utils/modoToma'
 import PedirPanel from './PedirPanel'
 import CuentaRapida, { imprimir } from './CuentaRapida'
 import { nombreMesa } from './MisMesas'
+// Personas sentadas: los comensales que de verdad tiene la orden (al instante al agregar,
+// quitar o unir mesas); el contador guardado solo es respaldo.
+const personasDe = (order) => order.comensales?.length ?? order.numeroComensales ?? 0
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
@@ -78,7 +81,7 @@ export default function MesaRapidaModal({ ordenId, modo: modoInicial, onCerrar, 
               <h2 id="mesa-modal-titulo" className="text-xl font-extrabold tracking-tight">{titulo}</h2>
               {order && (
                 <p className="text-sm text-gray-600">
-                  {order.numeroComensales} persona{order.numeroComensales === 1 ? '' : 's'} · {fmt(order.total)}
+                  {personasDe(order)} persona{personasDe(order) === 1 ? '' : 's'} · {fmt(order.total)}
                 </p>
               )}
             </div>
@@ -115,7 +118,7 @@ export default function MesaRapidaModal({ ordenId, modo: modoInicial, onCerrar, 
               {cobro.cambio > 0 && <p className="text-2xl font-extrabold">Cambio: {fmt(cobro.cambio)}</p>}
               {cobro.porEntregar && <p className="text-sm text-gray-700">Falta entregar: cocina lo sigue viendo y la orden se cierra al entregarlo.</p>}
               <div className="flex flex-wrap gap-2 justify-center pt-2">
-                <button type="button" className="btn-secondary min-h-[44px]" onClick={() => imprimir(cobro.cuentaId).catch(() => notify('No se pudo imprimir', 'error'))}>Reimprimir ticket</button>
+                <button type="button" className="btn-secondary min-h-[44px]" onClick={() => imprimir(cobro.cuentaId).catch(() => notify('No se pudo imprimir', 'error'))}>Reimprimir (2 copias)</button>
                 {cobro.porEntregar && (
                   <button type="button" className="btn-secondary min-h-[44px]" disabled={entregando} onClick={yaSeEntrego}>{entregando ? '...' : 'Ya se entregó'}</button>
                 )}

@@ -3,6 +3,8 @@ import { addOrderItem, addDiner } from '../../api/ordenes'
 import { getCategories } from '../../api/categories'
 import { searchProducts, getTopSellingProducts } from '../../api/products'
 import { useNotify } from '../../context/NotifyContext'
+import { useAuth } from '../../context/AuthContext'
+import { crearComanda } from '../../api/comandas'
 import Icon from '../../components/Icon'
 import { resolveMediaUrl } from '../../utils/media'
 import { leerPorEnviar, guardarPorEnviar } from '../../utils/porEnviar'
@@ -29,6 +31,10 @@ const claveLinea = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ??
 export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviado, enModal = false }) {
   const id = String(order.id)
   const { notify } = useNotify()
+  const { user } = useAuth()
+  // "Enviar a cocina" (impresora de cocina) o "Crear orden" (impresora de tickets): por tienda.
+  const aCocina = user?.tienda?.enviarACocina !== false
+  const textoEnviar = aCocina ? 'Enviar a cocina' : 'Crear orden'
   const [categorias, setCategorias] = useState([])
   const [cat, setCat] = useState('')
   const [q, setQ] = useState('')
@@ -117,24 +123,28 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
   async function enviar() {
     setEnviando(true)
     let pendientes = [...comanda]
+    const enviados = []
     try {
       while (pendientes.length) {
         const l = pendientes[0]
-        await addOrderItem(id, {
+        const r = await addOrderItem(id, {
           productoId: l.productoId,
           comensalId: l.comensalId ?? null,
           cantidad: l.cantidad,
           observaciones: l.nota || undefined,
           modificadorOpcionIds: l.opcionIds?.length ? l.opcionIds : undefined,
         })
+        if (r.data.data?.id) enviados.push(r.data.data.id)
         pendientes = pendientes.slice(1)
       }
-      notify('Enviado a cocina', 'success')
+      notify(aCocina ? 'Enviado a cocina' : 'Orden creada', 'success')
       setVerComanda(false)
       onEnviado?.()
     } catch (err) {
       notify(`${err.response?.data?.message ?? 'No se pudo enviar'}${pendientes.length < comanda.length ? ' (lo anterior sí se envió)' : ''}`, 'error')
     } finally {
+      // La comanda impresa (cocina o tickets, según la tienda) la saca la estación de impresión.
+      if (enviados.length) crearComanda(id, enviados).catch(() => notify('Se guardó, pero no se pudo mandar a imprimir la comanda', 'error'))
       setComanda(pendientes)
       setEnviando(false)
       onCambio?.()
@@ -179,7 +189,7 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
       </div>
       <button type="button" disabled={enviando} onClick={enviar}
         className="w-full min-h-[54px] rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-base font-extrabold flex items-center justify-between px-5 disabled:opacity-50">
-        <span>{enviando ? 'Enviando…' : 'Enviar a cocina'}</span><span>{fmt(totalComanda)}</span>
+        <span>{enviando ? 'Enviando…' : textoEnviar}</span><span>{fmt(totalComanda)}</span>
       </button>
     </div>
   )
@@ -283,7 +293,7 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
               : listaComanda('max-h-[55vh]')}
             <button type="button" disabled={enviando || comanda.length === 0} onClick={enviar}
               className="w-full min-h-[54px] rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-base font-extrabold flex items-center justify-between px-5 disabled:opacity-50">
-              <span>{enviando ? 'Enviando…' : 'Enviar a cocina'}</span><span>{fmt(totalComanda)}</span>
+              <span>{enviando ? 'Enviando…' : textoEnviar}</span><span>{fmt(totalComanda)}</span>
             </button>
           </aside>
         )}

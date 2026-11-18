@@ -6,6 +6,7 @@ import { useNotify } from '../../context/NotifyContext'
 import { useLiveRefresh } from '../../utils/liveEvents'
 import SelectorModoToma from '../../components/SelectorModoToma'
 import MesaRapidaModal from './MesaRapidaModal'
+import MesaTemporalModal, { todasOcupadas, BotonMesaTemporal } from '../../components/MesaTemporal'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 const PERSONAS = [1, 2, 3, 4]
@@ -35,6 +36,7 @@ export default function MisMesas() {
   const [mesas, setMesas] = useState([])
   const [pickups, setPickups] = useState([])
   const [filtro, setFiltro] = useState(null) // null = aún sin decidir (Mías si tiene, si no Todas)
+  const [abrirTemporal, setAbrirTemporal] = useState(false)
   const [abriendo, setAbriendo] = useState(null) // mesa libre elegida: muestra "¿cuántas personas?"
   const [otras, setOtras] = useState(5)
   const [busy, setBusy] = useState(false)
@@ -133,7 +135,16 @@ export default function MisMesas() {
         </div>
       )}
 
-      {ordenadas.length === 0 && (
+      {/* Todas ocupadas: se ofrece una mesa temporal (en "Libres" y en "Todas"). */}
+      {todasOcupadas(mesas) && vista !== 'mias' && (
+        <BotonMesaTemporal onClick={() => setAbrirTemporal(true)} className="w-full sm:w-auto sm:min-w-[260px]" />
+      )}
+      {abrirTemporal && (
+        <MesaTemporalModal onClose={() => setAbrirTemporal(false)}
+          onAbierta={(orden) => { setAbrirTemporal(false); setModal({ ordenId: orden.id, modo: 'pedir' }); load() }} />
+      )}
+
+      {ordenadas.length === 0 && !(todasOcupadas(mesas) && vista === 'libres') && (
         <p className="text-center text-gray-600 py-12">
           {vista === 'mias' ? 'No tienes mesas abiertas. Ve a "Libres" para abrir una.' : 'No hay mesas para mostrar.'}
         </p>
