@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { getTables, createTable, updateTable, deleteTable } from '../api/mesas'
+import { getTables, createTable, updateTable, deleteTable, deactivateTables } from '../api/mesas'
 import { getZonas, createZona, updateZona, deleteZona } from '../api/zonas'
 import { openOrder, getOrder, getPickups, moveOrderTable, joinOrderTable, splitOrderTable } from '../api/ordenes'
 import { getReservaciones } from '../api/reservaciones'
@@ -118,6 +118,10 @@ function TablesDetallado() {
   const [temporalEn, setTemporalEn] = useState(null)
   // Alta rápida de varias mesas/zonas: false = cerrado; si no, la zona con la que arranca (o null).
   const [altaMasiva, setAltaMasiva] = useState(false)
+  // Selección de varias mesas para desactivarlas juntas (admin/supervisor/super admin).
+  // null = modo normal; Set de ids = seleccionando (se conserva al cambiar de zona).
+  const [seleccion, setSeleccion] = useState(null)
+  const [desactivando, setDesactivando] = useState(false)
   const [moverDe, setMoverDe] = useState(null) // mesa cuya orden se mueve
   const [unirA, setUnirA] = useState(null) // mesa principal a la que se une otra
 
@@ -284,6 +288,39 @@ function TablesDetallado() {
   const totales = conteo(tables)
   const mesasDe = (zonaId) => tables.filter((m) => m.zona?.id === zonaId).sort(porNumero)
   const mesasDeZona = activeZona ? mesasDe(activeZona.id) : []
+  const seleccionando = seleccion !== null
+  const seleccionable = (m) => !m.ordenActiva && !m.temporal
+  function toggleSeleccion(m) {
+    if (!seleccionable(m)) { notify(`La mesa ${m.numero} tiene una orden abierta: no se puede desactivar`, 'error'); return }
+    setSeleccion((s) => { const n = new Set(s); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n })
+  }
+  const libresDeZona = mesasDeZona.filter(seleccionable)
+  const todasLibresMarcadas = libresDeZona.length > 0 && libresDeZona.every((m) => seleccion?.has(m.id))
+  function marcarZona() {
+    setSeleccion((s) => {
+      const n = new Set(s)
+      libresDeZona.forEach((m) => (todasLibresMarcadas ? n.delete(m.id) : n.add(m.id)))
+      return n
+    })
+  }
+  async function desactivarSeleccion() {
+    const ids = [...(seleccion ?? [])]
+    if (ids.length === 0) return
+    const nums = tables.filter((m) => seleccion.has(m.id)).sort(porNumero).map((m) => m.numero)
+    const lista = nums.length > 12 ? `${nums.slice(0, 12).join(', ')} y ${nums.length - 12} más` : nums.join(', ')
+    if (!(await confirmDialog(`¿Desactivar ${ids.length} mesa${ids.length === 1 ? '' : 's'}? (${lista}). Dejan de aparecer en el plano.`,
+      { confirmText: `Desactivar ${ids.length}`, danger: true }))) return
+    setDesactivando(true)
+    try {
+      const r = await deactivateTables(ids)
+      notify(r.data.message ?? 'Mesas desactivadas', 'success')
+      setSeleccion(null)
+      setSelId(null)
+      load()
+    } catch (err) {
+      notify(err.response?.data?.message ?? 'No se pudieron desactivar', 'error')
+    } finally { setDesactivando(false) }
+  }
   // Sin ninguna mesa libre: se ofrece abrir una mesa temporal (no aplica en modo edición del admin).
   const ofrecerTemporal = todasOcupadas(tables)
 
@@ -434,6 +471,11 @@ function TablesDetallado() {
               <h1 className="text-[28px] font-extrabold tracking-tight mt-0.5">{activeZona.nombre}</h1>
             </div>
             <SelectorModoToma />
+            {isAdmin && !seleccionando && (
+              <button type="button" className="btn-secondary inline-flex items-center gap-2" onClick={() => { setSeleccion(new Set()); setSelId(null) }}>
+                <Icon name="opciones" className="w-4 h-4" />Seleccionar varias
+              </button>
+            )}
             {isAdmin && <button type="button" className="btn-secondary inline-flex items-center gap-2" onClick={() => setAltaMasiva(activeZona.id)}><Icon name="mas" className="w-4 h-4" />Varias mesas</button>}
             {isAdmin && <button type="button" className="btn-primary inline-flex items-center gap-2" onClick={openNewMesa}><Icon name="mas" className="w-4 h-4" />Nueva mesa</button>}
           </header>
@@ -456,6 +498,25 @@ function TablesDetallado() {
             </div>
           </div>
 
+          {seleccionando && (
+            <div role="region" aria-label="Seleccionar mesas" className="rounded-2xl border-2 border-red-200 bg-red-50 px-4 py-3 flex flex-wrap items-center gap-2.5">
+              <p className="flex-1 min-w-[200px] text-sm text-red-900">
+                <b>{seleccion.size} mesa{seleccion.size === 1 ? '' : 's'} seleccionada{seleccion.size === 1 ? '' : 's'}</b>
+                <span className="block text-xs">Toca las mesas a desactivar. Puedes cambiar de zona sin perder la selección; las que tienen orden abierta no se pueden elegir.</span>
+              </p>
+              {libresDeZona.length > 0 && (
+                <button type="button" className="btn-secondary min-h-[40px]" onClick={marcarZona}>
+                  {todasLibresMarcadas ? 'Quitar las de esta zona' : `Todas las libres de ${activeZona.nombre}`}
+                </button>
+              )}
+              <button type="button" className="btn-secondary min-h-[40px]" onClick={() => setSeleccion(null)} disabled={desactivando}>Cancelar</button>
+              <button type="button" className="min-h-[40px] px-4 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-extrabold disabled:opacity-50"
+                disabled={seleccion.size === 0 || desactivando} onClick={desactivarSeleccion}>
+                {desactivando ? 'Desactivando…' : `Desactivar ${seleccion.size || ''}`.trim()}
+              </button>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-5 items-start">
             <section aria-label={`Mesas de ${activeZona.nombre}`} className="flex-[999_1_560px] min-w-0 grid grid-cols-[repeat(auto-fill,minmax(176px,1fr))] gap-3.5">
               {mesasDeZona.map((m) => {
@@ -464,10 +525,17 @@ function TablesDetallado() {
                 const rv = reservasPorMesa[m.id]?.[0]
                 const elegido = sel?.id === m.id
                 return (
-                  <button key={m.id} type="button" onClick={() => elegir(m)} aria-pressed={elegido}
+                  <button key={m.id} type="button" onClick={() => (seleccionando ? toggleSeleccion(m) : elegir(m))}
+                    aria-pressed={seleccionando ? !!seleccion.has(m.id) : elegido}
                     className={`text-left bg-white rounded-2xl p-3.5 flex flex-col gap-2.5 transition-shadow ${
-                      elegido ? 'border-2 border-purple-600 shadow-[0_0_0_4px_rgb(var(--brand-100))]' : 'border border-[#E4E1DA] hover:border-purple-300'}`}>
+                      seleccionando
+                        ? (seleccion.has(m.id) ? 'border-2 border-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.15)]' : `border border-[#E4E1DA] ${seleccionable(m) ? 'hover:border-red-300' : 'opacity-50 cursor-not-allowed'}`)
+                        : elegido ? 'border-2 border-purple-600 shadow-[0_0_0_4px_rgb(var(--brand-100))]' : 'border border-[#E4E1DA] hover:border-purple-300'}`}>
                     <div className="flex items-center justify-between gap-2">
+                      {seleccionando && (
+                        <span aria-hidden="true" className={`w-5 h-5 rounded-md border-2 flex items-center justify-center text-xs font-black shrink-0 ${
+                          seleccion.has(m.id) ? 'bg-red-600 border-red-600 text-white' : 'border-gray-300 bg-white'}`}>{seleccion.has(m.id) ? '✓' : ''}</span>
+                      )}
                       <span className={`px-2.5 py-0.5 rounded-lg text-xs font-extrabold ${e.pill}`}>{e.label}</span>
                       {m.ordenActiva && <span className="text-xs font-semibold text-gray-600">{transcurrido(m.ordenActiva.openedAt)}</span>}
                     </div>
