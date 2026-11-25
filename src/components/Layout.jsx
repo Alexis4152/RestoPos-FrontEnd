@@ -132,7 +132,7 @@ export default function Layout({ children }) {
     isAdmin && { to: '/appearance', label: 'Apariencia' },
     isAdmin && { to: '/store-info', label: 'Datos de la tienda' },
     isAdmin && { to: '/web-config', label: 'Página web' },
-    isAdmin && { to: '/impresoras', label: 'Impresoras' },
+    isSuperAdmin && { to: '/impresoras', label: 'Impresoras' },
     isSuperAdmin && { to: '/cash-cut-schedule', label: 'Cierre automático de cortes' },
     isSuperAdmin && { to: '/mail-config', label: 'Correo del sistema' },
   ].filter(Boolean)

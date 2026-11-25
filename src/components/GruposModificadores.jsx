@@ -2,6 +2,17 @@ import { useState } from 'react'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
+/** Máximo de opciones del grupo de varias (null = sin límite; en los de una sola no aplica). */
+const maxDe = (g) => (g.tipo !== 'UNICO' && g.maxSelecciones ? g.maxSelecciones : null)
+/** Ya se eligió el máximo: las demás opciones quedan bloqueadas hasta quitar alguna. */
+const lleno = (g, sel) => { const m = maxDe(g); return m != null && (sel[g.id] ?? []).length >= m }
+/** "elige 1" / "elige hasta 2" / "puedes elegir varias". */
+export function reglaGrupo(g) {
+  if (g.tipo === 'UNICO') return 'elige 1'
+  const m = maxDe(g)
+  return m ? `elige hasta ${m}` : 'puedes elegir varias'
+}
+
 /**
  * Grupos de modificadores en acordeón — el mismo comportamiento en la página web, el punto
  * de venta detallado. El modo rápido usa GruposModificadoresAbiertos (todo a la vista):
@@ -10,7 +21,8 @@ const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency:
  *  - en un grupo de una sola opción, al elegir se cierra solo; los de varias se quedan
  *    abiertos hasta tocar otro grupo (o el mismo encabezado).
  *
- * Props: `grupos` [{id, nombre, tipo: 'UNICO'|'MULTIPLE', obligatorio, opciones: [{id, nombre, precioExtra}]}],
+ * Props: `grupos` [{id, nombre, tipo: 'UNICO'|'MULTIPLE', obligatorio, maxSelecciones, opciones: [{id, nombre, precioExtra}]}],
+ * (maxSelecciones: tope en los de varias; al llegar, las demás opciones se bloquean)
  * `sel` {grupoId: [opcionId]}, `onToggle(grupo, opcionId)` (la selección la guarda quien lo usa),
  * `nota(grupo, opcion)` texto chico opcional junto a la opción (ej. "lo más pedido"),
  * `disabled` (solo lectura).
@@ -21,6 +33,7 @@ export default function GruposModificadores({ grupos, sel, onToggle, nota, disab
   function elegir(g, opId) {
     if (disabled) return
     const yaEstaba = (sel[g.id] ?? []).includes(opId)
+    if (!yaEstaba && lleno(g, sel)) return
     onToggle(g, opId)
     if (g.tipo === 'UNICO' && !yaEstaba) setAbierto(null)
   }
@@ -41,7 +54,7 @@ export default function GruposModificadores({ grupos, sel, onToggle, nota, disab
                 <span className="block text-sm font-extrabold text-gray-900">
                   {g.nombre}
                   <span className="ml-1.5 text-xs font-semibold text-gray-600">
-                    {g.obligatorio ? 'Obligatorio' : 'Opcional'}{g.tipo !== 'UNICO' ? ' · varias' : ''}
+                    {g.obligatorio ? 'Obligatorio' : 'Opcional'}{g.tipo !== 'UNICO' ? (maxDe(g) ? ` · hasta ${maxDe(g)}` : ' · varias') : ''}
                   </span>
                 </span>
                 <span className={`block text-xs truncate ${elegidas.length ? 'font-bold text-purple-700' : falta ? 'font-semibold text-red-700' : 'text-gray-600'}`}>
@@ -56,8 +69,10 @@ export default function GruposModificadores({ grupos, sel, onToggle, nota, disab
                 {g.opciones.map((o) => {
                   const on = (sel[g.id] ?? []).includes(o.id)
                   const extra = nota?.(g, o)
+                  const bloqueada = !on && lleno(g, sel)
                   return (
-                    <button key={o.id} type="button" aria-pressed={on} disabled={disabled} onClick={() => elegir(g, o.id)}
+                    <button key={o.id} type="button" aria-pressed={on} disabled={disabled || bloqueada} onClick={() => elegir(g, o.id)}
+                      title={bloqueada ? `Máximo ${maxDe(g)}: quita una para elegir otra` : undefined}
                       className={`w-full min-h-[44px] flex items-center gap-3 rounded-lg border px-3 py-2 text-left disabled:opacity-60 ${on ? 'border-purple-600 bg-purple-50' : 'border-[#E4E1DA] hover:border-gray-400'}`}>
                       <span aria-hidden="true" className={`w-5 h-5 shrink-0 flex items-center justify-center text-xs font-bold ${g.tipo === 'UNICO' ? 'rounded-full' : 'rounded'} ${on ? 'bg-purple-600 text-white' : 'border border-gray-400'}`}>{on ? '✓' : ''}</span>
                       <span className="flex-1 text-sm font-semibold text-gray-800">
@@ -92,15 +107,18 @@ export function GruposModificadoresAbiertos({ grupos, sel, onToggle, nota, disab
             <legend className="text-sm font-extrabold">
               {g.nombre}{' '}
               <span className={`font-semibold ${falta ? 'text-red-700' : 'text-gray-600'}`}>
-                · {g.tipo === 'UNICO' ? 'elige 1' : 'puedes elegir varias'}{g.obligatorio ? '' : ' (opcional)'}
+                · {reglaGrupo(g)}{g.obligatorio ? '' : ' (opcional)'}
+                {lleno(g, sel) && <span className="ml-1 text-purple-700">· listo</span>}
               </span>
             </legend>
             <div className="flex flex-wrap gap-2">
               {g.opciones.map((o) => {
                 const on = (sel[g.id] ?? []).includes(o.id)
                 const extra = nota?.(g, o)
+                const bloqueada = !on && lleno(g, sel)
                 return (
-                  <button key={o.id} type="button" aria-pressed={on} onClick={() => onToggle(g, o.id)}
+                  <button key={o.id} type="button" aria-pressed={on} disabled={bloqueada} onClick={() => onToggle(g, o.id)}
+                    title={bloqueada ? `Máximo ${maxDe(g)}: quita una para elegir otra` : undefined}
                     className={`min-h-[44px] px-4 rounded-full text-sm font-bold border disabled:opacity-50 ${on ? 'border-2 border-purple-600 bg-purple-50 text-purple-800' : 'border-[#D9D5CC] bg-white text-gray-700'}`}>
                     {o.nombre}{Number(o.precioExtra) > 0 ? ` +${fmt(o.precioExtra)}` : ''}
                     {extra && <span className="ml-1.5 text-[11px] font-semibold text-gray-600">{extra}</span>}

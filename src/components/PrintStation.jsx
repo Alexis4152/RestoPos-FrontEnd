@@ -86,15 +86,18 @@ export default function PrintStation() {
  */
 export function EstadoEstacion({ visible = true, className = '' }) {
   const { activa, error, impresas } = useSyncExternalStore(suscribir, leer)
+  const { isSuperAdmin } = useAuth()
   if (!visible || !activa) return null
+  // Configuración → Impresoras es solo del super admin: para los demás, el aviso no es enlace.
+  const Contenedor = isSuperAdmin ? Link : 'div'
   return (
-    <Link to="/impresoras" title={error || 'Esta computadora imprime las comandas de los meseros'}
+    <Contenedor {...(isSuperAdmin ? { to: '/impresoras' } : {})} title={error || 'Esta computadora imprime las comandas de los meseros'}
       className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold border ${
         error ? 'bg-red-50 border-red-200 text-red-800' : 'bg-[#F7F6F2] border-[#E4E1DA] text-gray-600'} ${className}`}>
       <span aria-hidden="true">🖨️</span>
       <span className="min-w-0 break-words">
         {error ? <><b>Comandas:</b> {error}</> : <>Estación de impresión activa{impresas ? ` · ${impresas} impresa${impresas === 1 ? '' : 's'}` : ''}</>}
       </span>
-    </Link>
+    </Contenedor>
   )
 }

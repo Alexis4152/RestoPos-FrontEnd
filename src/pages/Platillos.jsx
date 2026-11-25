@@ -58,6 +58,7 @@ export default function Platillos() {
   // Mismos topes que ModificadorGrupoRequest/ModificadorOpcionRequest en el backend (nombre
   // VARCHAR(100), precioExtra requerido y no negativo).
   const [modNombreError, setModNombreError] = useState('')
+  const [modMaxError, setModMaxError] = useState('')
   const [modOpcionErrors, setModOpcionErrors] = useState([]) // paralelo a modGrupoForm.opciones
   // Copiar grupos ya armados de otros productos de la misma categoría — apilado sobre modModal,
   // igual que modGrupoForm. Copia siempre independiente (ver ModificadorGrupoService): editar
@@ -340,6 +341,7 @@ export default function Platillos() {
           nombre: g.nombre,
           tipo: g.tipo,
           obligatorio: g.obligatorio,
+          maxSelecciones: g.tipo === 'MULTIPLE' ? (g.maxSelecciones ?? null) : null,
           opciones: (g.opciones ?? []).filter((o) => o.isActive !== false)
             .map((o) => ({ nombre: o.nombre, precioExtra: o.precioExtra })),
         }
@@ -360,8 +362,9 @@ export default function Platillos() {
     setModError('')
     setModNombreError('')
     setModOpcionErrors([])
+    setModMaxError('')
     setModGrupoForm({
-      id: null, nombre: '', tipo: 'UNICO', obligatorio: false,
+      id: null, nombre: '', tipo: 'UNICO', obligatorio: false, maxSelecciones: '',
       opciones: [{ id: null, nombre: '', precioExtra: '' }],
     })
   }
@@ -369,8 +372,9 @@ export default function Platillos() {
     setModError('')
     setModNombreError('')
     setModOpcionErrors([])
+    setModMaxError('')
     setModGrupoForm({
-      id: g.id, nombre: g.nombre, tipo: g.tipo, obligatorio: g.obligatorio,
+      id: g.id, nombre: g.nombre, tipo: g.tipo, obligatorio: g.obligatorio, maxSelecciones: g.maxSelecciones ?? '',
       opciones: (g.opciones ?? []).filter((o) => o.isActive !== false)
         .map((o) => ({ id: o.id, nombre: o.nombre, precioExtra: o.precioExtra })),
     })
@@ -425,15 +429,22 @@ export default function Platillos() {
       nombresVistos.add(clave)
       return ''
     })
-    return { nombreError, opcionErrors }
+    let maxError = ''
+    if (modGrupoForm.tipo === 'MULTIPLE' && modGrupoForm.maxSelecciones !== '') {
+      const m = Number(modGrupoForm.maxSelecciones)
+      if (!Number.isInteger(m) || m < 1) maxError = 'Pon un número entero desde 1, o déjalo vacío para sin límite'
+      else if (m > modGrupoForm.opciones.length) maxError = `No puede ser mayor que las opciones (${modGrupoForm.opciones.length})`
+    }
+    return { nombreError, opcionErrors, maxError }
   }
 
   async function handleSaveGrupo(e) {
     e.preventDefault()
-    const { nombreError, opcionErrors } = validateModGrupoForm()
+    const { nombreError, opcionErrors, maxError } = validateModGrupoForm()
     setModNombreError(nombreError)
     setModOpcionErrors(opcionErrors)
-    if (nombreError || opcionErrors.some((msg) => msg)) {
+    setModMaxError(maxError)
+    if (nombreError || maxError || opcionErrors.some((msg) => msg)) {
       setModError('')
       notify('Revisa los campos marcados en rojo', 'error')
       return
@@ -445,6 +456,7 @@ export default function Platillos() {
         nombre: modGrupoForm.nombre.trim(),
         tipo: modGrupoForm.tipo,
         obligatorio: modGrupoForm.obligatorio,
+        maxSelecciones: modGrupoForm.tipo === 'MULTIPLE' && modGrupoForm.maxSelecciones !== '' ? Number(modGrupoForm.maxSelecciones) : null,
         opciones: modGrupoForm.opciones.map((o) => ({
           id: o.id ?? undefined,
           nombre: o.nombre.trim(),
@@ -681,7 +693,7 @@ export default function Platillos() {
                       <p className="font-semibold text-gray-800">{g.nombre}</p>
                       <div className="flex gap-1.5 mt-1.5">
                         <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">
-                          {g.tipo === 'UNICO' ? 'Selección única' : 'Selección múltiple'}
+                          {g.tipo === 'UNICO' ? 'Selección única' : g.maxSelecciones ? `Hasta ${g.maxSelecciones}` : 'Selección múltiple'}
                         </span>
                         <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${g.obligatorio ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
                           {g.obligatorio ? 'Obligatorio' : 'Opcional'}
@@ -749,6 +761,25 @@ export default function Platillos() {
                   onChange={(e) => setModGrupoForm((f) => ({ ...f, obligatorio: e.target.checked }))} />
                 Obligatorio elegir algo de este grupo
               </label>
+
+              {modGrupoForm.tipo === 'MULTIPLE' && (
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1" htmlFor="mod-max">¿Cuántas se pueden elegir?</label>
+                  <div className="flex items-center gap-2">
+                    <button type="button"
+                      className={`py-2 px-3 rounded-lg text-xs font-semibold border ${modGrupoForm.maxSelecciones === '' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-200'}`}
+                      onClick={() => { setModMaxError(''); setModGrupoForm((f) => ({ ...f, maxSelecciones: '' })) }}>Sin límite</button>
+                    <span className="text-xs text-gray-500">o máximo</span>
+                    <input id="mod-max" type="number" min="1" max={modGrupoForm.opciones.length} inputMode="numeric"
+                      className={`input w-20 ${modMaxError ? 'border-red-400' : ''}`} placeholder="—"
+                      value={modGrupoForm.maxSelecciones}
+                      onChange={(e) => { setModMaxError(''); setModGrupoForm((f) => ({ ...f, maxSelecciones: e.target.value })) }} />
+                  </div>
+                  {modMaxError
+                    ? <p className="text-red-600 text-xs mt-1">{modMaxError}</p>
+                    : <p className="text-xs text-gray-500 mt-1">Ej. "Omelet 2 ingredientes" → máximo 2. Al llegar al máximo, las demás opciones se bloquean.</p>}
+                </div>
+              )}
 
               <div>
                 <label className="text-xs font-medium text-gray-600 block mb-1">Opciones *</label>
@@ -848,7 +879,7 @@ export default function Platillos() {
                         <label className="flex-1 min-w-0 cursor-pointer" onClick={() => toggleCopySelected(g.id)}>
                           <p className="font-semibold text-gray-800 text-sm">{g.nombre}</p>
                           <p className="text-xs text-gray-500 mt-0.5">
-                            {g.tipo === 'UNICO' ? 'Selección única' : 'Selección múltiple'}
+                            {g.tipo === 'UNICO' ? 'Selección única' : g.maxSelecciones ? `Hasta ${g.maxSelecciones}` : 'Selección múltiple'}
                             {g.obligatorio ? ' · Obligatorio' : ''}
                             {' · '}{opciones.length} opciones
                           </p>

@@ -91,7 +91,7 @@ function AppRoutes() {
                 <Route path="/categories" element={<PrivateRoute adminOnly><Categories /></PrivateRoute>} />
                 <Route path="/appearance" element={<PrivateRoute adminOnly><Appearance /></PrivateRoute>} />
                 <Route path="/store-info" element={<PrivateRoute adminOnly><StoreInfo /></PrivateRoute>} />
-                <Route path="/impresoras" element={<PrivateRoute adminOnly><Impresoras /></PrivateRoute>} />
+                <Route path="/impresoras" element={<PrivateRoute superAdminOnly><Impresoras /></PrivateRoute>} />
                 <Route path="/web-config" element={<PrivateRoute adminOnly><WebConfig /></PrivateRoute>} />
                 <Route path="/cash-cut-schedule" element={<PrivateRoute superAdminOnly><CashCutSchedule /></PrivateRoute>} />
                 <Route path="/mail-config" element={<PrivateRoute superAdminOnly><MailSettings /></PrivateRoute>} />
