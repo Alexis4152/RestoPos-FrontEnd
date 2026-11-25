@@ -3,6 +3,7 @@ import { uploadCashReceipt } from '../../api/cashCuts'
 import { getCashRegisters } from '../../api/cashRegisters'
 import { useNotify } from '../../context/NotifyContext'
 import { resolveMediaUrl } from '../../utils/media'
+import ModalCloseButton from '../../components/ModalCloseButton'
 
 // Utilidades y piezas compartidas por las pestañas de Cortes de Caja (Mi caja, Cajas,
 // Historial, Reembolsos).
@@ -65,8 +66,19 @@ export const MOVEMENT_LABELS = {
   SHORTAGE_PAYMENT: 'Pago de faltante',
   LOAN_OUT: 'Préstamo a otra caja',
   LOAN_IN: 'Préstamo de otra caja',
+  // No son movimientos de caja: cobros cancelados y devoluciones de cobros que se muestran
+  // junto a ellos en "Movimientos del turno" (ver CutPayments).
+  // (ver CancelledSales#cancelledToMovements).
+  CANCELLED_PAYMENT: 'Cobro cancelado',
+  PAYMENT_REFUND: 'Devolución de cobro',
+  // Con tarjeta o transferencia: el dinero no sale de la caja.
+  NON_CASH_REFUND: 'Devolución de cobro',
 }
 export const isOutflow = (type) => type === 'EXPENSE' || type === 'WITHDRAWAL' || type === 'REIMBURSEMENT' || type === 'LOAN_OUT'
+  || type === 'PAYMENT_REFUND'
+
+/** Lo que el movimiento cambia el efectivo esperado, con signo (salidas negativas). */
+export const signedCashAmount = (m) => m.cashEffect ?? Number(m.amount ?? 0) * (isOutflow(m.type) ? -1 : 1)
 
 /** Las demás cajas activas de la tienda (para préstamos entre cajas); se cargan solo si `enabled`. */
 export function useOtherRegisters(cut, enabled) {
@@ -94,7 +106,10 @@ export function RegisterSelect({ id, label, registers, value, onChange, error })
   )
 }
 
-export const DESTINATION_LABELS = { OWNER: 'Entregado al dueño', BANK: 'Depósito bancario', SAFE: 'Caja fuerte' }
+export const DESTINATION_LABELS = { OWNER: 'Entregado al dueño', BANK: 'Depósito bancario', SAFE: 'Caja fuerte', OTHER: 'Otro' }
+
+/** El destino de un retiro para mostrarlo; en "Otro", lo que se escribió a mano. */
+export const destinationLabel = (m) => (m.destination === 'OTHER' && m.destinationOther) || DESTINATION_LABELS[m.destination]
 
 /** Etiqueta de cómo se verificó un efectivo ("Contado por Luis", "No contado"...). */
 export function countLabel(method, name) {
@@ -122,22 +137,29 @@ export function CountBadge({ method, name }) {
 
 /** Insignia del tipo de movimiento (verde = entrada, rojo = salida). */
 export function MovementBadge({ type }) {
+  const color = type === 'CANCELLED_PAYMENT' || type === 'NON_CASH_REFUND' ? 'bg-gray-200 text-gray-700'
+    : isOutflow(type) ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
   return (
-    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${isOutflow(type) ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${color}`}>
       {MOVEMENT_LABELS[type] ?? type}
     </span>
   )
 }
 
-/** Monto con signo y color según entra o sale. */
-export function SignedAmount({ type, amount, className = '' }) {
-  const out = isOutflow(type)
-  return <span className={`font-semibold ${out ? 'text-red-700' : 'text-green-700'} ${className}`}>{out ? '−' : '+'}{fmt(amount)}</span>
+/**
+ * Monto con signo y color según entra o sale. Con `cashEffect` (cobros cancelados) el signo
+ * sale de ese valor; si es 0 (no era efectivo) el monto va en gris, sin signo.
+ */
+export function SignedAmount({ type, amount, cashEffect, className = '' }) {
+  const value = signedCashAmount({ type, amount, cashEffect })
+  if (value === 0 && cashEffect === 0) return <span className={`font-semibold text-gray-400 ${className}`}>{fmt(amount)}</span>
+  const out = value < 0
+  return <span className={`font-semibold ${out ? 'text-red-700' : 'text-green-700'} ${className}`}>{out ? '−' : '+'}{fmt(Math.abs(value))}</span>
 }
 
 /**
- * Modal estándar de la sección: fondo oscuro, clic fuera o ESC para cerrar, título y
- * subtítulo opcionales.
+ * Modal estándar de la sección: fondo oscuro, X o ESC para cerrar (no con clic afuera),
+ * título y subtítulo opcionales.
  */
 export function Modal({ title, subtitle, onClose, children, wide = false }) {
   useEffect(() => {
@@ -149,14 +171,12 @@ export function Modal({ title, subtitle, onClose, children, wide = false }) {
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div
         role="dialog" aria-modal="true"
-        className={`bg-white rounded-xl shadow-xl w-full ${wide ? 'max-w-lg' : 'max-w-md'} p-6 max-h-[90vh] overflow-y-auto`}
+        className={`relative bg-white rounded-xl shadow-xl w-full ${wide === 'xl' ? 'max-w-4xl' : wide ? 'max-w-lg' : 'max-w-md'} p-6 max-h-[90vh] overflow-y-auto`}
       >
-        <div className="flex justify-between items-start gap-3 mb-4">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900">{title}</h3>
-            {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
-          </div>
-          <button type="button" aria-label="Cerrar" className="text-gray-400 hover:text-gray-600 text-xl leading-none" onClick={onClose}>✕</button>
+        <ModalCloseButton onClick={onClose} />
+        <div className="mb-4 pr-8">
+          <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+          {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
         </div>
         {children}
       </div>
@@ -195,7 +215,7 @@ export function PersonSelect({ id, label, people, value, onChange }) {
 }
 
 /** Select de destino de un retiro. */
-export function DestinationSelect({ id, value, onChange }) {
+export function DestinationSelect({ id, value, onChange, other = '', onOtherChange, otherError }) {
   return (
     <div>
       <label htmlFor={id} className="text-xs font-medium text-gray-600 block mb-1">Destino del dinero</label>
@@ -203,6 +223,15 @@ export function DestinationSelect({ id, value, onChange }) {
         <option value="">Seleccionar...</option>
         {Object.entries(DESTINATION_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
       </select>
+      {value === 'OTHER' && (
+        <>
+          <input
+            id={`${id}-other`} aria-label="Escribe el destino" className="input mt-2" maxLength={100}
+            value={other} onChange={(e) => onOtherChange(e.target.value)} placeholder="Escribe el destino"
+          />
+          {otherError && <p className="text-red-600 text-xs mt-1">{otherError}</p>}
+        </>
+      )}
     </div>
   )
 }
@@ -307,8 +336,9 @@ export function PendingBreakdown({ pending, compact = false }) {
       {(pending.movements ?? []).map((m) => (
         <div key={m.id} className="flex justify-between gap-3">
           <span className="text-gray-600">
-            {m.type === 'WITHDRAWAL' ? 'Retiro' : 'Entrada'} de {m.registeredBy?.name ?? 'admin'} · {fmtTime(m.occurredAt ?? m.createdAt)}
-            {m.destination && ` · ${DESTINATION_LABELS[m.destination]}`}
+            {m.type === 'WITHDRAWAL' ? 'Retiro' : m.type === 'EXPENSE' ? 'Gasto' : 'Entrada'} de {m.registeredBy?.name ?? 'admin'} · {fmtTime(m.occurredAt ?? m.createdAt)}
+            {m.destination && ` · ${destinationLabel(m)}`}
+            {m.type === 'EXPENSE' && m.concept && ` · ${m.concept}`}
           </span>
           <SignedAmount type={m.type} amount={m.amount} />
         </div>

@@ -6,6 +6,8 @@ import { useNotify } from '../../context/NotifyContext'
 import { resolveMediaUrl } from '../../utils/media'
 import { Modal, Pagination, PersonSelect, ReceiptInput, fmt, fmtDate } from './common'
 import IconButton from '../../components/IconButton'
+import useTableSort from '../../hooks/useTableSort'
+import SortableTh from '../../components/SortableTh'
 
 const METHOD_LABELS = { TRANSFER: 'Transferencia', EXTERNAL_CASH: 'Efectivo externo' }
 
@@ -16,18 +18,21 @@ const METHOD_LABELS = { TRANSFER: 'Transferencia', EXTERNAL_CASH: 'Efectivo exte
 export default function ReimbursementsTab({ onChanged }) {
   const [status, setStatus] = useState('PENDING')
   const [page, setPage] = useState(0)
+  // Orden de la tabla por encabezado (se aplica en el servidor; ver useTableSort).
+  const tableSort = useTableSort('sort:reimbursements')
+  const onSort = (k) => { tableSort.toggle(k); setPage(0) }
   const [size, setSize] = useState(20)
   const [data, setData] = useState({ content: [], totalPages: 0, totalElements: 0 })
   const [pendingTotal, setPendingTotal] = useState(0)
   const [paying, setPaying] = useState(null)
 
   function load() {
-    getReimbursements({ status, page, size })
+    getReimbursements({ status, ...tableSort.params, page, size })
       .then((r) => setData(r.data.data ?? { content: [], totalPages: 0, totalElements: 0 }))
       .catch(() => setData({ content: [], totalPages: 0, totalElements: 0 }))
     getPendingReimbursementTotal().then((r) => setPendingTotal(r.data.data ?? 0)).catch(() => {})
   }
-  useEffect(() => { load() }, [status, page, size])
+  useEffect(() => { load() }, [status, page, size, tableSort.sort])
 
   const rows = data.content ?? []
 
@@ -54,9 +59,12 @@ export default function ReimbursementsTab({ onChanged }) {
           <table className="w-full text-sm min-w-[860px]">
             <thead className="bg-gray-50">
               <tr>
-                {['Persona', 'Motivo', 'Corte', 'Fecha', 'Monto', status === 'PENDING' ? '' : 'Pago'].map((h, i) => (
-                  <th key={i} className={`px-4 py-2 font-medium text-gray-600 ${h === 'Monto' ? 'text-right' : 'text-left'}`}>{h}</th>
-                ))}
+                <SortableTh label="Persona" sortKey="person" sort={tableSort.sort} onSort={onSort} className="px-4 py-2 font-medium text-gray-600 text-left" align="left" />
+                <th className="px-4 py-2 font-medium text-gray-600 text-left">Motivo</th>
+                <th className="px-4 py-2 font-medium text-gray-600 text-left">Corte</th>
+                <SortableTh label="Fecha" sortKey="date" sort={tableSort.sort} onSort={onSort} className="px-4 py-2 font-medium text-gray-600 text-left" align="left" />
+                <SortableTh label="Monto" sortKey="amount" sort={tableSort.sort} onSort={onSort} className="px-4 py-2 font-medium text-gray-600 text-right" align="right" />
+                <th className="px-4 py-2 font-medium text-gray-600 text-left">{status === 'PENDING' ? '' : 'Pago'}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">

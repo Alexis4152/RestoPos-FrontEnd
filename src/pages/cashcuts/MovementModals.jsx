@@ -148,6 +148,7 @@ export function ExitModal({ cut, available, blind = false, reimbursements, peopl
   const [concept, setConcept] = useState('')
   const [personId, setPersonId] = useState(user?.id ?? null)
   const [destination, setDestination] = useState(null)
+  const [destinationOther, setDestinationOther] = useState('')
   const [reference, setReference] = useState('')
   const [receiptPath, setReceiptPath] = useState('')
   const [reimbursementId, setReimbursementId] = useState(reimbursements[0]?.id ?? null)
@@ -179,6 +180,7 @@ export function ExitModal({ cut, available, blind = false, reimbursements, peopl
     if (tab === 'EXPENSE' && !concept.trim()) errs.concept = 'Escribe el concepto del gasto'
     if (concept.length > 150) errs.concept = 'El concepto no puede tener más de 150 caracteres'
     if (tab === 'WITHDRAWAL' && !destination) errs.destination = 'Indica el destino del dinero'
+    if (tab === 'WITHDRAWAL' && destination === 'OTHER' && !destinationOther.trim()) errs.destinationOther = 'Escribe el destino'
     if (tab === 'LOAN_OUT' && !counterpartId) errs.counterpart = 'Elige la caja a la que prestas'
     if (tab === 'REIMBURSEMENT' && !selectedReimbursement) errs.reimbursement = 'Elige el reembolso a pagar'
     if (reference.length > 100) errs.reference = 'La referencia no puede tener más de 100 caracteres'
@@ -200,6 +202,7 @@ export function ExitModal({ cut, available, blind = false, reimbursements, peopl
             type: tab, amount: amountNum, concept: concept.trim() || null,
             personId: tab === 'WITHDRAWAL' ? personId : null,
             destination: tab === 'WITHDRAWAL' ? destination : null,
+            destinationOther: tab === 'WITHDRAWAL' && destination === 'OTHER' ? destinationOther.trim() : null,
             counterpartRegisterId: tab === 'LOAN_OUT' ? counterpartId : null,
             reference: reference.trim() || null, receiptPath: tab === 'LOAN_OUT' ? null : receiptPath || null,
           }
@@ -294,7 +297,7 @@ export function ExitModal({ cut, available, blind = false, reimbursements, peopl
             )}
             {tab === 'WITHDRAWAL' && (
               <div>
-                <DestinationSelect id="exit-destination" value={destination} onChange={setDestination} />
+                <DestinationSelect id="exit-destination" value={destination} onChange={setDestination} other={destinationOther} onOtherChange={setDestinationOther} otherError={errors.destinationOther} />
                 {errors.destination && <p className="text-red-600 text-xs mt-1">{errors.destination}</p>}
               </div>
             )}

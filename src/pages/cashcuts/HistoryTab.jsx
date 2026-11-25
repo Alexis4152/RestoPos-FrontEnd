@@ -5,7 +5,10 @@ import ResolveArqueoModal, { ARQUEO_RESOLUTION_LABELS } from './ResolveArqueoMod
 import { resolveMediaUrl } from '../../utils/media'
 import { filaClick, FILA_CLICK } from '../../utils/filaClick'
 import IconButton from '../../components/IconButton'
-import { CountBadge, Modal, MovementBadge, Pagination, SignedAmount, SummaryRow, fmt, fmtDate, fmtTime } from './common'
+import { CountBadge, Modal, Pagination, SummaryRow, fmt, fmtDate } from './common'
+import CutMovementsTable from './CutMovementsTable'
+import useTableSort from '../../hooks/useTableSort'
+import SortableTh from '../../components/SortableTh'
 
 const EMPTY_FILTERS = { from: '', to: '', status: '', userId: '', arqueoStatus: '' }
 
@@ -21,6 +24,9 @@ const closedByLabel = (c) => c.status !== 'CLOSED' ? '—' : (c.closedBy?.name ?
 export default function HistoryTab({ onChanged }) {
   const [filters, setFilters] = useState(EMPTY_FILTERS)
   const [page, setPage] = useState(0)
+  // Orden de la tabla por encabezado (se aplica en el servidor; ver useTableSort).
+  const tableSort = useTableSort('sort:cashcuts')
+  const onSort = (k) => { tableSort.toggle(k); setPage(0) }
   const [size, setSize] = useState(20)
   const [pageData, setPageData] = useState({ content: [], totalElements: 0, totalPages: 0 })
   const [cashiers, setCashiers] = useState([])
@@ -31,7 +37,7 @@ export default function HistoryTab({ onChanged }) {
 
   useEffect(() => {
     const params = {
-      page, size,
+      page, size, ...tableSort.params,
       status: filters.status || undefined,
       userId: filters.userId || undefined,
       arqueoStatus: filters.arqueoStatus || undefined,
@@ -41,7 +47,7 @@ export default function HistoryTab({ onChanged }) {
     getCashCuts(params)
       .then((r) => setPageData(r.data.data ?? { content: [], totalElements: 0, totalPages: 0 }))
       .catch(() => setPageData({ content: [], totalElements: 0, totalPages: 0 }))
-  }, [page, size, filters, reloadKey])
+  }, [page, size, filters, reloadKey, tableSort.sort])
 
   useEffect(() => {
     getCashCutCashiers().then((r) => setCashiers(r.data.data ?? [])).catch(() => setCashiers([]))
@@ -102,9 +108,16 @@ export default function HistoryTab({ onChanged }) {
           <table className="w-full text-sm min-w-[1000px]">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['#', 'Caja', 'Apertura', 'Cierre', 'Cajero', 'Cerrado por', 'Ventas', 'Arqueo', 'Estado', ''].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 font-medium text-gray-600">{h}</th>
-                ))}
+                <SortableTh label="#" sortKey="id" sort={tableSort.sort} onSort={onSort} className="text-left px-4 py-3 font-medium text-gray-600" align="left" />
+                <SortableTh label="Caja" sortKey="register" sort={tableSort.sort} onSort={onSort} className="text-left px-4 py-3 font-medium text-gray-600" align="left" />
+                <SortableTh label="Apertura" sortKey="opened" sort={tableSort.sort} onSort={onSort} className="text-left px-4 py-3 font-medium text-gray-600" align="left" />
+                <SortableTh label="Cierre" sortKey="closed" sort={tableSort.sort} onSort={onSort} className="text-left px-4 py-3 font-medium text-gray-600" align="left" />
+                <SortableTh label="Cajero" sortKey="cashier" sort={tableSort.sort} onSort={onSort} className="text-left px-4 py-3 font-medium text-gray-600" align="left" />
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Cerrado por</th>
+                <SortableTh label="Ventas" sortKey="sales" sort={tableSort.sort} onSort={onSort} className="text-left px-4 py-3 font-medium text-gray-600" align="left" />
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Arqueo</th>
+                <SortableTh label="Estado" sortKey="status" sort={tableSort.sort} onSort={onSort} className="text-left px-4 py-3 font-medium text-gray-600" align="left" />
+                <th className="text-left px-4 py-3 font-medium text-gray-600"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -184,7 +197,7 @@ export function CutDetailModal({ cut, onClose }) {
   const diff = cut.cashDifference != null ? Number(cut.cashDifference) : null
 
   return (
-    <Modal title={`Corte #${cut.id}`} subtitle={`${cut.cashRegister?.name ? `${cut.cashRegister.name} · ` : ''}${cut.user?.name ?? ''}`} onClose={onClose} wide>
+    <Modal title={`Corte #${cut.id}`} subtitle={`${cut.cashRegister?.name ? `${cut.cashRegister.name} · ` : ''}${cut.user?.name ?? ''}`} onClose={onClose} wide="xl">
       <div className="space-y-4 text-sm">
         <div className="space-y-1.5">
           <SummaryRow label="Apertura">{fmtDate(cut.openedAt)}</SummaryRow>
@@ -213,13 +226,22 @@ export function CutDetailModal({ cut, onClose }) {
           <SummaryRow label="  · Tarjeta">{fmt(s.cardSales)}</SummaryRow>
           <SummaryRow label="  · Transferencia">{fmt(s.transferSales)}</SummaryRow>
           <SummaryRow label="Total ventas">{fmt(s.totalSales)}</SummaryRow>
-          {s.cancelledCount > 0 && <p className="text-red-600">Ventas canceladas ({s.cancelledCount}): −{fmt(s.cancelledTotal)}</p>}
+          {s.cancelledCount > 0 && <p className="text-red-600">Cobros cancelados ({s.cancelledCount}): −{fmt(s.cancelledTotal)}</p>}
+          {Number(summary?.cardRefunds) > 0 && (
+            <SummaryRow label="Devoluciones con tarjeta (informativo)">{fmt(summary.cardRefunds)}</SummaryRow>
+          )}
+          {Number(summary?.transferRefunds) > 0 && (
+            <SummaryRow label="Devoluciones con transferencia (informativo)">{fmt(summary.transferRefunds)}</SummaryRow>
+          )}
           <SummaryRow label="Entradas">+{fmt(summary?.entriesTotal ?? cut.entriesTotal)}</SummaryRow>
           <SummaryRow label="Gastos">−{fmt(summary?.expensesTotal ?? cut.expenses)}</SummaryRow>
           <SummaryRow label="Retiros">−{fmt(summary?.withdrawalsTotal ?? cut.withdrawalsTotal)}</SummaryRow>
           <SummaryRow label="Reembolsos pagados">−{fmt(summary?.reimbursementsTotal ?? cut.reimbursementsTotal)}</SummaryRow>
           {Number(summary?.loansOutTotal ?? cut.loansOutTotal) > 0 && (
             <SummaryRow label="Préstamos a otras cajas">−{fmt(summary?.loansOutTotal ?? cut.loansOutTotal)}</SummaryRow>
+          )}
+          {Number(summary?.refundsTotal ?? cut.refundsTotal) > 0 && (
+            <SummaryRow label="Devoluciones en efectivo">−{fmt(summary?.refundsTotal ?? cut.refundsTotal)}</SummaryRow>
           )}
           <div className="border-t border-gray-100 pt-1.5">
             <SummaryRow label="Efectivo esperado" strong>{fmt(closed ? cut.closingAmount : summary?.expectedCash)}</SummaryRow>
@@ -254,22 +276,7 @@ export function CutDetailModal({ cut, onClose }) {
           </div>
         )}
 
-        {movements.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold text-gray-600 mb-1">Movimientos de efectivo</p>
-            <ul className="divide-y divide-gray-100">
-              {movements.map((m) => (
-                <li key={m.id} className="py-1.5 flex justify-between gap-3">
-                  <span className="flex flex-col">
-                    <span className="flex items-center gap-2"><MovementBadge type={m.type} /><span className="text-gray-500 text-xs">{fmtTime(m.createdAt)}</span></span>
-                    <span className="text-gray-700">{m.concept ?? '—'}{m.person ? ` · ${m.person.name}` : ''}</span>
-                  </span>
-                  <SignedAmount type={m.type} amount={m.amount} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        <CutMovementsTable cutId={cut.id} movements={movements} sortKey="sort:cutDetailMovements" card={false} />
 
         {cut.notes && <p className="text-gray-500 text-xs">{cut.notes}</p>}
       </div>

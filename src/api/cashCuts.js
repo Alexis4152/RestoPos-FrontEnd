@@ -92,6 +92,18 @@ export const getCashCutMovements = (id) => api.get(`/cash-cuts/${id}/movements`)
 /** Movimientos con la caja cerrada que un corte vio al recibir la caja. */
 export const getCashCutReceivedMovements = (id) => api.get(`/cash-cuts/${id}/received-movements`)
 
+/** Cobros cancelados de un corte, con quién los canceló (y si fue alguien distinto al cajero). */
+export const getCashCutCancelledPayments = (id) => api.get(`/cash-cuts/${id}/cancelled-payments`)
+
+/** Devoluciones de cobros hechas en un corte (en efectivo salen de la caja; las demás son informativas). */
+export const getCashCutRefunds = (id) => api.get(`/cash-cuts/${id}/refunds`)
+
+/**
+ * Igual que getOpenCashCut, pero para el widget "Corte de caja" del Inicio: para SUPER_ADMIN y
+ * SUPERVISOR responde con el corte abierto de la tienda donde actúan (no abren cortes propios).
+ */
+export const getOpenCashCutForDashboard = () => api.get('/cash-cuts/open-for-dashboard')
+
 /**
  * Registra un movimiento en un corte abierto.
  * @param {number|string} id Id del corte.

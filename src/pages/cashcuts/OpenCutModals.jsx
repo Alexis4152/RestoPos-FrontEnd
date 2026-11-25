@@ -1,9 +1,14 @@
 import { useState } from 'react'
 import { openCashCut } from '../../api/cashCuts'
+import { useAuth } from '../../context/AuthContext'
 import { useNotify } from '../../context/NotifyContext'
+import { ClosedMovementModal } from './RegisterModals'
 import {
   AmountField, CountBadge, LargeDifferenceConfirm, Modal, PendingBreakdown, fmt, fmtTime, isLargeDifference, isUnreasonableCount, toAmount, MAX_AMOUNT,
 } from './common'
+
+// Quién puede aparecer como responsable de un gasto o retiro al recibir la caja.
+const MOVEMENT_ROLES = ['CASHIER', 'ADMIN', 'SUPERVISOR']
 
 /**
  * Paso 1 de abrir corte: elegir la caja. Cualquier caja activa y libre de la tienda; las
@@ -85,8 +90,13 @@ export function ChooseRegisterModal({ registers, isAdmin = false, onClose, onCon
  * Paso 2: recibir la caja. El cajero cuenta el efectivo; si no coincide con lo que debía
  * recibir, la nota es obligatoria y la diferencia queda registrada para el administrador.
  * El fondo inicial es siempre lo que contó (lo que de verdad hay en la caja).
+ *
+ * Si su fondo es menor a lo que quedó, puede registrar el excedente como gastos o retiros
+ * (bajan lo que recibe). Lo que no registre queda como diferencia, al confirmar que ya no va
+ * a registrar más.
  */
-export function ReceiveModal({ register, onBack, onClose, onOpened }) {
+export function ReceiveModal({ register, people, onRefresh, onBack, onClose, onOpened }) {
+  const { user } = useAuth()
   const { notify, confirmDialog } = useNotify()
   const pending = register.pending
   const expected = pending?.amount ?? null
@@ -96,19 +106,29 @@ export function ReceiveModal({ register, onBack, onClose, onOpened }) {
   const [confirmValue, setConfirmValue] = useState('')
   const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
+  const [registering, setRegistering] = useState(false)
+  const [noMore, setNoMore] = useState(false)
+  const [amountsSure, setAmountsSure] = useState(false)
+
+  const clearError = (key) => setErrors((prev) => ({ ...prev, [key]: undefined }))
 
   const countedNum = toAmount(counted)
   // Caja entregada vacía ($0): lo que cuente es un fondo nuevo, no una diferencia — solo se
   // pide confirmar el monto (volver a escribirlo), sin aviso de diferencia ni nota obligatoria.
   const emptyHandover = expected != null && Number(expected) === 0
   const diff = expected != null && !emptyHandover && countedNum != null ? Math.round((countedNum - Number(expected)) * 100) / 100 : null
-  const hasDiff = diff != null && diff !== 0
+  // Excedente: lo que quedó y no forma parte de su fondo. Mientras pueda registrarlo como gasto
+  // o retiro todavía no es una diferencia; lo es cuando confirma que ya no va a registrar más.
+  const excess = diff != null && diff < 0 ? -diff : 0
+  const settled = excess === 0 || noMore
+  const hasDiff = diff != null && diff !== 0 && settled
+  const myMovements = (pending?.movements ?? []).filter((m) => m.registeredBy?.id === user?.id)
   // Contra errores de dedo (mismas reglas que el cierre): monto no razonable bloquea;
   // diferencia grande pide volver a escribir el monto.
   const unreasonable = !emptyHandover && expected != null && countedNum != null && isUnreasonableCount(Number(expected), countedNum)
   const large = emptyHandover
     ? countedNum != null && countedNum > 0
-    : expected != null && countedNum != null && !unreasonable && isLargeDifference(Number(expected), countedNum)
+    : settled && expected != null && countedNum != null && !unreasonable && isLargeDifference(Number(expected), countedNum)
   const confirmed = toAmount(confirmValue) === countedNum
 
   async function handleSubmit(e) {
@@ -117,6 +137,8 @@ export function ReceiveModal({ register, onBack, onClose, onOpened }) {
     if (countedNum == null) errs.counted = 'Captura cuánto efectivo contaste'
     if (countedNum != null && countedNum > MAX_AMOUNT) errs.counted = ' '
     if (unreasonable) errs.counted = ' '
+    if (!settled) errs.noMore = 'Registra el excedente o confirma que ya no vas a registrar más'
+    if (myMovements.length > 0 && !amountsSure) errs.amountsSure = 'Confirma que las cantidades que registraste son correctas'
     if (large && !confirmed) errs.confirm = 'Vuelve a escribir el monto para confirmarlo'
     if (hasDiff && !note.trim()) errs.note = 'La nota es obligatoria si lo que contaste no coincide'
     if (note.length > 200) errs.note = 'La nota no puede tener más de 200 caracteres'
@@ -136,6 +158,21 @@ export function ReceiveModal({ register, onBack, onClose, onOpened }) {
     }
   }
 
+  if (registering) {
+    return (
+      <ClosedMovementModal
+        register={register} initialType="EXPENSE" people={people.filter((p) => MOVEMENT_ROLES.includes(p.role))} excess={excess}
+        onClose={() => setRegistering(false)}
+        onSaved={async () => {
+          await onRefresh()
+          setRegistering(false)
+          setNoMore(false)
+          setAmountsSure(false)
+        }}
+      />
+    )
+  }
+
   return (
     <Modal title={`Recibir ${register.name}`} subtitle="Cuenta el efectivo antes de empezar a cobrar." onClose={onClose} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -153,9 +190,24 @@ export function ReceiveModal({ register, onBack, onClose, onOpened }) {
         )}
 
         <AmountField
-          id="receive-counted" label={expected != null ? '¿Cuánto cuentas tú? ($)' : 'Fondo inicial ($)'}
-          value={counted} onChange={(v) => { setCounted(v); setConfirmValue('') }} error={errors.counted?.trim()} autoFocus
+          id="receive-counted" label={expected != null ? '¿Con cuánto abres? Cuenta tu fondo ($)' : 'Fondo inicial ($)'}
+          value={counted} onChange={(v) => { setCounted(v); setConfirmValue(''); setNoMore(false) }} error={errors.counted?.trim()} autoFocus
         />
+
+        {excess > 0 && (
+          <div className="border border-amber-300 bg-amber-50 rounded-xl p-3 space-y-3">
+            <div className="flex justify-between font-semibold text-amber-900">
+              <span>Excedente</span><span>{fmt(excess)}</span>
+            </div>
+            <p className="text-sm text-amber-900">Es lo que quedó y no forma parte de tu fondo. Si se usó o se lo llevaron, regístralo:</p>
+            <button type="button" className="btn-secondary" onClick={() => setRegistering(true)}>Registrar gasto o retiro</button>
+            <label className="flex gap-3 items-start cursor-pointer">
+              <input type="checkbox" className="mt-0.5 w-4 h-4" checked={noMore} onChange={(e) => { setNoMore(e.target.checked); clearError('noMore') }} />
+              <span className="text-sm">Ya no voy a registrar más gastos ni retiros. Lo que falta queda como diferencia.</span>
+            </label>
+            {errors.noMore && <p className="text-red-600 text-xs">{errors.noMore}</p>}
+          </div>
+        )}
 
         {unreasonable && (
           <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg p-3">
@@ -190,8 +242,18 @@ export function ReceiveModal({ register, onBack, onClose, onOpened }) {
           {errors.note && <p className="text-red-600 text-xs mt-1">{errors.note}</p>}
         </div>
 
+        {myMovements.length > 0 && (
+          <>
+            <label className="flex gap-3 items-start p-3 border border-gray-200 rounded-lg cursor-pointer">
+              <input type="checkbox" className="mt-0.5 w-4 h-4" checked={amountsSure} onChange={(e) => { setAmountsSure(e.target.checked); clearError('amountsSure') }} />
+              <span className="text-sm">Revisé las cantidades que registré como gastos y retiros, y son correctas.</span>
+            </label>
+            {errors.amountsSure && <p className="text-red-600 text-xs -mt-2">{errors.amountsSure}</p>}
+          </>
+        )}
+
         <label className="flex gap-3 items-start p-3 border border-gray-200 rounded-lg cursor-pointer">
-          <input type="checkbox" className="mt-0.5 w-4 h-4" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+          <input type="checkbox" className="mt-0.5 w-4 h-4" checked={agreed} onChange={(e) => { setAgreed(e.target.checked); clearError('agreed') }} />
           <span className="text-sm">Conté el efectivo y recibo la caja con <strong>{countedNum != null ? fmt(countedNum) : '—'}</strong>. Estoy de acuerdo.</span>
         </label>
         {errors.agreed && <p className="text-red-600 text-xs -mt-2">{errors.agreed}</p>}

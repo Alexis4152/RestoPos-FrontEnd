@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getSalesSummary } from '../api/reports'
-import { getOpenCashCut } from '../api/cashCuts'
+import { getOpenCashCutForDashboard } from '../api/cashCuts'
 import { searchProducts } from '../api/products'
 
 /**
@@ -51,7 +51,7 @@ export default function Dashboard() {
       .catch(() => {})
 
     // Corte de caja abierto (si existe) en este momento, para el indicador "Corte de caja".
-    getOpenCashCut()
+    getOpenCashCutForDashboard()
       .then((r) => setCashCut(r.data.data))
       .catch(() => {})
 

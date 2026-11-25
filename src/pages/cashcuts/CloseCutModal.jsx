@@ -130,11 +130,21 @@ export default function CloseCutModal({ cut, summary, blind = false, endOfDay = 
             {Number(summary?.loansOutTotal) > 0 && (
               <SummaryRow label="Préstamos a otras cajas (no es gasto)"><span className="text-red-700">−{fmt(summary?.loansOutTotal)}</span></SummaryRow>
             )}
+            {Number(summary?.refundsTotal) > 0 && (
+              <SummaryRow label="Devoluciones en efectivo"><span className="text-red-700">−{fmt(summary?.refundsTotal)}</span></SummaryRow>
+            )}
             <div className="border-t border-gray-200 pt-1.5"><SummaryRow label="Efectivo esperado" strong>{fmt(expected)}</SummaryRow></div>
-            <p className="text-xs text-gray-500 pt-1">
-              Ventas tarjeta/transferencia: {fmt(Number(summary?.cardSales ?? 0) + Number(summary?.transferSales ?? 0))} (no son efectivo).
-              {summary?.cancelledCount > 0 && ` · ${summary.cancelledCount} venta(s) cancelada(s) por ${fmt(summary.cancelledTotal)}.`}
-            </p>
+            {(Number(summary?.cardRefunds) > 0 || Number(summary?.transferRefunds) > 0) && (
+              <>
+                <p className="text-gray-500">Devoluciones (informativo: no salen de la caja como efectivo)</p>
+                <SummaryRow label="  · Tarjeta">{fmt(summary?.cardRefunds)}</SummaryRow>
+                <SummaryRow label="  · Transferencia">{fmt(summary?.transferRefunds)}</SummaryRow>
+              </>
+            )}
+            <SummaryRow label="Ventas tarjeta/transferencia (no son efectivo)">{fmt(Number(summary?.cardSales ?? 0) + Number(summary?.transferSales ?? 0))}</SummaryRow>
+            {summary?.cancelledCount > 0 && (
+              <SummaryRow label={`Cobros cancelados (${summary.cancelledCount})`}>{fmt(summary.cancelledTotal)}</SummaryRow>
+            )}
           </div>
         )}
 

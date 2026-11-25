@@ -60,19 +60,25 @@ export function RegisterFormModal({ register, onClose, onSaved }) {
 }
 
 /**
- * Retirar o agregar efectivo con la caja cerrada (entre turnos). Ajusta lo que recibirá
- * quien la abra; si el admin cuenta lo que queda, la entrega pasa a ser su conteo.
+ * Movimiento de efectivo con la caja cerrada (entre turnos). Ajusta lo que recibirá quien la
+ * abra; si el admin cuenta lo que queda, la entrega pasa a ser su conteo.
+ *
+ * @param excess con valor, se abre al recibir la caja: solo gasto o retiro, hasta ese monto
+ *               (lo que quedó y no forma parte del fondo de quien la recibe).
  */
-export function ClosedMovementModal({ register, initialType, people, onClose, onSaved }) {
+export function ClosedMovementModal({ register, initialType, people, excess, onClose, onSaved }) {
   const { user } = useAuth()
   const { notify, confirmDialog } = useNotify()
+  const receiving = excess != null
   const current = Number(register.pending?.amount ?? 0)
   const [type, setType] = useState(initialType ?? 'WITHDRAWAL')
   const [amount, setAmount] = useState('')
-  const [personId, setPersonId] = useState(user?.id ?? null)
+  const [personId, setPersonId] = useState(receiving ? null : user?.id ?? null)
   const [destination, setDestination] = useState(null)
+  const [destinationOther, setDestinationOther] = useState('')
   const [reference, setReference] = useState('')
   const [concept, setConcept] = useState('')
+  const [receiptPath, setReceiptPath] = useState('')
   const [didCount, setDidCount] = useState(false)
   const [remaining, setRemaining] = useState('')
   const [errors, setErrors] = useState({})
@@ -80,8 +86,11 @@ export function ClosedMovementModal({ register, initialType, people, onClose, on
 
   const amountNum = toAmount(amount)
   const isWithdrawal = type === 'WITHDRAWAL'
-  const expectedRemaining = amountNum != null ? (isWithdrawal ? current - amountNum : current + amountNum) : current
-  const exceeds = isWithdrawal && amountNum != null && amountNum > current
+  const isExpense = type === 'EXPENSE'
+  const isOutflow = isWithdrawal || isExpense
+  const available = receiving ? excess : current
+  const expectedRemaining = amountNum != null ? (isOutflow ? current - amountNum : current + amountNum) : current
+  const exceeds = isOutflow && amountNum != null && amountNum > available
   const remainingNum = toAmount(remaining)
   const finalAmount = didCount && remainingNum != null ? remainingNum : expectedRemaining
 
@@ -91,24 +100,31 @@ export function ClosedMovementModal({ register, initialType, people, onClose, on
     if (amountNum == null || amountNum <= 0) errs.amount = 'Captura un monto mayor a cero'
     if (amountNum != null && amountNum > MAX_AMOUNT) errs.amount = ''
     if (isWithdrawal && !destination) errs.destination = 'Indica el destino del dinero'
+    if (isWithdrawal && destination === 'OTHER' && !destinationOther.trim()) errs.destinationOther = 'Escribe el destino'
+    if (isExpense && !concept.trim()) errs.concept = 'Escribe el concepto del gasto'
+    if (receiving && !personId) errs.person = isExpense ? 'Indica quién hizo el gasto' : 'Indica quién retiró'
     if (didCount && remainingNum == null) errs.remaining = 'Captura cuánto queda'
     setErrors(errs)
     if (Object.keys(errs).length > 0 || exceeds) return
-    const msg = isWithdrawal
-      ? `¿Retirar ${fmt(amountNum)} de ${register.name}? Quien abra la caja recibirá ${fmt(finalAmount)}.`
-      : `¿Agregar ${fmt(amountNum)} a ${register.name}? Quien abra la caja recibirá ${fmt(finalAmount)}.`
-    if (!(await confirmDialog(msg, { confirmText: isWithdrawal ? 'Registrar retiro' : 'Agregar efectivo', danger: isWithdrawal }))) return
+    const msg = receiving
+      ? `¿Registrar ${isExpense ? 'el gasto' : 'el retiro'} de ${fmt(amountNum)}? Se avisará por correo a los destinatarios del corte.`
+      : isWithdrawal
+        ? `¿Retirar ${fmt(amountNum)} de ${register.name}? Quien abra la caja recibirá ${fmt(finalAmount)}.`
+        : `¿Agregar ${fmt(amountNum)} a ${register.name}? Quien abra la caja recibirá ${fmt(finalAmount)}.`
+    if (!(await confirmDialog(msg, { confirmText: isExpense ? 'Registrar gasto' : isWithdrawal ? 'Registrar retiro' : 'Agregar efectivo', danger: isOutflow }))) return
     setLoading(true)
     try {
       await addClosedRegisterMovement(register.id, {
         type, amount: amountNum,
-        personId: isWithdrawal ? personId : null,
+        personId: isOutflow ? personId : null,
         destination: isWithdrawal ? destination : null,
+        destinationOther: isWithdrawal && destination === 'OTHER' ? destinationOther.trim() : null,
         reference: reference.trim() || null,
         concept: concept.trim() || null,
+        receiptPath: isExpense ? receiptPath || null : null,
         countedRemaining: didCount ? remainingNum : null,
       })
-      notify(isWithdrawal ? 'Retiro registrado' : 'Entrada registrada', 'success')
+      notify(isExpense ? 'Gasto registrado' : isWithdrawal ? 'Retiro registrado' : 'Entrada registrada', 'success')
       onSaved()
     } catch (err) {
       notify(err.response?.data?.message ?? 'No se pudo registrar el movimiento', 'error')
@@ -118,10 +134,16 @@ export function ClosedMovementModal({ register, initialType, people, onClose, on
   }
 
   return (
-    <Modal title={`${register.name} (cerrada)`} subtitle="Movimiento entre turnos. Lo verá el siguiente cajero al recibir." onClose={onClose} wide>
+    <Modal
+      title={receiving ? 'Registrar gasto o retiro' : `${register.name} (cerrada)`}
+      subtitle={receiving ? 'De lo que quedó en la caja y no forma parte de tu fondo.' : 'Movimiento entre turnos. Lo verá el siguiente cajero al recibir.'}
+      onClose={onClose} wide
+    >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div role="tablist" aria-label="Tipo de movimiento" className="grid grid-cols-2 gap-1 p-1 bg-gray-100 rounded-xl">
-          {[{ key: 'WITHDRAWAL', label: 'Retirar' }, { key: 'FLOAT', label: 'Agregar efectivo' }].map((t) => (
+          {(receiving
+            ? [{ key: 'EXPENSE', label: 'Gasto' }, { key: 'WITHDRAWAL', label: 'Retiro' }]
+            : [{ key: 'WITHDRAWAL', label: 'Retirar' }, { key: 'FLOAT', label: 'Agregar efectivo' }]).map((t) => (
             <button key={t.key} type="button" role="tab" aria-selected={type === t.key}
               className={`min-h-[40px] rounded-lg text-sm font-semibold ${type === t.key ? 'bg-white shadow text-gray-900' : 'text-gray-600'}`}
               onClick={() => setType(t.key)}>{t.label}</button>
@@ -130,37 +152,43 @@ export function ClosedMovementModal({ register, initialType, people, onClose, on
 
         <div className="flex justify-between items-center bg-gray-50 rounded-lg p-3">
           <span className="text-sm text-gray-600">
-            En caja ahora
+            {receiving ? 'Excedente' : 'En caja ahora'}
             {register.pending?.lastUserName && <span className="block text-xs">Dejó {register.pending.lastUserName}</span>}
           </span>
-          <span className="font-bold">{fmt(current)}</span>
+          <span className="font-bold">{fmt(available)}</span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <AmountField id="closed-amount" label={isWithdrawal ? 'Monto a retirar ($)' : 'Monto a agregar ($)'} value={amount} onChange={setAmount} error={errors.amount} />
+          <AmountField id="closed-amount" label={isExpense ? 'Monto del gasto ($)' : isWithdrawal ? 'Monto a retirar ($)' : 'Monto a agregar ($)'} value={amount} onChange={setAmount} error={errors.amount} />
           {isWithdrawal ? (
             <div>
-              <DestinationSelect id="closed-destination" value={destination} onChange={setDestination} />
+              <DestinationSelect id="closed-destination" value={destination} onChange={setDestination} other={destinationOther} onOtherChange={setDestinationOther} otherError={errors.destinationOther} />
               {errors.destination && <p className="text-red-600 text-xs mt-1">{errors.destination}</p>}
             </div>
           ) : (
             <div>
-              <label htmlFor="closed-concept" className="text-xs font-medium text-gray-600 block mb-1">Motivo (opcional)</label>
-              <input id="closed-concept" className="input" value={concept} onChange={(e) => setConcept(e.target.value)} placeholder="Ej. Cambio para el día" />
+              <label htmlFor="closed-concept" className="text-xs font-medium text-gray-600 block mb-1">{isExpense ? 'Concepto' : 'Motivo (opcional)'}</label>
+              <input id="closed-concept" className="input" value={concept} onChange={(e) => setConcept(e.target.value)} placeholder={isExpense ? 'Ej. Pago de garrafón' : 'Ej. Cambio para el día'} />
+              {errors.concept && <p className="text-red-600 text-xs mt-1">{errors.concept}</p>}
             </div>
           )}
         </div>
-        {isWithdrawal && (
+        {isOutflow && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <PersonSelect id="closed-person" label="¿Quién retira?" people={people} value={personId} onChange={setPersonId} />
+            <div>
+              <PersonSelect id="closed-person" label={isExpense ? '¿Quién hizo el gasto?' : '¿Quién retira?'} people={people} value={personId} onChange={setPersonId} />
+              {errors.person && <p className="text-red-600 text-xs mt-1">{errors.person}</p>}
+            </div>
             <div>
               <label htmlFor="closed-reference" className="text-xs font-medium text-gray-600 block mb-1">Referencia (opcional)</label>
               <input id="closed-reference" className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Folio, sobre..." />
             </div>
           </div>
         )}
-        {exceeds && <p className="text-sm text-red-700">Solo hay {fmt(current)} en la caja.</p>}
+        {isExpense && <ReceiptInput value={receiptPath} onChange={setReceiptPath} />}
+        {exceeds && <p className="text-sm text-red-700">{receiving ? `El excedente es de ${fmt(available)}.` : `Solo hay ${fmt(current)} en la caja.`}</p>}
 
+        {!receiving && (
         <div className="border border-gray-200 rounded-xl p-3 space-y-3">
           <label className="flex gap-3 items-start cursor-pointer">
             <input type="checkbox" className="mt-0.5 w-4 h-4" checked={didCount} onChange={(e) => setDidCount(e.target.checked)} />
@@ -180,8 +208,9 @@ export function ClosedMovementModal({ register, initialType, people, onClose, on
             </div>
           )}
         </div>
+        )}
 
-        {amountNum != null && !exceeds && (
+        {!receiving && amountNum != null && !exceeds && (
           <p className="text-sm text-blue-900 bg-blue-50 rounded-lg p-3">
             La entrega pendiente de {register.name} queda en <strong>{fmt(finalAmount)}</strong>{didCount ? ' y queda como contada por ti' : ''}. Quien abra la caja verá este movimiento en el desglose.
           </p>
@@ -189,8 +218,8 @@ export function ClosedMovementModal({ register, initialType, people, onClose, on
 
         <div className="flex gap-2 justify-end">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancelar</button>
-          <button type="submit" className={isWithdrawal ? 'btn-danger disabled:opacity-50' : 'bg-green-700 hover:bg-green-800 text-white font-medium px-4 py-2 rounded-lg disabled:opacity-50'} disabled={loading || exceeds}>
-            {loading ? '...' : isWithdrawal ? 'Registrar retiro' : 'Agregar efectivo'}
+          <button type="submit" className={isOutflow ? 'btn-danger disabled:opacity-50' : 'bg-green-700 hover:bg-green-800 text-white font-medium px-4 py-2 rounded-lg disabled:opacity-50'} disabled={loading || exceeds}>
+            {loading ? '...' : isExpense ? 'Registrar gasto' : isWithdrawal ? 'Registrar retiro' : 'Agregar efectivo'}
           </button>
         </div>
       </form>
@@ -311,6 +340,7 @@ export function ResolveHandoverModal({ handover, people, onClose, onSaved }) {
   const [occurredAt, setOccurredAt] = useState('')
   const [personId, setPersonId] = useState(user?.id ?? null)
   const [destination, setDestination] = useState(null)
+  const [destinationOther, setDestinationOther] = useState('')
   // Responsable del faltante: por default quien entregó, salvo que el último conteo lo haya
   // hecho un admin (entonces no es seguro que la diferencia sea suya y se elige a mano).
   const [responsibleId, setResponsibleId] = useState(handover.receivedCountMethod === 'ADMIN_IN_PERSON' ? null : (handover.fromUserId ?? null))
@@ -328,6 +358,7 @@ export function ResolveHandoverModal({ handover, people, onClose, onSaved }) {
     if (resolution === 'UNREGISTERED_WITHDRAWAL') {
       if (amountNum == null || amountNum <= 0) errs.amount = 'Captura el monto retirado'
       if (!destination) errs.destination = 'Indica el destino del dinero'
+      if (destination === 'OTHER' && !destinationOther.trim()) errs.destinationOther = 'Escribe el destino'
     }
     if (!note.trim()) errs.note = 'La nota es obligatoria'
     if (note.length > 200) errs.note = 'La nota no puede tener más de 200 caracteres'
@@ -346,6 +377,7 @@ export function ResolveHandoverModal({ handover, people, onClose, onSaved }) {
         ...(isShortage && { responsibleId }),
         ...(resolution === 'UNREGISTERED_WITHDRAWAL' && {
           amount: amountNum, personId, destination,
+          destinationOther: destination === 'OTHER' ? destinationOther.trim() : null,
           occurredAt: occurredAt ? `${occurredAt}:00` : null,
         }),
       })
@@ -410,7 +442,7 @@ export function ResolveHandoverModal({ handover, people, onClose, onSaved }) {
             </div>
             <PersonSelect id="resolve-person" label="¿Quién retiró?" people={people} value={personId} onChange={setPersonId} />
             <div>
-              <DestinationSelect id="resolve-destination" value={destination} onChange={setDestination} />
+              <DestinationSelect id="resolve-destination" value={destination} onChange={setDestination} other={destinationOther} onOtherChange={setDestinationOther} otherError={errors.destinationOther} />
               {errors.destination && <p className="text-red-600 text-xs mt-1">{errors.destination}</p>}
             </div>
           </div>

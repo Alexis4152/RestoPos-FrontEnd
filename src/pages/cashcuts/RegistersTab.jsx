@@ -4,6 +4,10 @@ import { useNotify } from '../../context/NotifyContext'
 import { ClosedMovementModal, ForceCloseModal, RegisterFormModal, ResolveHandoverModal } from './RegisterModals'
 import { CountBadge, Pagination, PendingBreakdown, fmt, fmtDate, fmtTime } from './common'
 import IconButton from '../../components/IconButton'
+import { getCashCut } from '../../api/cashCuts'
+import { CutDetailModal } from './HistoryTab'
+import useTableSort from '../../hooks/useTableSort'
+import SortableTh from '../../components/SortableTh'
 
 
 const STATUS_BADGE = {
@@ -25,6 +29,20 @@ export default function RegistersTab({ onChanged }) {
   const [people, setPeople] = useState([])
   const [handovers, setHandovers] = useState({ content: [], totalPages: 0 })
   const [page, setPage] = useState(0)
+  // Orden de la tabla por encabezado (se aplica en el servidor; ver useTableSort).
+  const tableSort = useTableSort('sort:handovers')
+  const onSort = (k) => { tableSort.toggle(k); setPage(0) }
+  // Corte abierto que se está viendo (fondo, ventas y movimientos del turno en curso).
+  const [viewCut, setViewCut] = useState(null)
+
+  async function openCutDetail(cutId) {
+    try {
+      const r = await getCashCut(cutId)
+      setViewCut(r.data.data)
+    } catch (err) {
+      notify(err.response?.data?.message ?? 'No se pudo cargar el turno', 'error')
+    }
+  }
   const [size, setSize] = useState(10)
   // { kind: 'form'|'closed'|'force'|'resolve', register?, handover?, type? }
   const [modal, setModal] = useState(null)
@@ -35,13 +53,13 @@ export default function RegistersTab({ onChanged }) {
       .catch((err) => notify(err.response?.data?.message ?? 'No se pudieron cargar las cajas', 'error'))
   }
   function loadHandovers() {
-    getHandovers({ page, size })
+    getHandovers({ ...tableSort.params, page, size })
       .then((r) => setHandovers(r.data.data ?? { content: [], totalPages: 0 }))
       .catch(() => setHandovers({ content: [], totalPages: 0 }))
   }
 
   useEffect(() => { loadRegisters() }, [])
-  useEffect(() => { loadHandovers() }, [page, size])
+  useEffect(() => { loadHandovers() }, [page, size, tableSort.sort])
   useEffect(() => { getCashPeople().then((r) => setPeople(r.data.data ?? [])).catch(() => setPeople([])) }, [])
 
   async function reopenDay(r) {
@@ -93,6 +111,9 @@ export default function RegistersTab({ onChanged }) {
                     <div className="flex justify-between"><span className="text-gray-500">Corte</span><span>#{r.openCut.id} · desde {fmtTime(r.openCut.openedAt)}</span></div>
                     <div className="flex justify-between"><span className="text-gray-500">Efectivo esperado</span><span className="font-bold">{fmt(r.openCut.expectedCash)}</span></div>
                   </div>
+                  <button className="w-full min-h-[44px] rounded-lg border border-purple-600 text-purple-700 font-semibold hover:bg-purple-50" onClick={() => openCutDetail(r.openCut.id)}>
+                    Ver movimientos del turno
+                  </button>
                   <button className="w-full min-h-[44px] rounded-lg border border-red-600 text-red-700 font-semibold hover:bg-red-50" onClick={() => setModal({ kind: 'force', register: r })}>
                     Forzar cierre
                   </button>
@@ -133,9 +154,14 @@ export default function RegistersTab({ onChanged }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[860px]">
             <thead className="bg-gray-50">
-              <tr>{['Caja', 'Entregó', 'Recibió', 'Debía recibir', 'Recibió', 'Estado'].map((h, i) => (
-                <th key={i} className={`px-4 py-2 font-medium text-gray-600 ${i === 3 || i === 4 ? 'text-right' : 'text-left'}`}>{h}</th>
-              ))}</tr>
+              <tr>
+                <SortableTh label="Caja" sortKey="register" sort={tableSort.sort} onSort={onSort} className="px-4 py-2 font-medium text-gray-600 text-left" />
+                <SortableTh label="Entregó" sortKey="from" sort={tableSort.sort} onSort={onSort} className="px-4 py-2 font-medium text-gray-600 text-left" />
+                <SortableTh label="Recibió" sortKey="to" sort={tableSort.sort} onSort={onSort} className="px-4 py-2 font-medium text-gray-600 text-left" />
+                <SortableTh label="Debía recibir" sortKey="expected" sort={tableSort.sort} onSort={onSort} className="px-4 py-2 font-medium text-gray-600 text-right" align="right" />
+                <th className="px-4 py-2 font-medium text-gray-600 text-right">Recibió</th>
+                <SortableTh label="Estado" sortKey="status" sort={tableSort.sort} onSort={onSort} className="px-4 py-2 font-medium text-gray-600 text-left" />
+              </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {handovers.content.map((h) => {
@@ -186,6 +212,7 @@ export default function RegistersTab({ onChanged }) {
       )}
       {modal?.kind === 'force' && <ForceCloseModal register={modal.register} people={people} onClose={() => setModal(null)} onSaved={afterSave} />}
       {modal?.kind === 'resolve' && <ResolveHandoverModal handover={modal.handover} people={people} onClose={() => setModal(null)} onSaved={afterSave} />}
+      {viewCut && <CutDetailModal cut={viewCut} onClose={() => setViewCut(null)} />}
     </div>
   )
 }
