@@ -9,7 +9,7 @@ import ComprobanteTransferencia, { puedeSubirComprobante } from './publicSite/Co
 import Reservaciones, { leerCodigosReserva, guardarCodigosReserva, ModalNuevaReserva } from './publicSite/Reservaciones'
 import { usePublicLiveRefresh, publicStreamBase } from '../utils/liveEvents'
 import { applyTiendaBrand } from '../utils/theme'
-import GruposModificadores from '../components/GruposModificadores'
+import GruposModificadores, { agruparMods, cambiarSel, elegidasDe } from '../components/GruposModificadores'
 import defaultLogo from '../assets/logo.png'
 import { resolveMediaUrl } from '../utils/media'
 import CamposDireccion, { validarDireccion, direccionPayload } from '../components/CamposDireccion'
@@ -758,14 +758,11 @@ function CustomizeModal({ producto, onClose, onAdd }) {
   const [nota, setNota] = useState('')
   const [cantidad, setCantidad] = useState(1)
 
-  function toggle(g, opcionId) {
-    setSel((s) => {
-      const cur = s[g.id] ?? []
-      if (g.tipo === 'UNICO') return { ...s, [g.id]: cur.includes(opcionId) ? [] : [opcionId] }
-      return { ...s, [g.id]: cur.includes(opcionId) ? cur.filter((i) => i !== opcionId) : [...cur, opcionId] }
-    })
+  function toggle(g, opcionId, accion) {
+    setSel((s) => cambiarSel(s, g, opcionId, accion))
   }
-  const mods = producto.grupos.flatMap((g) => g.opciones.filter((o) => (sel[g.id] ?? []).includes(o.id)).map((o) => ({ ...o, grupo: g.nombre })))
+  // Una por pieza: Cebolla ×3 son 3 (así suman solas y se mandan como 3 ids).
+  const mods = elegidasDe(producto.grupos, sel)
   const falta = producto.grupos.some((g) => g.obligatorio && (sel[g.id]?.length ?? 0) === 0)
   const unit = Number(producto.precio) + mods.reduce((s, m) => s + Number(m.precioExtra), 0)
 
@@ -965,8 +962,10 @@ function CartDrawer({ slug, tienda, cart, total, checkout, setCheckout, setQty, 
                   {l.imageUrl ? <img src={resolveMediaUrl(l.imageUrl)} alt="" className="w-16 h-16 rounded-xl object-cover" /> : <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center text-2xl">🍽️</div>}
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold leading-snug">{l.nombre}</p>
-                    {l.mods.map((m) => (
-                      <p key={m.id} className="text-xs text-gray-500">{m.grupo}: {m.nombre}{Number(m.precioExtra) > 0 ? ` (+${fmt(m.precioExtra)})` : ''}</p>
+                    {agruparMods(l.mods.map((m) => ({ ...m, grupoNombre: m.grupo }))).map((m) => (
+                      <p key={m.id} className="text-xs text-gray-500">
+                        {m.grupo}: {m.nombre}{m.cantidad > 1 ? ` ×${m.cantidad}` : ''}{Number(m.precioExtra) > 0 ? ` (+${fmt(Number(m.precioExtra) * m.cantidad)})` : ''}
+                      </p>
                     ))}
                     {l.mods.some((m) => Number(m.precioExtra) > 0) && (
                       <p className="text-xs font-medium text-purple-700">{fmt(l.precio)} + {fmt(lineUnit(l) - Number(l.precio))} extras = {fmt(lineUnit(l))} c/u</p>

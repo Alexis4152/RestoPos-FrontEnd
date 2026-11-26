@@ -6,6 +6,7 @@ import { getTransfersToVerify, verifyTransfer } from '../api/pagos'
 import PagosCuenta from '../components/PagosCuenta'
 import { useAuth } from '../context/AuthContext'
 import { printAccountTicket } from '../utils/printer'
+import { textoMods } from '../components/GruposModificadores'
 import { useNotify } from '../context/NotifyContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
@@ -289,9 +290,9 @@ export default function Sales() {
                         <tr key={it.id}>
                           <td className="py-1 text-gray-700">
                             {it.ordenDetalle?.productoNombre ?? '—'}
-                            {(it.ordenDetalle?.modificadores ?? []).map((m) => (
-                              <p key={m.id} className="text-gray-400">{m.grupoNombre} {m.nombre}</p>
-                            ))}
+                            {(it.ordenDetalle?.modificadores ?? []).length > 0 && (
+                              <p className="text-gray-400">{textoMods(it.ordenDetalle.modificadores, { conGrupo: true })}</p>
+                            )}
                           </td>
                           <td className="py-1 text-gray-500 text-right">{it.cantidad}</td>
                           <td className="py-1 text-gray-900 text-right">{fmt(it.monto)}</td>

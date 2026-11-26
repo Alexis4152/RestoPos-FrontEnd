@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getDeliveries, getDeliveryTransferInfo, takeDelivery, releaseDelivery, deliverOrder, startDelivery, getDeliveryHistory } from '../api/deliveries'
 import { useAuth } from '../context/AuthContext'
+import { textoMods } from '../components/GruposModificadores'
 import { useNotify } from '../context/NotifyContext'
 import { playChime } from '../utils/sound'
 import { useLiveRefresh } from '../utils/liveEvents'
@@ -591,7 +592,7 @@ function DetalleEntrega({ o, onClose }) {
                 <div className="min-w-0">
                   <p className="font-semibold text-gray-900">{Number(i.cantidad)} × {i.productoNombre}</p>
                   {(i.modificadores ?? []).length > 0 && (
-                    <p className="text-xs text-gray-600">{i.modificadores.map((m) => `${m.grupoNombre} ${m.nombre}`).join(' · ')}</p>
+                    <p className="text-xs text-gray-600">{textoMods(i.modificadores, { conGrupo: true, marcarLibre: false })}</p>
                   )}
                   {i.observaciones && <p className="text-xs text-gray-500 italic">{i.observaciones}</p>}
                 </div>

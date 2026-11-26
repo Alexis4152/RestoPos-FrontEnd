@@ -25,7 +25,8 @@ import ComprobanteImagen from '../components/ComprobanteImagen'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { etiquetaTipoPedido } from '../utils/tipoPedido'
 import AgotadosModal from '../components/AgotadosModal'
-import GruposModificadores from '../components/GruposModificadores'
+import GruposModificadores, { cambiarSel, elegidasDe, resumenElegidas, selDesdeModificadores, textoMods } from '../components/GruposModificadores'
+import ExtrasLibres, { libresDeItem, resumenLibres, totalLibres } from '../components/ExtrasLibres'
 import { useModoToma, admiteModoRapido } from '../utils/modoToma'
 import { useVolver } from '../utils/navegacion'
 import { leerPorEnviar, guardarPorEnviar } from '../utils/porEnviar'
@@ -59,7 +60,8 @@ const toDisplayTime = (t) => (t ? t.slice(0, 5) : '')
  * órdenes para llevar / consultadas desde el historial de Órdenes.
  */
 // "Por enviar a cocina" de cada orden, guardado en este dispositivo (ver OrderDetail#porEnviar).
-const clavePorEnviar = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ?? [])].sort().join('.'), l.observaciones ?? ''].join('|')
+const clavePorEnviar = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ?? [])].sort().join('.'), l.observaciones ?? '',
+  JSON.stringify(l.extrasLibres ?? [])].join('|')
 
 export default function OrderDetail() {
   const { id } = useParams()
@@ -102,6 +104,7 @@ export default function OrderDetail() {
   const [modPicker, setModPicker] = useState(null) // producto en personalización, o null
   const [modSelections, setModSelections] = useState({}) // { [grupoId]: [opcionId, ...] }
   const [modNota, setModNota] = useState('')
+  const [modLibres, setModLibres] = useState([]) // extras libres del platillo que se está personalizando
   const [modCantidad, setModCantidad] = useState(1) // piezas iguales con esa personalización
 
   // Filtro de la tabla de "Productos": 'ALL' (todos), 'SHARED' (solo lo Compartido, sin
@@ -124,6 +127,8 @@ export default function OrderDetail() {
   const [editGrupos, setEditGrupos] = useState([])
   const [editSelections, setEditSelections] = useState({})
   const [editModsTouched, setEditModsTouched] = useState(false)
+  const [editLibres, setEditLibres] = useState([])
+  const [editLibresTouched, setEditLibresTouched] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
   const [editMotivo, setEditMotivo] = useState('')
 
@@ -434,27 +439,19 @@ export default function OrderDetail() {
     grupos.forEach((g) => { initial[g.id] = [] })
     setModSelections(initial)
     setModNota('')
+    setModLibres([])
     setModCantidad(1)
     setModPicker(p)
   }
 
-  function toggleModOpcion(grupo, opcionId) {
-    setModSelections((sel) => {
-      const current = sel[grupo.id] ?? []
-      if (grupo.tipo === 'UNICO') {
-        return { ...sel, [grupo.id]: current.includes(opcionId) ? [] : [opcionId] }
-      }
-      const next = current.includes(opcionId) ? current.filter((i) => i !== opcionId) : [...current, opcionId]
-      return { ...sel, [grupo.id]: next }
-    })
+  function toggleModOpcion(grupo, opcionId, accion) {
+    setModSelections((sel) => cambiarSel(sel, grupo, opcionId, accion))
   }
 
   const modGrupos = modPicker ? productModGrupos(modPicker) : []
   const modOpcionIds = Object.values(modSelections).flat()
-  const modExtrasTotal = modGrupos
-    .flatMap((g) => g.opciones)
-    .filter((o) => modOpcionIds.includes(o.id))
-    .reduce((sum, o) => sum + Number(o.precioExtra), 0)
+  const modElegidas = elegidasDe(modGrupos, modSelections)
+  const modExtrasTotal = modElegidas.reduce((sum, o) => sum + Number(o.precioExtra), 0) + totalLibres(modLibres)
   const modTotal = modPicker ? Number(modPicker.price) + modExtrasTotal : 0
   const modFaltaObligatorio = modGrupos.some((g) => g.obligatorio && (modSelections[g.id]?.length ?? 0) === 0)
 
@@ -473,8 +470,8 @@ export default function OrderDetail() {
     agregarPorEnviar({
       productoId: modPicker.id, nombre: modPicker.name, precio: modTotal, cantidad: modCantidad,
       comensalId: pickerComensalId ? Number(pickerComensalId) : null,
-      observaciones: modNota.trim(), opcionIds: modOpcionIds,
-      resumen: modGrupos.flatMap((g) => g.opciones).filter((o) => modOpcionIds.includes(o.id)).map((o) => o.nombre).join(' · '),
+      observaciones: modNota.trim(), opcionIds: modOpcionIds, extrasLibres: modLibres,
+      resumen: [resumenElegidas(modElegidas), resumenLibres(modLibres)].filter(Boolean).join(' · '),
     })
     setModPicker(null)
     notify(`${modPicker.name}: listo para enviar a cocina`, 'success')
@@ -496,6 +493,7 @@ export default function OrderDetail() {
           productoId: l.productoId, comensalId: l.comensalId ?? null, cantidad: l.cantidad,
           observaciones: l.observaciones || undefined,
           modificadorOpcionIds: l.opcionIds?.length ? l.opcionIds : undefined,
+          extrasLibres: l.extrasLibres?.length ? l.extrasLibres : undefined,
         })
         if (r.data.data?.id) enviados.push(r.data.data.id)
         pendientes = pendientes.slice(1)
@@ -527,6 +525,8 @@ export default function OrderDetail() {
     setEditComensalId(item.comensal?.id ? String(item.comensal.id) : '')
     setEditNota(item.observaciones ?? '')
     setEditModsTouched(false)
+    setEditLibres(libresDeItem(item.modificadores))
+    setEditLibresTouched(false)
     setEditMotivo('')
     setEditGrupos([])
     setEditSelections({})
@@ -534,31 +534,22 @@ export default function OrderDetail() {
     try {
       const grupos = productModGrupos({ modificadorGrupos: (await getModificadorGrupos(item.producto.id)).data.data ?? [] })
       // La línea solo guarda nombres (grupo + opción), no ids: se preseleccionan por nombre.
-      const sel = {}
-      grupos.forEach((g) => {
-        sel[g.id] = g.opciones
-          .filter((o) => (item.modificadores ?? []).some((m) => m.grupoNombre === g.nombre && m.nombre === o.nombre))
-          .map((o) => o.id)
-      })
       setEditGrupos(grupos)
-      setEditSelections(sel)
+      setEditSelections(selDesdeModificadores(grupos, item.modificadores))
     } catch { /* sin grupos: se edita solo cantidad/comensal/notas */ }
   }
 
-  function toggleEditOpcion(grupo, opcionId) {
+  function toggleEditOpcion(grupo, opcionId, accion) {
     setEditModsTouched(true)
-    setEditSelections((sel) => {
-      const current = sel[grupo.id] ?? []
-      if (grupo.tipo === 'UNICO') return { ...sel, [grupo.id]: current.includes(opcionId) ? [] : [opcionId] }
-      return { ...sel, [grupo.id]: current.includes(opcionId) ? current.filter((i) => i !== opcionId) : [...current, opcionId] }
-    })
+    setEditSelections((sel) => cambiarSel(sel, grupo, opcionId, accion))
   }
 
   const editOpcionIds = Object.values(editSelections).flat()
   const editFaltaObligatorio = editModsTouched && editGrupos.some((g) => g.obligatorio && (editSelections[g.id]?.length ?? 0) === 0)
-  const editExtras = editModsTouched
-    ? editGrupos.flatMap((g) => g.opciones).filter((o) => editOpcionIds.includes(o.id)).reduce((s, o) => s + Number(o.precioExtra), 0)
-    : (editItem?.modificadores ?? []).reduce((s, m) => s + Number(m.precioExtra), 0)
+  const editExtras = (editModsTouched
+    ? elegidasDe(editGrupos, editSelections).reduce((s, o) => s + Number(o.precioExtra), 0)
+    : (editItem?.modificadores ?? []).filter((m) => !m.libre).reduce((s, m) => s + Number(m.precioExtra), 0))
+    + totalLibres(editLibres)
   const editTotal = editItem
     ? (Number(editItem.precioUnitario) + editExtras) * editCantidad - Number(editItem.descuento || 0)
     : 0
@@ -573,6 +564,7 @@ export default function OrderDetail() {
         observaciones: editNota.trim() || null,
         motivo: editMotivo.trim() || null,
         ...(editModsTouched ? { modificadorOpcionIds: editOpcionIds } : {}),
+        ...(editLibresTouched ? { extrasLibres: editLibres } : {}),
       })
       setEditItem(null)
       load()
@@ -1146,7 +1138,7 @@ export default function OrderDetail() {
                       <p className={`text-[15px] font-bold ${item.estado === 'CANCELADO' ? 'line-through' : ''}`}>{item.productoNombre}</p>
                       {(item.modificadores ?? []).length > 0 && (
                         <p className="text-[13px] text-gray-600">
-                          {item.modificadores.map((m) => `${m.grupoNombre} ${m.nombre}${Number(m.precioExtra) > 0 ? ` (+${fmt(m.precioExtra)})` : ''}`).join(' · ')}
+                          {textoMods(item.modificadores, { conGrupo: true, conPrecio: true })}
                         </p>
                       )}
                       {!item.cargoExtra && extrasDe(item) > 0 && (
@@ -1745,6 +1737,9 @@ export default function OrderDetail() {
                 </div>
               )}
 
+              <ExtrasLibres value={editLibres} disabled={editModsBloqueados}
+                onChange={(v) => { setEditLibres(v); setEditLibresTouched(true) }} />
+
               {editCantidad < Number(editItem.cantidad) && (
                 <div>
                   <label className="text-xs font-medium text-gray-600">Motivo de la reducción (opcional)</label>
@@ -1794,6 +1789,7 @@ export default function OrderDetail() {
 
             <div className="p-5 space-y-3">
               <GruposModificadores grupos={modGrupos} sel={modSelections} onToggle={toggleModOpcion} />
+              <ExtrasLibres value={modLibres} onChange={setModLibres} />
 
               <div>
                 <label className="text-xs font-medium text-gray-600">Notas para cocina (opcional)</label>
@@ -2032,9 +2028,9 @@ export default function OrderDetail() {
                           <tr key={it.id}>
                             <td className="px-2 py-1.5 text-gray-700">
                               {it.ordenDetalle?.productoNombre ?? '—'}
-                              {(it.ordenDetalle?.modificadores ?? []).map((m) => (
-                                <p key={m.id} className="text-gray-400">{m.grupoNombre} {m.nombre}</p>
-                              ))}
+                              {(it.ordenDetalle?.modificadores ?? []).length > 0 && (
+                                <p className="text-gray-400">{textoMods(it.ordenDetalle.modificadores, { conGrupo: true })}</p>
+                              )}
                             </td>
                             <td className="px-2 py-1.5 text-gray-500 text-right">{it.cantidad}</td>
                             <td className="px-2 py-1.5 text-gray-900 text-right">{fmt(it.monto)}</td>

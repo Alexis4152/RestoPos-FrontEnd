@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { getProductSuggestions } from '../../api/products'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
-import { GruposModificadoresAbiertos } from '../../components/GruposModificadores'
+import { GruposModificadoresAbiertos, cambiarSel, elegidasDe, resumenElegidas } from '../../components/GruposModificadores'
+import ExtrasLibres, { resumenLibres, totalLibres } from '../../components/ExtrasLibres'
 
 import ModalCloseButton from '../../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
@@ -31,6 +32,7 @@ export default function OpcionesSheet({ producto, anterior, onAgregar, onCerrar 
   const [notaLibre, setNotaLibre] = useState('')
   const [verNotaLibre, setVerNotaLibre] = useState(false)
   const [cantidad, setCantidad] = useState(1)
+  const [libres, setLibres] = useState([])
   useEscapeKey(onCerrar)
 
   useEffect(() => {
@@ -56,28 +58,24 @@ export default function OpcionesSheet({ producto, anterior, onAgregar, onCerrar 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [producto.id])
 
-  function tocar(g, opId) {
-    setSel((s) => {
-      const actual = s[g.id] ?? []
-      if (g.tipo === 'UNICO') return { ...s, [g.id]: actual.includes(opId) && !g.obligatorio ? [] : [opId] }
-      return { ...s, [g.id]: actual.includes(opId) ? actual.filter((x) => x !== opId) : [...actual, opId] }
-    })
+  function tocar(g, opId, accion) {
+    setSel((s) => cambiarSel(s, g, opId, accion, { fijarObligatoria: true }))
   }
   const tocarNota = (n) => setNotas((ns) => (ns.includes(n) ? ns.filter((x) => x !== n) : [...ns, n]))
 
   const ids = Object.values(sel).flat()
-  const elegidas = grupos.flatMap((g) => g.opciones.filter((o) => (sel[g.id] ?? []).includes(o.id)))
-  const unitario = Number(producto.price) + elegidas.reduce((s, o) => s + Number(o.precioExtra), 0)
+  const elegidas = elegidasDe(grupos, sel)
+  const unitario = Number(producto.price) + elegidas.reduce((s, o) => s + Number(o.precioExtra), 0) + totalLibres(libres)
   const faltan = grupos.filter((g) => g.obligatorio && (sel[g.id] ?? []).length === 0)
   const nota = [...notas, notaLibre.trim()].filter(Boolean).join(', ')
 
   function agregar(datos) {
     onAgregar({
       productoId: producto.id, nombre: producto.name, precio: datos.unitario, cantidad: datos.cantidad,
-      opcionIds: datos.ids, resumen: datos.resumen, nota: datos.nota,
+      opcionIds: datos.ids, extrasLibres: datos.libres ?? [], resumen: datos.resumen, nota: datos.nota,
     })
   }
-  const resumen = elegidas.map((o) => o.nombre).join(' · ')
+  const resumen = [resumenElegidas(elegidas), resumenLibres(libres)].filter(Boolean).join(' · ')
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/40 flex items-end sm:items-center justify-center">
@@ -95,6 +93,8 @@ export default function OpcionesSheet({ producto, anterior, onAgregar, onCerrar 
 
         <GruposModificadoresAbiertos grupos={grupos} sel={sel} onToggle={tocar}
           nota={(g, o) => (sugeridas[g.id] === o.id ? 'lo más pedido' : null)} />
+
+        <ExtrasLibres value={libres} onChange={setLibres} />
 
         <div className="space-y-1.5">
           <p className="text-sm font-extrabold">Notas {notasFrecuentes.length > 0 && <span className="font-semibold text-gray-600">· las más usadas</span>}</p>
@@ -128,7 +128,7 @@ export default function OpcionesSheet({ producto, anterior, onAgregar, onCerrar 
               className="w-12 h-[52px] text-2xl font-extrabold">+</button>
           </div>
           <button type="button" disabled={faltan.length > 0}
-            onClick={() => agregar({ unitario, cantidad, ids, resumen, nota })}
+            onClick={() => agregar({ unitario, cantidad, ids, libres, resumen, nota })}
             className="flex-1 min-h-[54px] rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-base font-extrabold disabled:opacity-50 disabled:cursor-not-allowed">
             {faltan.length > 0 ? `Elige ${faltan.map((g) => g.nombre.toLowerCase()).join(' y ')}` : `Agregar ${cantidad} · ${fmt(unitario * cantidad)}`}
           </button>

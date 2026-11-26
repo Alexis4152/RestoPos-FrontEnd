@@ -4,7 +4,8 @@ import { updateOrderItem, cancelOrderItem, addOrderItem } from '../../api/ordene
 import { useNotify } from '../../context/NotifyContext'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { gruposActivos } from './OpcionesSheet'
-import { GruposModificadoresAbiertos } from '../../components/GruposModificadores'
+import { GruposModificadoresAbiertos, cambiarSel, selDesdeModificadores } from '../../components/GruposModificadores'
+import ExtrasLibres, { libresDeItem } from '../../components/ExtrasLibres'
 
 import ModalCloseButton from '../../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
@@ -29,6 +30,8 @@ export default function EditarLineaSheet({ ordenId, item, comensales, onCerrar, 
   const [cantidad, setCantidad] = useState(Number(item.cantidad))
   const [persona, setPersona] = useState(item.comensal?.id ?? null)
   const [nota, setNota] = useState(item.observaciones ?? '')
+  const [libres, setLibres] = useState(() => libresDeItem(item.modificadores))
+  const [libresTocados, setLibresTocados] = useState(false)
   const [busy, setBusy] = useState(false)
   useEscapeKey(onCerrar)
 
@@ -37,26 +40,16 @@ export default function EditarLineaSheet({ ordenId, item, comensales, onCerrar, 
     getModificadorGrupos(item.producto.id).then((r) => {
       const gs = gruposActivos({ modificadorGrupos: r.data.data ?? [] })
       // La línea guarda nombres (grupo + opción), no ids: se preseleccionan por nombre.
-      const inicial = {}
-      gs.forEach((g) => {
-        inicial[g.id] = g.opciones
-          .filter((o) => (item.modificadores ?? []).some((m) => m.grupoNombre === g.nombre && m.nombre === o.nombre))
-          .map((o) => o.id)
-      })
       setGrupos(gs)
-      setSel(inicial)
+      setSel(selDesdeModificadores(gs, item.modificadores))
     }).catch(() => {})
   }, [item])
 
   const puedeOpciones = !entregado && facturada === 0
-  function tocar(g, opId) {
+  function tocar(g, opId, accion) {
     if (!puedeOpciones) return
     setModsTocados(true)
-    setSel((s) => {
-      const actual = s[g.id] ?? []
-      if (g.tipo === 'UNICO') return { ...s, [g.id]: actual.includes(opId) && !g.obligatorio ? [] : [opId] }
-      return { ...s, [g.id]: actual.includes(opId) ? actual.filter((x) => x !== opId) : [...actual, opId] }
-    })
+    setSel((s) => cambiarSel(s, g, opId, accion, { fijarObligatoria: true }))
   }
   const faltan = modsTocados ? grupos.filter((g) => g.obligatorio && (sel[g.id] ?? []).length === 0) : []
   const minimo = Math.max(1, facturada)
@@ -70,6 +63,7 @@ export default function EditarLineaSheet({ ordenId, item, comensales, onCerrar, 
         cantidad,
         observaciones: entregado ? item.observaciones : (nota.trim() || null),
         modificadorOpcionIds: modsTocados ? Object.values(sel).flat() : undefined,
+        extrasLibres: libresTocados ? libres : undefined,
         motivo: 'Cambio desde modo rápido',
       })
       notify('Cambio guardado', 'success')
@@ -96,6 +90,7 @@ export default function EditarLineaSheet({ ordenId, item, comensales, onCerrar, 
       await addOrderItem(ordenId, {
         productoId: item.producto.id, comensalId: item.comensal?.id ?? null, cantidad: 1,
         observaciones: item.observaciones || undefined, modificadorOpcionIds: ids.length ? ids : undefined,
+        extrasLibres: libres.length ? libres : undefined,
       })
       notify('Otra pieza enviada a cocina', 'success')
       onGuardado()
@@ -132,6 +127,7 @@ export default function EditarLineaSheet({ ordenId, item, comensales, onCerrar, 
         </div>
 
         <GruposModificadoresAbiertos grupos={grupos} sel={sel} onToggle={tocar} disabled={!puedeOpciones} />
+        <ExtrasLibres value={libres} disabled={!puedeOpciones} onChange={(v) => { setLibres(v); setLibresTocados(true) }} />
 
         {!entregado && (
           <div>

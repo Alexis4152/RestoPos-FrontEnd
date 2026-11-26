@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getKitchenOrders, getKitchenDeliveredToday } from '../api/kitchen'
 import { updateOrderItemStatus } from '../api/ordenes'
+import { agruparMods } from '../components/GruposModificadores'
 import { useNotify } from '../context/NotifyContext'
 import { useLiveRefresh } from '../utils/liveEvents'
 import Icon from '../components/Icon'
@@ -208,9 +209,10 @@ export default function Kitchen() {
                     {/* Modificadores y notas grandes: es lo que el cocinero más necesita leer de un vistazo. */}
                     {(item.modificadores ?? []).length > 0 && (
                       <ul className="ml-11 space-y-1">
-                        {item.modificadores.map((m) => (
+                        {/* Repetidas juntas ("Cebolla ×3"); a cocina no le importa si un extra es libre. */}
+                        {agruparMods(item.modificadores).map((m) => (
                           <li key={m.id} className="text-lg font-extrabold leading-tight text-[#6B4100] bg-[#FBF0DC] rounded-lg px-2.5 py-1">
-                            {m.grupoNombre && <span className="font-semibold text-gray-700">{m.grupoNombre}: </span>}{m.nombre}
+                            {m.grupoNombre && <span className="font-semibold text-gray-700">{m.grupoNombre}: </span>}{m.nombre}{m.cantidad > 1 ? ` ×${m.cantidad}` : ''}
                           </li>
                         ))}
                       </ul>

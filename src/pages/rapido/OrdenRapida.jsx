@@ -15,6 +15,7 @@ import PedirPanel from './PedirPanel'
 import CuentaRapida, { CobroExitoso } from './CuentaRapida'
 import { nombreMesa } from './MisMesas'
 import EditarLineaSheet from './EditarLineaSheet'
+import { textoMods } from '../../components/GruposModificadores'
 import OpcionesMesa from './OpcionesMesa'
 import EnvioGratisButton, { esEnvioGratis, puedeCambiarEnvio } from '../../components/EnvioGratisButton'
 // Personas sentadas: los comensales que de verdad tiene la orden (al instante al agregar,
@@ -102,7 +103,7 @@ export default function OrdenRapida() {
   const listos = items.filter((i) => LISTO.includes(i.estado))
   const entregados = items.filter((i) => i.estado === 'ENTREGADO')
   const TABS = [['pedir', 'Pedir'], ['pedido', `Lo pedido (${items.length})`], ['cuenta', 'Cuenta']]
-  const resumenItem = (i) => [(i.modificadores ?? []).map((m) => m.nombre).join(' · '), i.observaciones].filter(Boolean).join(' · ')
+  const resumenItem = (i) => [textoMods(i.modificadores), i.observaciones].filter(Boolean).join(' · ')
 
   return (
     <div className="max-w-6xl space-y-4">

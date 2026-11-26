@@ -17,7 +17,8 @@ const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency:
 // de Mis mesas y la pantalla completa: pasar de uno a otro no pierde lo armado.
 const leerBorrador = (id) => leerPorEnviar(id)
 const guardarBorrador = (id, lineas) => guardarPorEnviar(id, lineas, 'nota')
-const claveLinea = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ?? [])].sort().join('.'), l.nota ?? ''].join('|')
+const claveLinea = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ?? [])].sort().join('.'), l.nota ?? '',
+  JSON.stringify(l.extrasLibres ?? [])].join('|')
 
 /**
  * Modo rápido · "Pedir": menú directo ("Lo más pedido" primero), tocar un platillo suma uno a la
@@ -98,8 +99,8 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
       if (i >= 0) return c.map((x, j) => (j === i ? { ...x, cantidad: x.cantidad + l.cantidad } : x))
       return [...c, l]
     })
-    if (linea.opcionIds?.length || linea.nota) {
-      setAnteriores((a) => ({ ...a, [linea.productoId]: { unitario: linea.precio, ids: linea.opcionIds, resumen: linea.resumen, nota: linea.nota } }))
+    if (linea.opcionIds?.length || linea.nota || linea.extrasLibres?.length) {
+      setAnteriores((a) => ({ ...a, [linea.productoId]: { unitario: linea.precio, ids: linea.opcionIds, libres: linea.extrasLibres, resumen: linea.resumen, nota: linea.nota } }))
     }
   }
 
@@ -133,6 +134,7 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
           cantidad: l.cantidad,
           observaciones: l.nota || undefined,
           modificadorOpcionIds: l.opcionIds?.length ? l.opcionIds : undefined,
+          extrasLibres: l.extrasLibres?.length ? l.extrasLibres : undefined,
         })
         if (r.data.data?.id) enviados.push(r.data.data.id)
         pendientes = pendientes.slice(1)

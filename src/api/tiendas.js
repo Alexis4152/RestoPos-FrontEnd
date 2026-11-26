@@ -34,6 +34,9 @@ export const updateImprimeCuenta = (id, imprimeCuenta) => api.put(`/tiendas/${id
 /** "Enviar a cocina" activo/inactivo en la tienda. Solo SUPER_ADMIN. */
 export const updateEnviarACocina = (id, enviarACocina) => api.put(`/tiendas/${id}/enviar-cocina`, { enviarACocina })
 
+/** Extras libres al tomar la orden (solo SUPER_ADMIN). */
+export const updateExtraLibre = (id, extraLibre) => api.put(`/tiendas/${id}/extra-libre`, { extraLibre })
+
 /** Seguimiento del repartidor en los pedidos a domicilio del punto de venta (solo SUPER_ADMIN). */
 export const updateSeguimientoRepartidor = (id, seguimientoRepartidor) =>
   api.put(`/tiendas/${id}/seguimiento-repartidor`, { seguimientoRepartidor })
