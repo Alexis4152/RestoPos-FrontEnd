@@ -34,6 +34,10 @@ export const updateImprimeCuenta = (id, imprimeCuenta) => api.put(`/tiendas/${id
 /** "Enviar a cocina" activo/inactivo en la tienda. Solo SUPER_ADMIN. */
 export const updateEnviarACocina = (id, enviarACocina) => api.put(`/tiendas/${id}/enviar-cocina`, { enviarACocina })
 
+/** Seguimiento del repartidor en los pedidos a domicilio del punto de venta (solo SUPER_ADMIN). */
+export const updateSeguimientoRepartidor = (id, seguimientoRepartidor) =>
+  api.put(`/tiendas/${id}/seguimiento-repartidor`, { seguimientoRepartidor })
+
 /**
  * Actualiza el nombre (y, si el actor es `SUPER_ADMIN`, el supervisor a cargo) de una tienda.
  * @param {number|string} id Id de la tienda.

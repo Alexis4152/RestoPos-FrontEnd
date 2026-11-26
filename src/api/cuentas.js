@@ -28,5 +28,9 @@ export const emailTicket = (id, email) => api.post(`/accounts/${id}/ticket/email
 export const getAccountTicketEscPos = (id, copias = 1, { abrirCajon = true, soloCajon = false } = {}) =>
   api.get(`/accounts/${id}/ticket-escpos`, { params: { copias, abrirCajon, soloCajon } })
 
+/** El mismo ticket, una cadena hex por copia (cada una se imprime como trabajo aparte, para que se corte). */
+export const getAccountTicketEscPosCopias = (id, copias = 1, { abrirCajon = true } = {}) =>
+  api.get(`/accounts/${id}/ticket-escpos-copias`, { params: { copias, abrirCajon } })
+
 /** Enlace y QR "califica tu visita" de una cuenta de mesa: { url, qrDataUrl }. */
 export const getOpinionQr = (id) => api.get(`/accounts/${id}/opinion-qr`)

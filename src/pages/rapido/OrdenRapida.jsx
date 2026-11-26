@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { getOrder, updateOrderItemStatus } from '../../api/ordenes'
+import { getOrder, updateOrderItemStatus, cancelOrderItem } from '../../api/ordenes'
 import { getAccountsByOrder } from '../../api/cuentas'
 import { getTables } from '../../api/mesas'
 import { useNotify } from '../../context/NotifyContext'
@@ -16,6 +16,7 @@ import CuentaRapida, { CobroExitoso } from './CuentaRapida'
 import { nombreMesa } from './MisMesas'
 import EditarLineaSheet from './EditarLineaSheet'
 import OpcionesMesa from './OpcionesMesa'
+import EnvioGratisButton, { esEnvioGratis, puedeCambiarEnvio } from '../../components/EnvioGratisButton'
 // Personas sentadas: los comensales que de verdad tiene la orden (al instante al agregar,
 // quitar o unir mesas); el contador guardado solo es respaldo.
 const personasDe = (order) => order.comensales?.length ?? order.numeroComensales ?? 0
@@ -44,7 +45,7 @@ export default function OrdenRapida() {
   const { id } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const volver = useVolver()
-  const { notify } = useNotify()
+  const { notify, confirmDialog } = useNotify()
   const [order, setOrder] = useState(null)
   const [cuentas, setCuentas] = useState([])
   const [mesasUnidas, setMesasUnidas] = useState([])
@@ -61,6 +62,8 @@ export default function OrdenRapida() {
   useLiveRefresh(load, { filtro: (e) => e.name === 'orden' })
 
   const items = useMemo(() => (order?.items ?? []).filter((i) => i.estado !== 'CANCELADO' && !i.cargoExtra), [order])
+  // Línea de envío de un pedido a domicilio (no pasa por cocina): se muestra aparte.
+  const envio = useMemo(() => (order?.items ?? []).find((i) => i.cargoExtra && i.estado !== 'CANCELADO'), [order])
 
   if (cobro) return <CobroExitoso cobro={cobro} />
   if (!order) return <p className="text-gray-600 py-10 text-center">Cargando…</p>
@@ -83,6 +86,16 @@ export default function OrdenRapida() {
       notify('Marcados como entregados', 'success')
     } catch (err) { notify(err.response?.data?.message ?? 'No se pudieron marcar', 'error') }
     finally { setBusy(false); load() }
+  }
+
+  /** Quitar del pedido (igual que el bote de la vista detallada): solo si aún no está en una cuenta. */
+  async function quitar(i) {
+    if (!(await confirmDialog(`¿Quitar ${i.productoNombre} del pedido?`, { confirmText: 'Quitar' }))) return
+    try {
+      await cancelOrderItem(id, i.id, 'Quitado desde modo rápido')
+      notify('Quitado del pedido', 'success')
+    } catch (err) { notify(err.response?.data?.message ?? 'No se pudo quitar', 'error') }
+    finally { load() }
   }
 
   const enCocina = items.filter((i) => EN_COCINA.includes(i.estado))
@@ -144,21 +157,37 @@ export default function OrdenRapida() {
                 )}
               </div>
               {lista.map((i) => (
-                <button key={i.id} type="button" onClick={() => setEditando(i)} aria-label={`Editar ${i.productoNombre}`}
-                  className="w-full flex gap-3 text-sm text-left rounded-xl -mx-2 px-2 py-1.5 hover:bg-[#F7F6F2]">
-                  <span className="font-extrabold w-6 text-right">{Number(i.cantidad)}</span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block font-bold">{i.productoNombre}</span>
-                    {(resumenItem(i) || i.comensal) && (
-                      <span className="block text-xs text-gray-600">{[i.comensal ? (i.comensal.nombre || `Persona ${i.comensal.numero}`) : null, resumenItem(i)].filter(Boolean).join(' · ')}</span>
-                    )}
-                  </span>
-                  <span className="font-bold">{fmt(i.subtotal)}</span>
-                  <Icon name="editar" className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
-                </button>
+                <div key={i.id} className="flex items-center gap-1 -mx-2">
+                  <button type="button" onClick={() => setEditando(i)} aria-label={`Editar ${i.productoNombre}`}
+                    className="flex-1 min-w-0 flex gap-3 text-sm text-left rounded-xl px-2 py-1.5 hover:bg-[#F7F6F2]">
+                    <span className="font-extrabold w-6 text-right">{Number(i.cantidad)}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-bold">{i.productoNombre}</span>
+                      {(resumenItem(i) || i.comensal) && (
+                        <span className="block text-xs text-gray-600">{[i.comensal ? (i.comensal.nombre || `Persona ${i.comensal.numero}`) : null, resumenItem(i)].filter(Boolean).join(' · ')}</span>
+                      )}
+                    </span>
+                    <span className="font-bold">{fmt(i.subtotal)}</span>
+                    <Icon name="editar" className="w-4 h-4 text-gray-500 shrink-0 mt-0.5" />
+                  </button>
+                  {Number(i.cantidadFacturada ?? 0) === 0 && (
+                    <button type="button" onClick={() => quitar(i)} aria-label={`Quitar ${i.productoNombre}`} title="Quitar del pedido"
+                      className="w-9 h-9 shrink-0 rounded-lg text-red-700 hover:bg-red-50 flex items-center justify-center">
+                      <Icon name="borrar" className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               ))}
             </section>
           ))}
+          {envio && (
+            <section className="bg-white border border-[#E4E1DA] rounded-2xl p-4 flex flex-wrap items-center gap-3">
+              <span className="w-2.5 h-2.5 rounded-full bg-gray-400" aria-hidden="true" />
+              <span className="flex-1 min-w-[140px] text-sm font-bold">{esEnvioGratis(envio) ? 'Envío a domicilio · gratis' : 'Envío a domicilio'}</span>
+              <span className="text-sm font-bold">{fmt(envio.subtotal)}</span>
+              {puedeCambiarEnvio(order, envio) && <EnvioGratisButton ordenId={order.id} item={envio} onCambio={load} />}
+            </section>
+          )}
           {items.length > 0 && <p className="text-xs text-gray-600 text-center">Toca un platillo para cambiarlo o quitarlo. Si cocina ya lo está preparando, avísales.</p>}
         </div>
       )}

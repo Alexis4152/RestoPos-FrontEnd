@@ -1,5 +1,5 @@
 import qz from 'qz-tray'
-import { getAccountTicketEscPos, getTicketPdf } from '../api/cuentas'
+import { getAccountTicketEscPos, getAccountTicketEscPosCopias, getTicketPdf } from '../api/cuentas'
 import { getQzCertificate, signQzData } from '../api/qz'
 
 /**
@@ -149,10 +149,12 @@ export async function listPrinters() {
  *   está disponible o la impresión falla.
  */
 export async function printAccountTicket(accountId, copias = 1, { abrirCajon = true } = {}) {
-  const res = await getAccountTicketEscPos(accountId, copias, { abrirCajon })
-  const hex = res.data?.data
-  if (!hex) throw new Error('El servidor no devolvió el contenido del ticket.')
-  await sendRaw(hex)
+  const res = await getAccountTicketEscPosCopias(accountId, copias, { abrirCajon })
+  const partes = (res.data?.data ?? []).filter(Boolean)
+  if (partes.length === 0) throw new Error('El servidor no devolvió el contenido del ticket.')
+  // Una copia por trabajo de impresión, en orden: así la impresora corta entre la copia del
+  // cliente y la del comercio aunque solo corte al terminar cada trabajo.
+  for (const hex of partes) await sendRaw(hex)
 }
 
 /**

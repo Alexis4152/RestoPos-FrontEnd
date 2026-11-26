@@ -32,6 +32,7 @@ import { leerPorEnviar, guardarPorEnviar } from '../utils/porEnviar'
 import SelectorModoToma from '../components/SelectorModoToma'
 import { recibirDineroEntrega } from '../api/deliveries'
 import IconButton from '../components/IconButton'
+import EnvioGratisButton, { puedeCambiarEnvio } from '../components/EnvioGratisButton'
 
 import ModalCloseButton from '../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
@@ -916,7 +917,7 @@ export default function OrderDetail() {
   // Por persona (comensales): las mesas y "Comer aquí" (se sientan, aunque sin mesa asignada).
   const conPersonas = esMesa || order.tipoEntrega === 'COMER_AQUI'
   // Envío a domicilio que el repartidor ya sacó ("Voy en camino") o entregó: no admite más productos.
-  const salioAEntregar = order.tipoEntrega === 'DOMICILIO' && !!(order.enCaminoAt || order.entregadaAt)
+  const salioAEntregar = order.tipoEntrega === 'DOMICILIO' && !order.sinSeguimiento && !!(order.enCaminoAt || order.entregadaAt)
   const minutos = order.openedAt ? Math.max(0, Math.round((Date.now() - new Date(order.openedAt).getTime()) / 60000)) : null
   const transcurrido = minutos == null ? '' : minutos < 60 ? `${minutos} min` : `${Math.floor(minutos / 60)} h ${String(minutos % 60).padStart(2, '0')}`
   const piezasDe = (pred) => (order.items ?? []).filter((i) => i.estado !== 'CANCELADO' && !i.cargoExtra && pred(i))
@@ -1176,6 +1177,7 @@ export default function OrderDetail() {
                             <Icon name="editar" className="w-4 h-4" />
                           </button>
                         )}
+                        {puedeCambiarEnvio(order, item) && <EnvioGratisButton ordenId={order.id} item={item} onCambio={load} />}
                         {item.estado !== 'CANCELADO' && Number(item.cantidadFacturada) === 0 && (
                           <button type="button" aria-label={`Cancelar ${item.productoNombre}`} onClick={() => handleCancelItem(item)}
                             className="w-9 h-9 rounded-lg text-red-700 hover:bg-red-50 flex items-center justify-center">
@@ -1379,7 +1381,7 @@ export default function OrderDetail() {
                 <p className="text-sm text-[#7A4A00]">El cliente aún no sube el comprobante de su transferencia</p>
               )
             )}
-            {order.tipoEntrega === 'DOMICILIO' && (
+            {order.tipoEntrega === 'DOMICILIO' && !order.sinSeguimiento && (
               <EntregaSeguimiento ordenId={order.id}
                 version={`${order.repartidor?.id ?? ''}|${order.enCaminoAt ?? ''}|${order.entregadaAt ?? ''}|${order.estado}|${order.total}|${order.comprobanteAt ?? ''}|${accounts.map((c) => `${c.id}:${c.totalPagado}`).join(',')}`} />
             )}

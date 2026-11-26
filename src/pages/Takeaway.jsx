@@ -385,7 +385,7 @@ function TarjetaPedido({ o, busy, onAbrir, onAceptar, onRechazar }) {
             <p className="text-xs text-gray-600">{listos} de {piezas} listos</p>
           </div>
         )}
-        {domicilio && !o.pendienteAceptar && (
+        {domicilio && !o.sinSeguimiento && !o.pendienteAceptar && (
           <div className="rounded-xl bg-[#F7F6F2] p-2.5 space-y-1.5">
             <div className="grid grid-cols-4 gap-1" aria-hidden="true">
               {[0, 1, 2, 3].map((i) => <span key={i} className={`h-1.5 rounded-full ${i <= paso ? 'bg-purple-600' : 'bg-[#DCD8CF]'}`} />)}

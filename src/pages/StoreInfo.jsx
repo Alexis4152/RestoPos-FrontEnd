@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { getTiendaInfo, updateTiendaInfo, uploadTiendaLogo, removeTiendaLogo, updateImprimeCuenta, updateEnviarACocina } from '../api/tiendas'
+import { getTiendaInfo, updateTiendaInfo, uploadTiendaLogo, removeTiendaLogo, updateImprimeCuenta, updateEnviarACocina, updateSeguimientoRepartidor } from '../api/tiendas'
 import { MODOS_IMPRIME_CUENTA } from '../utils/imprimeCuenta'
 import { useNotify } from '../context/NotifyContext'
 import defaultLogo from '../assets/logo.png'
@@ -323,6 +323,7 @@ export default function StoreInfo() {
 
       {isSuperAdmin && <ImprimeCuentaCard />}
       {isSuperAdmin && <EnviarCocinaCard />}
+      {isSuperAdmin && <SeguimientoRepartidorCard />}
     </div>
   )
 }
@@ -385,6 +386,62 @@ function ImprimeCuentaCard() {
  * y la comanda sale en la impresora normal de tickets. La pantalla de Cocina sigue igual.
  * Las impresoras se eligen en cada computadora (Configuración → Impresoras).
  */
+/**
+ * Seguimiento del repartidor en los pedidos a domicilio del punto de venta (solo SUPER_ADMIN).
+ * Apagado: para restaurantes con repartidores externos; el pedido no va a Entregas, se cobra en
+ * caja y se marca entregado como uno para llevar. Los pedidos de la página web no cambian.
+ */
+function SeguimientoRepartidorCard() {
+  const { user, patchTienda } = useAuth()
+  const { notify } = useNotify()
+  const actual = user?.tienda?.seguimientoRepartidor !== false
+  const [valor, setValor] = useState(actual)
+  const [saving, setSaving] = useState(false)
+
+  async function guardar() {
+    setSaving(true)
+    try {
+      const r = await updateSeguimientoRepartidor(user.tienda.id, valor)
+      patchTienda({ seguimientoRepartidor: r.data.data.seguimientoRepartidor })
+      notify('Seguimiento del repartidor guardado', 'success')
+    } catch (err) {
+      notify(err.response?.data?.message ?? 'No se pudo guardar', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const opciones = [
+    [true, 'Con seguimiento', 'Los pedidos a domicilio van a Entregas: el repartidor lo toma, sale, lo entrega y cobra. Se ve el avance del pedido.'],
+    [false, 'Sin seguimiento', 'Repartidores externos: el pedido no va a Entregas. Se cobra en caja y se marca entregado como uno para llevar.'],
+  ]
+  return (
+    <section className="card space-y-3 mt-6 border-l-4 border-l-purple-600">
+      <div>
+        <h2 className="text-base font-extrabold text-gray-900">Seguimiento del repartidor</h2>
+        <p className="text-xs text-gray-600 mt-0.5">
+          Para los pedidos a domicilio que se capturan en el punto de venta. Aplica a los pedidos nuevos; los pedidos
+          de la página web siempre llevan seguimiento.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {opciones.map(([key, label, desc]) => (
+          <label key={label} className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer ${valor === key ? 'border-purple-600 bg-purple-50' : 'border-gray-200'}`}>
+            <input type="radio" name="seguimientoRepartidor" className="mt-1 w-4 h-4" checked={valor === key} onChange={() => setValor(key)} />
+            <span>
+              <span className="block text-sm font-semibold text-gray-800">{label}</span>
+              <span className="block text-xs text-gray-600 mt-0.5">{desc}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+      <button type="button" className="btn-primary" disabled={saving || valor === actual} onClick={guardar}>
+        {saving ? 'Guardando...' : 'Guardar seguimiento'}
+      </button>
+    </section>
+  )
+}
+
 function EnviarCocinaCard() {
   const { user, patchTienda } = useAuth()
   const { notify } = useNotify()

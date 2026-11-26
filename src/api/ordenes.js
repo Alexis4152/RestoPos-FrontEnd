@@ -32,6 +32,9 @@ export const updateOrderItemStatus = (orderId, itemId, estado) =>
 export const cancelOrderItem = (orderId, itemId, motivo) =>
   api.delete(`/orders/${orderId}/items/${itemId}`, { data: { motivo } })
 
+/** Envío gratis (true) o con su costo (false) en un pedido a domicilio del punto de venta. */
+export const setEnvioGratis = (orderId, gratis) => api.put(`/orders/${orderId}/envio-gratis`, { gratis })
+
 /** Marca como entregado todo lo que falte: con eso se cierra una orden ya pagada. */
 export const deliverAllItems = (orderId) => api.post(`/orders/${orderId}/entregar-todo`)
 
