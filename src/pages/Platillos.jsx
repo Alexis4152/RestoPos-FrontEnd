@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { getProducts, createProduct, updateProduct, adjustStock, deleteProduct, searchProducts, uploadProductImage, removeProductImage } from '../api/products'
+import { getProductsMenuPage, createProduct, updateProduct, adjustStock, deleteProduct, uploadProductImage, removeProductImage } from '../api/products'
 import { getCategories } from '../api/categories'
 import { getModificadorGrupos, getModificadorGruposCopiables, createModificadorGrupo, updateModificadorGrupo, deleteModificadorGrupo, reorderModificadorGrupos } from '../api/modificadores'
 import { useAuth } from '../context/AuthContext'
@@ -9,6 +9,7 @@ import { resolveMediaUrl } from '../utils/media'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
 import IconButton from '../components/IconButton'
+import Pagination from '../components/Pagination'
 
 import ModalCloseButton from '../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
@@ -29,6 +30,11 @@ export default function Platillos() {
   const [categories, setCategories] = useState([])
   const [search, setSearch] = useState('')
   const [filterCat, setFilterCat] = useState('')
+  // Paginado en el servidor: la búsqueda se manda ya escrita (300 ms sin teclear).
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [page, setPage] = useState(0)
+  const [size, setSize] = useState(20)
+  const [pageInfo, setPageInfo] = useState({ totalElements: 0, totalPages: 0 })
   const [showModal, setShowModal] = useState(false)
   const [editProduct, setEditProduct] = useState(null)
   const [form, setForm] = useState(emptyForm)
@@ -72,12 +78,29 @@ export default function Platillos() {
   const [modCopyExpanded, setModCopyExpanded] = useState(() => new Set()) // ids con sus opciones visibles
   const [modCopyLoading, setModCopyLoading] = useState(false)
 
+  function loadProducts() {
+    getProductsMenuPage({ q: debouncedSearch.trim() || undefined, categoryId: filterCat || undefined, page, size })
+      .then((r) => {
+        const d = r.data.data ?? { content: [], totalElements: 0, totalPages: 0 }
+        // Si se desactivó el último de la página, regresa a la anterior.
+        if ((d.content ?? []).length === 0 && page > 0) { setPage(page - 1); return }
+        setProducts(d.content ?? [])
+        setPageInfo({ totalElements: d.totalElements ?? 0, totalPages: d.totalPages ?? 0 })
+      })
+      .catch(() => { setProducts([]); setPageInfo({ totalElements: 0, totalPages: 0 }) })
+  }
+
   function load() {
-    getProducts().then((r) => setProducts(r.data.data ?? []))
+    loadProducts()
     getCategories().then((r) => setCategories(r.data.data ?? []))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { getCategories().then((r) => setCategories(r.data.data ?? [])) }, [])
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
+  useEffect(() => { loadProducts() }, [debouncedSearch, filterCat, page, size]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cierra con ESC el modal que esté abierto (platillo, ajuste de stock, o modificadores),
   // descartando lo capturado — mismo efecto que "Cancelar"/"Cerrar". El formulario de grupo
@@ -90,12 +113,8 @@ export default function Platillos() {
     else if (adjustModal) setAdjustModal(null)
   }, !!(showModal || adjustModal || modModal || modGrupoForm || modCopyModal))
 
-  const filtered = products.filter((p) => {
-    const q = search.toLowerCase()
-    const matchQ = !q || p.name?.toLowerCase().includes(q)
-    const matchC = !filterCat || String(p.category?.id) === filterCat
-    return matchQ && matchC
-  })
+  // Ya vienen filtrados (búsqueda y categoría) y paginados desde el servidor.
+  const filtered = products
 
   function openNew() {
     setEditProduct(null)
@@ -500,8 +519,8 @@ export default function Platillos() {
       <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <div className="flex flex-wrap gap-3">
           <input className="input sm:max-w-xs" placeholder="Buscar platillo..." value={search}
-            onChange={(e) => setSearch(e.target.value)} />
-          <select className="input sm:max-w-xs" value={filterCat} onChange={(e) => setFilterCat(e.target.value)}>
+            onChange={(e) => { setSearch(e.target.value); setPage(0) }} />
+          <select className="input sm:max-w-xs" value={filterCat} onChange={(e) => { setFilterCat(e.target.value); setPage(0) }}>
             <option value="">Todas las categorías</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -560,6 +579,8 @@ export default function Platillos() {
           </tbody>
         </table>
         </div>
+        <Pagination page={page} size={size} totalElements={pageInfo.totalElements} totalPages={pageInfo.totalPages}
+          count={filtered.length} onPageChange={setPage} onSizeChange={(n) => { setSize(n); setPage(0) }} />
       </div>
 
       {/* Product modal */}

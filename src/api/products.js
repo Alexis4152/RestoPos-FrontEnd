@@ -24,6 +24,9 @@ export const searchProducts = (params) => api.get('/products/search', { params }
  */
 export const getProductsPage = (params) => api.get('/products/page', { params })
 
+/** Platillos por páginas para la pantalla de Platillos (`q`, `categoryId`, `page`, `size`), por nombre. */
+export const getProductsMenuPage = (params) => api.get('/products/menu-page', { params })
+
 /**
  * Busca stock disponible de un producto en las tiendas "hermanas" de la del usuario (las
  * que comparten el mismo Supervisor), sin exponer nada más de ellas — ej. para saber si una

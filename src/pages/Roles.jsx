@@ -5,6 +5,7 @@ import { useNotify } from '../context/NotifyContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
 import IconButton from '../components/IconButton'
+import Pagination, { useClientPage } from '../components/Pagination'
 
 import ModalCloseButton from '../components/ModalCloseButton'
 const emptyForm = { name: '', description: '', sections: [] }
@@ -24,6 +25,7 @@ const emptyForm = { name: '', description: '', sections: [] }
 export default function Roles() {
   const { notify, confirmDialog } = useNotify()
   const [roles, setRoles] = useState([])
+  const rolesPage = useClientPage(roles)
   const [showModal, setShowModal] = useState(false)
   const [editRole, setEditRole] = useState(null)
   const [form, setForm] = useState(emptyForm)
@@ -183,7 +185,7 @@ export default function Roles() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
-            {roles.map((r) => (
+            {rolesPage.items.map((r) => (
               <tr key={r.id} {...filaClick(() => openEdit(r))} className={`${FILA_CLICK} hover:bg-gray-50`}>
                 <td className="px-4 py-3 font-medium text-gray-900">
                   {r.name}
@@ -209,6 +211,7 @@ export default function Roles() {
           </tbody>
         </table>
         </div>
+        <Pagination {...rolesPage.props} />
       </div>
 
       {showModal && (

@@ -8,6 +8,9 @@ import api from './axios'
  */
 export const getUsers = (params) => api.get('/users', { params })
 
+/** Lo mismo que `getUsers`, por páginas (`page`, `size`): la tabla de la pantalla de Usuarios. */
+export const getUsersPage = (params) => api.get('/users/page', { params })
+
 /**
  * Obtiene el detalle de un usuario por id.
  * @param {number|string} id Id del usuario.

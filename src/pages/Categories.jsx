@@ -4,6 +4,7 @@ import { useNotify } from '../context/NotifyContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
 import IconButton from '../components/IconButton'
+import Pagination, { useClientPage } from '../components/Pagination'
 
 import ModalCloseButton from '../components/ModalCloseButton'
 const emptyForm = { name: '', description: '', scheduleStart: '', scheduleEnd: '' }
@@ -22,6 +23,7 @@ const toInputTime = (t) => (t ? t.slice(0, 5) : '')
 export default function Categories() {
   const { notify, confirmDialog } = useNotify()
   const [categories, setCategories] = useState([])
+  const categoriesPage = useClientPage(categories)
   const [showModal, setShowModal] = useState(false)
   const [editCategory, setEditCategory] = useState(null)
   const [form, setForm] = useState(emptyForm)
@@ -179,7 +181,7 @@ export default function Categories() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {categories.map((c) => (
+              {categoriesPage.items.map((c) => (
                 <tr key={c.id} {...filaClick(() => openEdit(c))} className={`${FILA_CLICK} hover:bg-gray-50`}>
                   <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
                   <td className="px-4 py-3 text-gray-500">{c.description || '—'}</td>
@@ -214,6 +216,7 @@ export default function Categories() {
             </tbody>
           </table>
         </div>
+        <Pagination {...categoriesPage.props} />
       </div>
 
       {showModal && (

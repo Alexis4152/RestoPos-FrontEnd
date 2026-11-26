@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getUsers, createUser, updateUser, deleteUser } from '../api/users'
+import { getUsersPage, createUser, updateUser, deleteUser } from '../api/users'
 import { getRoles } from '../api/roles'
 import { getTiendas, getTiendasBySupervisor } from '../api/tiendas'
 import { useAuth } from '../context/AuthContext'
@@ -8,6 +8,7 @@ import PasswordInput from '../components/PasswordInput'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
 import IconButton from '../components/IconButton'
+import Pagination from '../components/Pagination'
 
 import ModalCloseButton from '../components/ModalCloseButton'
 const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—'
@@ -54,6 +55,9 @@ export default function Users() {
   const { isSuperAdmin, user } = useAuth()
   const { notify, confirmDialog } = useNotify()
   const [users, setUsers] = useState([])
+  const [page, setPage] = useState(0)
+  const [size, setSize] = useState(20)
+  const [pageInfo, setPageInfo] = useState({ totalElements: 0, totalPages: 0 })
   const [roles, setRoles] = useState([])
   const [tiendas, setTiendas] = useState([])
   const [filters, setFilters] = useState(EMPTY_FILTERS)
@@ -86,7 +90,12 @@ export default function Users() {
       from: appliedFilters.from ? `${appliedFilters.from}T00:00:00` : undefined,
       to: appliedFilters.to ? `${appliedFilters.to}T23:59:59` : undefined,
     }
-    getUsers(params).then((r) => setUsers(r.data.data ?? []))
+    getUsersPage({ ...params, page, size }).then((r) => {
+      const d = r.data.data ?? { content: [], totalElements: 0, totalPages: 0 }
+      if ((d.content ?? []).length === 0 && page > 0) { setPage(page - 1); return }
+      setUsers(d.content ?? [])
+      setPageInfo({ totalElements: d.totalElements ?? 0, totalPages: d.totalPages ?? 0 })
+    })
     getRoles().then((r) => setRoles(r.data.data ?? []))
     // El selector de tienda al dar de alta/editar un usuario solo aplica para SUPER_ADMIN
     // (cualquier otro actor siempre da de alta dentro de su propia tienda/la que eligió actuar).
@@ -95,7 +104,7 @@ export default function Users() {
 
   // Recarga cada vez que cambian los filtros aplicados (al confirmar o limpiar el formulario
   // de filtros), no en cada tecleo — por eso existe la distinción filters vs appliedFilters.
-  useEffect(() => { load() }, [appliedFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [appliedFilters, page, size]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cierra con ESC el modal de usuario (mismo efecto que "Cancelar"), descartando lo capturado.
   useEscapeKey(() => {
@@ -105,6 +114,7 @@ export default function Users() {
   // Confirma los filtros en edición como los filtros activos, disparando la recarga.
   function handleApplyFilters(e) {
     e.preventDefault()
+    setPage(0)
     setAppliedFilters(filters)
   }
 
@@ -112,6 +122,7 @@ export default function Users() {
   function handleClearFilters() {
     setFilters(EMPTY_FILTERS)
     setAppliedFilters(EMPTY_FILTERS)
+    setPage(0)
   }
 
   // Abre el modal en blanco para crear un usuario nuevo. `roleId` arranca vacío a
@@ -364,6 +375,8 @@ export default function Users() {
           </tbody>
         </table>
         </div>
+        <Pagination page={page} size={size} totalElements={pageInfo.totalElements} totalPages={pageInfo.totalPages}
+          count={users.length} onPageChange={setPage} onSizeChange={(n) => { setSize(n); setPage(0) }} />
       </div>
 
       {showModal && (

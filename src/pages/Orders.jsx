@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ultimosDias } from '../utils/fechas'
 import { useNavigate } from 'react-router-dom'
 import { getOrders } from '../api/ordenes'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
@@ -8,14 +9,17 @@ const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency:
 const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—'
 
 const PAGE_SIZES = [10, 20, 50, 100]
-const EMPTY_FILTERS = { from: '', to: '', estado: '' }
+// Abre con los últimos 7 días (no toda la historia, que tarda); "Limpiar" regresa a eso.
+// Para ver todo, vaciar las fechas y filtrar.
+const DEFAULT_DIAS = 7
+const defaultFilters = () => ({ ...ultimosDias(DEFAULT_DIAS), estado: '' })
 const ESTADOS = ['ABIERTA', 'EN_PROCESO', 'LISTA', 'PENDIENTE_PAGO', 'PAGADA', 'CANCELADA']
 
 /** Historial paginado de órdenes, con filtros por fecha y estado. Las pendientes de pago van primero (las ordena el backend). */
 export default function Orders() {
   const navigate = useNavigate()
-  const [filters, setFilters] = useState(EMPTY_FILTERS)
-  const [appliedFilters, setAppliedFilters] = useState(EMPTY_FILTERS)
+  const [filters, setFilters] = useState(defaultFilters)
+  const [appliedFilters, setAppliedFilters] = useState(defaultFilters)
   const [page, setPage] = useState(0)
   const [size, setSize] = useState(20)
   const [pageData, setPageData] = useState({ content: [], totalElements: 0, totalPages: 0 })
@@ -39,8 +43,9 @@ export default function Orders() {
     setAppliedFilters(filters)
   }
   function handleClearFilters() {
-    setFilters(EMPTY_FILTERS)
-    setAppliedFilters(EMPTY_FILTERS)
+    const d = defaultFilters()
+    setFilters(d)
+    setAppliedFilters(d)
     setPage(0)
   }
 

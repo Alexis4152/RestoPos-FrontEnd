@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ultimosDias } from '../utils/fechas'
 import { Link } from 'react-router-dom'
 import { getSale, getSales } from '../api/sales'
 import { getTransfersToVerify, verifyTransfer } from '../api/pagos'
@@ -14,7 +15,10 @@ const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency:
 const fmtDate = (d) => d ? new Date(d).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' }) : '—'
 
 const PAGE_SIZES = [10, 20, 50, 100]
-const EMPTY_FILTERS = { from: '', to: '', estado: '', metodo: '' }
+// Abre con los últimos 7 días (no toda la historia, que tarda); "Limpiar" regresa a eso.
+// Para ver todo, vaciar las fechas y filtrar.
+const DEFAULT_DIAS = 7
+const defaultFilters = () => ({ ...ultimosDias(DEFAULT_DIAS), estado: '', metodo: '' })
 const ESTADOS = ['PENDIENTE', 'PAGADA', 'CANCELADA']
 const METODOS = { CASH: 'Efectivo', CARD: 'Tarjeta', TRANSFER: 'Transferencia' }
 const TIPO_LABEL = { TOTAL: 'Total', POR_COMENSAL: 'Por comensal', PERSONALIZADA: 'Personalizada' }
@@ -36,8 +40,8 @@ const ESTADO_STYLE = {
  */
 export default function Sales() {
   const { notify, confirmDialog } = useNotify()
-  const [filters, setFilters] = useState(EMPTY_FILTERS)
-  const [appliedFilters, setAppliedFilters] = useState(EMPTY_FILTERS)
+  const [filters, setFilters] = useState(defaultFilters)
+  const [appliedFilters, setAppliedFilters] = useState(defaultFilters)
   const [page, setPage] = useState(0)
   const [size, setSize] = useState(20)
   const [pageData, setPageData] = useState({ content: [], totalElements: 0, totalPages: 0 })
@@ -92,8 +96,9 @@ export default function Sales() {
     setAppliedFilters(filters)
   }
   function handleClearFilters() {
-    setFilters(EMPTY_FILTERS)
-    setAppliedFilters(EMPTY_FILTERS)
+    const d = defaultFilters()
+    setFilters(d)
+    setAppliedFilters(d)
     setPage(0)
   }
 
