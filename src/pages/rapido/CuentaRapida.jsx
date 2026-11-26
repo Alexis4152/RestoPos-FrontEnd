@@ -4,7 +4,8 @@ import { createAccount } from '../../api/cuentas'
 import { createPayment, nuevaLlavePago } from '../../api/pagos'
 import { deliverAllItems } from '../../api/ordenes'
 import { cobroAnticipado } from '../../utils/tipoPedido'
-import { printCuentaPorPagar, abrirCajon, reimprimirCuenta } from '../../utils/printer'
+import { abrirCajon, imprimirRecibo } from '../../utils/printer'
+import BotonesRecibo from '../../components/BotonesRecibo'
 import { puedeImprimirCuenta, quienImprimeTexto } from '../../utils/imprimeCuenta'
 import { EstadoEstacion } from '../../components/PrintStation'
 import { useNotify } from '../../context/NotifyContext'
@@ -26,12 +27,6 @@ function billetes(total) {
   return out.slice(0, 3)
 }
 
-/**
- * Reimprime la cuenta ya cobrada en sus 2 copias (cliente / comercio), sin volver a abrir el
- * cajón; si no hay impresora térmica configurada, abre el PDF. Al cobrar ya NO se imprime
- * nada (el mesero imprimió la cuenta): esto es solo para cuando de verdad se necesite.
- */
-export const imprimir = reimprimirCuenta
 
 /** Pantalla final tras cobrar (la muestra OrdenRapida aunque la orden ya esté cerrada). */
 export function CobroExitoso({ cobro }) {
@@ -60,7 +55,7 @@ export function CobroExitoso({ cobro }) {
       {cobro.cambio > 0 && <p className="text-2xl font-extrabold">Cambio: {fmt(cobro.cambio)}</p>}
       {cobro.porEntregar && <p className="text-sm text-gray-700">Falta entregar: cocina lo sigue viendo y la orden se cierra al entregarlo.</p>}
       <div className="flex flex-wrap gap-2 justify-center pt-2">
-        <button type="button" className="btn-secondary min-h-[44px]" onClick={() => imprimir(cobro.cuentaId).catch(() => notify('No se pudo imprimir', 'error'))}>Reimprimir (2 copias)</button>
+        <BotonesRecibo cuentaId={cobro.cuentaId} />
         {/* Regresa a donde venía (Mis mesas, Órdenes, Para llevar...). */}
         {cobro.porEntregar && (
           <button type="button" className="btn-secondary min-h-[44px]" disabled={entregando} onClick={yaSeEntrego}>{entregando ? '...' : 'Ya se entregó'}</button>
@@ -174,8 +169,8 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
     try {
       const r = await createAccount(order.id, { tipo: 'TOTAL', marcarEntregados: !anticipado })
       if (puedeImprimir) {
-        await printCuentaPorPagar(r.data.data.id)
-        notify('Cuenta impresa: entrégale su copia al cliente para que pague en caja', 'success')
+        await imprimirRecibo(r.data.data.id, 'CLIENTE')
+        notify('Recibo del cliente impreso: entrégaselo para que pague en caja', 'success')
       } else {
         notify(`Cuenta generada: ${quienImprimeTexto(user)} la imprime y cobra en caja`, 'success')
       }
@@ -231,18 +226,17 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
         </section>
         <p className="rounded-2xl bg-[#E6EDF8] px-4 py-3 text-sm text-[#1E4585]">
           {puedeImprimir
-            ? <>Se imprimen 2 copias: entrégale la <b>copia cliente</b>; con ella paga en caja (la propina se agrega al pagar).</>
+            ? <>Se imprime el <b>recibo del cliente</b>; con él paga en caja (la propina se agrega al pagar). El del negocio sale con su botón.</>
             : <>En esta tienda <b>{quienImprimeTexto(user)}</b> imprime la cuenta y cobra en caja; tú solo la generas.</>}
         </p>
-        {(puedeImprimir || !cuentaLista) && (
-          <button type="button" disabled={busy}
-            onClick={cuentaLista
-              ? () => printCuentaPorPagar(cuentaLista.id).catch(() => notify('No se pudo imprimir', 'error'))
-              : soloImprimir}
-            className="w-full min-h-[56px] rounded-2xl bg-gray-900 text-white text-base font-extrabold disabled:opacity-50">
-            {busy ? 'Generando…' : cuentaLista ? 'Reimprimir cuenta' : `${puedeImprimir ? 'Imprimir' : 'Generar'} cuenta ${fmt(subtotal)}`}
-          </button>
-        )}
+        {cuentaLista
+          ? puedeImprimir && <BotonesRecibo cuentaId={cuentaLista.id} grande />
+          : (
+            <button type="button" disabled={busy} onClick={soloImprimir}
+              className="w-full min-h-[56px] rounded-2xl bg-gray-900 text-white text-base font-extrabold disabled:opacity-50">
+              {busy ? 'Generando…' : `${puedeImprimir ? 'Imprimir' : 'Generar'} cuenta ${fmt(subtotal)}`}
+            </button>
+          )}
         {!cuentaLista && (
           <Link to={vistaDetallada} className="block text-center min-h-[40px] text-sm font-bold text-purple-700 hover:underline">Dividir la cuenta (vista detallada)</Link>
         )}
@@ -370,13 +364,7 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
         </button>
       )}
       {/* La cuenta ya la generó el mesero: si aquí toca imprimirla (cajero), se imprime antes de cobrar. */}
-      {cuentaLista && puedeImprimir && (
-        <button type="button" disabled={busy}
-          onClick={() => printCuentaPorPagar(cuentaLista.id).catch(() => notify('No se pudo imprimir', 'error'))}
-          className="block mx-auto min-h-[40px] text-sm font-bold text-purple-700 hover:underline disabled:opacity-50">
-          Imprimir cuenta (2 copias)
-        </button>
-      )}
+      {cuentaLista && puedeImprimir && <BotonesRecibo cuentaId={cuentaLista.id} />}
     </div>
   )
 }

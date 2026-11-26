@@ -12,7 +12,8 @@ import { cobroAnticipado as admiteCobroAnticipado } from '../utils/tipoPedido'
 import { getCategories, updateCategoryAvailabilityMode } from '../api/categories'
 import { searchProducts, getTopSellingProducts } from '../api/products'
 import { getOpenCashCut } from '../api/cashCuts'
-import { printCuentaPorPagar, abrirCajon, reimprimirCuenta } from '../utils/printer'
+import { abrirCajon, imprimirRecibo } from '../utils/printer'
+import BotonesRecibo from '../components/BotonesRecibo'
 import { esQuienImprime, puedeImprimirCuenta, quienImprimeTexto } from '../utils/imprimeCuenta'
 import { crearComanda } from '../api/comandas'
 import { EstadoEstacion } from '../components/PrintStation'
@@ -166,7 +167,6 @@ export default function OrderDetail() {
   const [clienteBusqueda, setClienteBusqueda] = useState('')
   const [ligando, setLigando] = useState(false)
   useEscapeKey(() => setQrOpinion(null), !!qrOpinion)
-  const [printing, setPrinting] = useState(false)
   // Corte de caja abierto del cajero actual — igual que el POS de DemoPV, NO bloquea la
   // pantalla ni la generación de cuentas, solo deshabilita el botón de cobro final dentro
   // del modal de "Registrar pago" (ver el aviso y el botón deshabilitado más abajo).
@@ -745,11 +745,14 @@ export default function OrderDetail() {
     }
   }
 
-  /** Imprime la cuenta por pagar en 2 copias (cliente / comercio). Nunca bloquea el flujo. */
+  /**
+   * Al generar la cuenta se imprime el recibo del cliente (con él paga en caja); el del negocio
+   * sale con su propio botón. Nunca bloquea el flujo.
+   */
   async function imprimirCuenta(cuentaId) {
     try {
-      await printCuentaPorPagar(cuentaId)
-      notify('Cuenta impresa: entrégale su copia al cliente para que pague en caja', 'success')
+      await imprimirRecibo(cuentaId, 'CLIENTE')
+      notify('Recibo del cliente impreso: entrégaselo para que pague en caja', 'success')
     } catch {
       notify('No se pudo imprimir la cuenta', 'error')
     }
@@ -827,17 +830,6 @@ export default function OrderDetail() {
   }
 
   /** Reimprime la cuenta ya cobrada en sus 2 copias (cliente / comercio), sin volver a abrir el cajón. */
-  async function printTicketNow(accountId) {
-    setPrinting(true)
-    try {
-      await reimprimirCuenta(accountId)
-    } catch (err) {
-      notify(err.message ?? 'No se pudo imprimir el ticket', 'error')
-    } finally {
-      setPrinting(false)
-    }
-  }
-
   async function handleViewTicket(cuenta) {
     try {
       const res = await getTicketPdf(cuenta.id)
@@ -1277,11 +1269,7 @@ export default function OrderDetail() {
                         {puedeImprimir ? 'El cliente paga en caja con su ticket.' : `${quienImprimeTexto(user) === 'el cajero' ? 'El cajero' : 'El mesero'} imprime la cuenta; el cliente paga en caja.`}
                       </p>
                     )}
-                    {c.estado === 'PENDIENTE' && puedeImprimir && (
-                      <button type="button" className={`${puedeCobrar ? 'btn-secondary' : 'btn-primary'} w-full min-h-[40px]`} onClick={() => imprimirCuenta(c.id)}>
-                        Imprimir cuenta (2 copias)
-                      </button>
-                    )}
+                    {c.estado === 'PENDIENTE' && puedeImprimir && <BotonesRecibo cuentaId={c.id} />}
                     {/* Con un abono no se cancela: primero un admin cancela el pago, con motivo. */}
                     {c.estado === 'PENDIENTE' && Number(c.totalPagado) === 0 && (isAdmin || isMesero) && (
                       <button type="button" className="btn-secondary w-full min-h-[40px] text-red-700" onClick={() => handleCancelAccount(c)}>Cancelar cuenta</button>
@@ -1991,13 +1979,11 @@ export default function OrderDetail() {
                 {paySuccess.ticketType === 'digital' ? (
                   <p className="text-sm text-purple-700 mb-6">📧 Ticket enviado a {paySuccess.email}</p>
                 ) : (
-                  <p className="text-sm text-gray-500 mb-6">{printing ? '🖨️ Imprimiendo…' : 'No se imprimió ticket: el cliente ya tiene su copia de la cuenta.'}</p>
+                  <p className="text-sm text-gray-500 mb-6">No se imprimió ticket: el cliente ya tiene su recibo de la cuenta.</p>
                 )}
                 <div className="flex gap-2">
                   {paySuccess.ticketType === 'physical' ? (
-                    <button className="btn-secondary flex-1" disabled={printing} onClick={() => printTicketNow(paySuccess.cuenta.id)}>
-                      {printing ? 'Imprimiendo…' : '🖨️ Reimprimir (2 copias)'}
-                    </button>
+                    <BotonesRecibo cuentaId={paySuccess.cuenta.id} />
                   ) : (
                     <button className="btn-secondary flex-1" onClick={() => handleViewTicket(paySuccess.cuenta)}>Ver ticket</button>
                   )}

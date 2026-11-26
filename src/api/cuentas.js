@@ -32,5 +32,8 @@ export const getAccountTicketEscPos = (id, copias = 1, { abrirCajon = true, solo
 export const getAccountTicketEscPosCopias = (id, copias = 1, { abrirCajon = true } = {}) =>
   api.get(`/accounts/${id}/ticket-escpos-copias`, { params: { copias, abrirCajon } })
 
+/** Una sola copia de la cuenta en ESC/POS: `copia` = 'CLIENTE' o 'COMERCIO'. */
+export const getReciboEscPos = (id, copia) => api.get(`/accounts/${id}/ticket-escpos-recibo`, { params: { copia } })
+
 /** Enlace y QR "califica tu visita" de una cuenta de mesa: { url, qrDataUrl }. */
 export const getOpinionQr = (id) => api.get(`/accounts/${id}/opinion-qr`)

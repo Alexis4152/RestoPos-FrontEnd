@@ -8,7 +8,8 @@ import { useLiveRefresh } from '../../utils/liveEvents'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { admiteModoRapido } from '../../utils/modoToma'
 import PedirPanel from './PedirPanel'
-import CuentaRapida, { imprimir } from './CuentaRapida'
+import CuentaRapida from './CuentaRapida'
+import BotonesRecibo from '../../components/BotonesRecibo'
 import { nombreMesa } from './MisMesas'
 import OpcionesMesa from './OpcionesMesa'
 // Personas sentadas: los comensales que de verdad tiene la orden (al instante al agregar,
@@ -122,7 +123,7 @@ export default function MesaRapidaModal({ ordenId, modo: modoInicial, onCerrar, 
               {cobro.cambio > 0 && <p className="text-2xl font-extrabold">Cambio: {fmt(cobro.cambio)}</p>}
               {cobro.porEntregar && <p className="text-sm text-gray-700">Falta entregar: cocina lo sigue viendo y la orden se cierra al entregarlo.</p>}
               <div className="flex flex-wrap gap-2 justify-center pt-2">
-                <button type="button" className="btn-secondary min-h-[44px]" onClick={() => imprimir(cobro.cuentaId).catch(() => notify('No se pudo imprimir', 'error'))}>Reimprimir (2 copias)</button>
+                <BotonesRecibo cuentaId={cobro.cuentaId} />
                 {cobro.porEntregar && (
                   <button type="button" className="btn-secondary min-h-[44px]" disabled={entregando} onClick={yaSeEntrego}>{entregando ? '...' : 'Ya se entregó'}</button>
                 )}

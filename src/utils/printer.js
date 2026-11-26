@@ -1,5 +1,5 @@
 import qz from 'qz-tray'
-import { getAccountTicketEscPos, getAccountTicketEscPosCopias, getTicketPdf } from '../api/cuentas'
+import { getAccountTicketEscPos, getAccountTicketEscPosCopias, getReciboEscPos, getTicketPdf } from '../api/cuentas'
 import { getQzCertificate, signQzData } from '../api/qz'
 
 /**
@@ -186,12 +186,7 @@ export async function sendRaw(hex, printerName) {
 }
 
 /**
- * Cuenta por pagar que genera el mesero: 2 copias en la térmica ("COPIA CLIENTE", que el cliente
- * lleva a la caja para pagar, y "COPIA COMERCIO"), ambas marcadas "CUENTA POR PAGAR". Sin
- * impresora térmica (QZ Tray), abre el PDF para imprimirlo desde el navegador.
- */
-/**
- * Al cobrar ya NO se imprime ticket (el mesero imprimió la cuenta en 2 copias): solo se abre el
+ * Al cobrar ya NO se imprime ticket (el cliente ya tiene su recibo de la cuenta): solo se abre el
  * cajón de dinero, y solo si el pago fue en efectivo (eso lo decide el backend). Sin impresora
  * térmica configurada (QZ Tray) no hay cajón conectado: no hace nada ni avisa.
  *
@@ -210,21 +205,15 @@ export async function abrirCajon(accountId) {
 }
 
 /**
- * Reimpresión después de cobrar: las mismas 2 copias (cliente / comercio), ya como ticket
- * pagado, SIN volver a abrir el cajón. Sin impresora térmica, abre el PDF.
+ * Imprime UNA copia de la cuenta: 'CLIENTE' (la que se lleva el cliente, con el QR de opinión)
+ * o 'COMERCIO'. Sin impresora térmica (QZ Tray), abre el PDF para imprimirlo desde el navegador.
  */
-export async function reimprimirCuenta(accountId) {
+export async function imprimirRecibo(accountId, copia = 'CLIENTE') {
   try {
-    await printAccountTicket(accountId, 2, { abrirCajon: false })
-  } catch {
-    const r = await getTicketPdf(accountId)
-    window.open(URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' })), '_blank', 'noopener')
-  }
-}
-
-export async function printCuentaPorPagar(accountId, copias = 2) {
-  try {
-    await printAccountTicket(accountId, copias)
+    const res = await getReciboEscPos(accountId, copia)
+    const hex = res.data?.data
+    if (!hex) throw new Error('El servidor no devolvió el contenido del ticket.')
+    await sendRaw(hex)
   } catch {
     const r = await getTicketPdf(accountId)
     window.open(URL.createObjectURL(new Blob([r.data], { type: 'application/pdf' })), '_blank', 'noopener')
