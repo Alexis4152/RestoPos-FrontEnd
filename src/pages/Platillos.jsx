@@ -444,6 +444,7 @@ export default function Platillos() {
     const opcionErrors = modGrupoForm.opciones.map((o) => {
       if (!o.nombre.trim()) return 'El nombre es obligatorio'
       if (o.nombre.length > 100) return 'Máximo 100 caracteres'
+      if (o.precioExtra !== '' && !Number.isFinite(Number(o.precioExtra))) return 'Pon un precio válido'
       if (o.precioExtra !== '' && Number(o.precioExtra) < 0) return 'No puede ser negativo'
       const clave = o.nombre.trim().toLowerCase()
       if (nombresVistos.has(clave)) return 'Nombre repetido en este grupo'
@@ -594,7 +595,7 @@ export default function Platillos() {
           <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <ModalCloseButton onClick={closeProductModal} />
             <h3 className="text-lg font-bold mb-4 pr-10">{editProduct ? 'Editar platillo' : 'Nuevo platillo'}</h3>
-            <form onSubmit={handleSave} className="space-y-3">
+            <form onSubmit={handleSave} noValidate className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="text-xs font-medium text-gray-600">Nombre <span className={fieldErrors.name ? 'text-red-600' : ''}>*</span></label>
                   <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -673,10 +674,10 @@ export default function Platillos() {
             <ModalCloseButton onClick={() => setAdjustModal(null)} />
             <h3 className="text-lg font-bold mb-1 pr-10">Ajustar stock</h3>
             <p className="text-sm text-gray-500 mb-4">{adjustModal.name} — actual: {adjustModal.stock} {adjustModal.unit}</p>
-            <form className="space-y-3">
+            <form noValidate className="space-y-3">
               <div>
                 <label className="text-xs font-medium text-gray-600">Cantidad</label>
-                <input className="input" type="number" min="1" value={adjustQty} onChange={(e) => setAdjustQty(e.target.value)} />
+                <input className="input" type="number" inputMode="numeric" value={adjustQty} onChange={(e) => setAdjustQty(e.target.value)} />
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-600">Motivo</label>
@@ -763,7 +764,7 @@ export default function Platillos() {
           <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
             <ModalCloseButton onClick={() => setModGrupoForm(null)} />
             <h3 className="text-lg font-bold mb-4 pr-10">{modGrupoForm.id ? 'Editar grupo' : 'Nuevo grupo de modificadores'}</h3>
-            <form onSubmit={handleSaveGrupo} className="space-y-3">
+            <form onSubmit={handleSaveGrupo} noValidate className="space-y-3">
               <div>
                 <label className="text-xs font-medium text-gray-600">Nombre <span className={modNombreError ? 'text-red-600' : ''}>*</span></label>
                 <input className="input" placeholder='Ej. "Término de cocción"' value={modGrupoForm.nombre}
@@ -807,7 +808,7 @@ export default function Platillos() {
                       className={`py-2 px-3 rounded-lg text-xs font-semibold border ${modGrupoForm.maxSelecciones === '' ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-200'}`}
                       onClick={() => { setModMaxError(''); setModGrupoForm((f) => ({ ...f, maxSelecciones: '' })) }}>Sin límite</button>
                     <span className="text-xs text-gray-500">o máximo</span>
-                    <input id="mod-max" type="number" min="1" max={modGrupoForm.permiteRepetir ? 50 : modGrupoForm.opciones.length} inputMode="numeric"
+                    <input id="mod-max" type="number" inputMode="numeric"
                       className={`input w-20 ${modMaxError ? 'border-red-400' : ''}`} placeholder="—"
                       value={modGrupoForm.maxSelecciones}
                       onChange={(e) => { setModMaxError(''); setModGrupoForm((f) => ({ ...f, maxSelecciones: e.target.value })) }} />
@@ -834,7 +835,7 @@ export default function Platillos() {
                         )}
                         <input className="input flex-1" placeholder="Nombre de la opción" value={o.nombre}
                           onChange={(e) => updateOpcionField(idx, 'nombre', e.target.value)} />
-                        <input className="input !w-24" type="number" min="0" step="0.01" placeholder="0.00" value={o.precioExtra}
+                        <input className="input !w-24" type="number" inputMode="decimal" placeholder="0.00" value={o.precioExtra}
                           onChange={(e) => updateOpcionField(idx, 'precioExtra', e.target.value)} />
                         <button type="button" title="Quitar opción"
                           className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold bg-gray-100 text-gray-400 hover:bg-red-50 hover:text-red-600"

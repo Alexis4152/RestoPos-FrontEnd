@@ -86,7 +86,7 @@ export default function ExtrasLibres({ value, onChange, disabled = false }) {
             </div>
             <div>
               <label htmlFor="extra-libre-precio" className="text-xs font-medium text-gray-600">Precio c/u</label>
-              <input id="extra-libre-precio" className="input mt-0.5 w-24" type="number" min="0" step="0.5" inputMode="decimal" placeholder="$0"
+              <input id="extra-libre-precio" className="input mt-0.5 w-24" type="number" inputMode="decimal" placeholder="$0"
                 value={precio} onChange={(e) => { setPrecio(e.target.value); setError('') }} />
             </div>
           </div>
