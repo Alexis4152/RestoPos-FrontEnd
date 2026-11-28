@@ -231,24 +231,28 @@ function AgregarExtra({ g, sel, onToggle }) {
     )
   }
   return (
-    <div className="rounded-xl border border-[#E4E1DA] p-3 space-y-2">
-      <div className="grid grid-cols-[1fr_auto] gap-2">
-        <div>
-          <label htmlFor={`extra-nombre-${g.id}`} className="text-xs font-medium text-gray-600">Extra nuevo</label>
-          <input id={`extra-nombre-${g.id}`} className="input mt-0.5" maxLength={100} autoFocus placeholder="Ej. Aguacate"
+    <div className="rounded-xl border border-[#E4E1DA] bg-[#F7F6F2] p-3 space-y-3">
+      <p className="text-sm font-extrabold text-gray-900">Agregar extra a {g.nombre.toLowerCase()}</p>
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex-1 min-w-0">
+          <label htmlFor={`extra-nombre-${g.id}`} className="block text-xs font-medium text-gray-600 mb-1">Nombre</label>
+          <input id={`extra-nombre-${g.id}`} className="input" maxLength={100} autoFocus placeholder="Ej. Aguacate"
             value={nombre} onChange={(e) => { setNombre(e.target.value); setError('') }} />
         </div>
-        <div>
-          <label htmlFor={`extra-precio-${g.id}`} className="text-xs font-medium text-gray-600">Precio</label>
-          <input id={`extra-precio-${g.id}`} className="input mt-0.5 !w-24" type="number" inputMode="decimal" placeholder="$0"
-            value={precio} onChange={(e) => { setPrecio(e.target.value); setError('') }}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar() } }} />
+        <div className="sm:w-32">
+          <label htmlFor={`extra-precio-${g.id}`} className="block text-xs font-medium text-gray-600 mb-1">Precio</label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">$</span>
+            <input id={`extra-precio-${g.id}`} className="input !pl-7" type="number" inputMode="decimal" placeholder="0.00"
+              value={precio} onChange={(e) => { setPrecio(e.target.value); setError('') }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar() } }} />
+          </div>
         </div>
       </div>
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div className="flex justify-end gap-2">
-        <button type="button" className="btn-secondary py-1.5" onClick={cerrar}>Cancelar</button>
-        <button type="button" className="btn-primary py-1.5" disabled={guardando} onClick={agregar}>{guardando ? 'Guardando…' : 'Agregar extra'}</button>
+        <button type="button" className="btn-secondary" onClick={cerrar}>Cancelar</button>
+        <button type="button" className="btn-primary" disabled={guardando} onClick={agregar}>{guardando ? 'Guardando…' : 'Agregar extra'}</button>
       </div>
     </div>
   )

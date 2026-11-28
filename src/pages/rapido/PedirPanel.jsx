@@ -166,13 +166,15 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
         return (
           <li key={k} className="flex items-center gap-2 py-2">
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold truncate">{l.nombre}</p>
+              <p className="text-sm font-bold leading-snug">{l.nombre}</p>
               <p className="text-xs text-gray-600 truncate">{[nombreComensal(l.comensalId), l.resumen, l.nota].filter(Boolean).join(' · ')}</p>
+              {l.aplicaLocal && consumo.activo && (
+                <div className="mt-1">
+                  <BotonLocal on={!!l.consumoLocal} monto={consumo.monto}
+                    onClick={() => setComanda((c) => alternarLocal(c, k, claveLinea, consumo.monto))} />
+                </div>
+              )}
             </div>
-            {l.aplicaLocal && consumo.activo && (
-              <BotonLocal on={!!l.consumoLocal} monto={consumo.monto}
-                onClick={() => setComanda((c) => alternarLocal(c, k, claveLinea, consumo.monto))} />
-            )}
             <div className="flex items-center rounded-xl border border-[#D9D5CC]">
               <button type="button" aria-label={`Quitar uno de ${l.nombre}`} onClick={() => cambiarCantidad(k, -1)} className="w-10 h-10 text-lg font-extrabold">−</button>
               <span className="w-6 text-center text-sm font-extrabold">{l.cantidad}</span>

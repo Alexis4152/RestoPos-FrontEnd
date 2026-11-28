@@ -1052,15 +1052,17 @@ export default function OrderDetail() {
               return (
                 <li key={k} className="flex items-center gap-3 px-3 py-2">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold truncate">{l.nombre}</p>
+                    <p className="text-sm font-bold leading-snug">{l.nombre}</p>
                     <p className="text-xs text-gray-600 truncate">
                       {[c ? `Comensal ${c.numero}${c.nombre ? ` (${c.nombre})` : ''}` : conPersonas ? 'Compartido' : null, l.resumen, l.observaciones].filter(Boolean).join(' · ')}
                     </p>
+                    {l.aplicaLocal && consumo.activo && (
+                      <div className="mt-1">
+                        <BotonLocal on={!!l.consumoLocal} monto={consumo.monto}
+                          onClick={() => setPorEnviar((c) => alternarLocal(c, k, clavePorEnviar, consumo.monto))} />
+                      </div>
+                    )}
                   </div>
-                  {l.aplicaLocal && consumo.activo && (
-                    <BotonLocal on={!!l.consumoLocal} monto={consumo.monto}
-                      onClick={() => setPorEnviar((c) => alternarLocal(c, k, clavePorEnviar, consumo.monto))} />
-                  )}
                   <span className="text-sm font-bold">{fmt(l.precio * l.cantidad)}</span>
                   <div className="flex items-center rounded-xl border border-[#D9D5CC]">
                     <button type="button" aria-label={`Quitar uno de ${l.nombre}`} onClick={() => cambiarPorEnviar(k, -1)} className="w-10 h-10 text-lg font-extrabold">−</button>
