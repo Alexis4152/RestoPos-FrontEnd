@@ -85,6 +85,3 @@ export const getOrderNotices = () => api.get('/orders/avisos')
 
 /** Meseros activos de la tienda (para asignarles una orden que abre alguien más). */
 export const getMeseros = () => api.get('/orders/meseros')
-
-/** Cambia el mesero de una orden abierta. */
-export const setMeseroOrden = (orderId, meseroId) => api.put(`/orders/${orderId}/mesero`, { meseroId })

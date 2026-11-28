@@ -255,6 +255,7 @@ export default function CuentaRapida({ order, cuentas, vistaDetallada, onCambio,
         </p>
       )}
 
+      <p className="text-sm text-gray-700">Atendió: <b>{order.mesero?.name ?? 'sin mesero'}</b></p>
       <section className="bg-white border border-[#E4E1DA] rounded-2xl p-4 space-y-2.5">
         <h3 className="text-sm font-extrabold text-gray-600">¿Cómo pagan?</h3>
         <div className="grid grid-cols-3 gap-2">
