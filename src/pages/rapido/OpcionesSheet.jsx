@@ -12,7 +12,8 @@ export function gruposActivos(p) {
   return (p.modificadorGrupos ?? [])
     .filter((g) => g.isActive !== false)
     .map((g) => ({ ...g, opciones: (g.opciones ?? []).filter((o) => o.isActive !== false) }))
-    .filter((g) => g.opciones.length > 0)
+    // Un grupo de Extras vacío se queda: ahí se agregan extras al vender.
+    .filter((g) => g.opciones.length > 0 || g.esExtras)
 }
 
 /**
