@@ -394,7 +394,7 @@ export default function OrderDetail() {
   // producto para la persona elegida en el selector.
   const comensalElegido = () => (pickerComensalId ? Number(pickerComensalId) : null)
   const esLineaSimple = (x, productId) => x.productoId === Number(productId) && (x.opcionIds ?? []).length === 0
-    && (x.comensalId ?? null) === comensalElegido() && !!x.consumoLocal === (!!x.aplicaLocal && consumo.porDefecto({ aplicaConsumoLocal: true }))
+    && (x.comensalId ?? null) === comensalElegido() && !x.consumoLocal
 
   function cartQty(productId) {
     return porEnviar.filter((x) => esLineaSimple(x, productId)).reduce((n, x) => n + x.cantidad, 0)
@@ -555,7 +555,7 @@ export default function OrderDetail() {
     : (editItem?.modificadores ?? []).reduce((s, m) => s + Number(m.precioExtra), 0))
   // Consumo local de la línea en edición: lo que ya cobra, o el monto de la tienda si se lo ponen.
   const editLocalMonto = editItem ? (Number(editItem.consumoLocal ?? 0) > 0 ? Number(editItem.consumoLocal) : consumo.monto) : 0
-  const editPuedeLocal = !!editItem && (consumo.aplica(editItem.producto) || Number(editItem.consumoLocal ?? 0) > 0)
+  const editPuedeLocal = !!editItem && !editItem.cargoExtra && (consumo.activo || Number(editItem.consumoLocal ?? 0) > 0)
   const editTotal = editItem
     ? (Number(editItem.precioUnitario) + editExtras + (editLocal ? editLocalMonto : 0)) * editCantidad - Number(editItem.descuento || 0)
     : 0

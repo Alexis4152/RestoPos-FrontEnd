@@ -3,20 +3,18 @@ import { useAuth } from '../context/AuthContext'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
 /**
- * Consumo local (Tienda.consumoLocalActivo / consumoLocalMonto): cargo por pieza a los platillos
- * marcados (Product.aplicaConsumoLocal) cuando se consumen en el restaurante. Se elige al agregar
- * el platillo; por defecto encendido en mesa y "comer aquí". Solo lo ve el personal: al cliente le
- * sale incluido en el precio del platillo.
+ * Consumo local (Tienda.consumoLocalActivo / consumoLocalMonto): cargo por pieza que quien toma la
+ * orden en el punto de venta le pone a cada producto al agregarlo (inicia apagado). Solo lo ve el
+ * personal: al cliente le sale incluido en el precio. Nunca aplica a pedidos en línea.
  *
- * @param order la orden (para el valor por defecto); puede ser null
+ * @param order la orden (pedidos de la página web: no aplica); puede ser null
  */
 export function useConsumoLocal(order) {
   const { user } = useAuth()
-  const activo = !!user?.tienda?.consumoLocalActivo
+  const activo = !!user?.tienda?.consumoLocalActivo && order?.origen !== 'WEB'
   const monto = Number(user?.tienda?.consumoLocalMonto ?? 10)
-  const aplica = (p) => activo && !!p?.aplicaConsumoLocal
-  const enLocal = !!(order?.mesa || order?.tipoEntrega === 'COMER_AQUI')
-  return { activo, monto, aplica, porDefecto: (p) => enLocal && aplica(p) }
+  const aplica = (p) => activo && !!p
+  return { activo, monto, aplica, porDefecto: () => false }
 }
 
 /** Botón "+$10 local" para poner o quitar el consumo local de una línea o un platillo. */

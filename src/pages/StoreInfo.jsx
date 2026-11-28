@@ -271,9 +271,8 @@ export default function StoreInfo() {
             <span className="text-sm text-gray-700">
               Cobrar consumo local
               <span className="block text-xs text-gray-500 mt-0.5">
-                Se suma por pieza a los platillos marcados con "Cobra consumo local" cuando se consumen en el restaurante
-                (por defecto en mesa y comer aquí; se puede quitar al agregar el platillo). El cliente no ve la leyenda: le sale
-                incluido en el precio del platillo.
+                Solo en el punto de venta: al agregar cada producto a la orden aparece "Consumo local" para sumarle este monto
+                por pieza (inicia apagado). Nunca en pedidos en línea. El cliente no ve la leyenda: le sale incluido en el precio.
               </span>
             </span>
           </label>
