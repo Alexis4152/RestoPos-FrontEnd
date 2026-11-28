@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import SelectorMesero from '../../components/SelectorMesero'
 import { getTables } from '../../api/mesas'
 import { openOrder, getPickups, updateOrderItemStatus } from '../../api/ordenes'
 import { useAuth } from '../../context/AuthContext'
@@ -39,6 +40,7 @@ export default function MisMesas() {
   const [filtro, setFiltro] = useState(null) // null = aún sin decidir (Mías si tiene, si no Todas)
   const [abrirTemporal, setAbrirTemporal] = useState(false)
   const [abriendo, setAbriendo] = useState(null) // mesa libre elegida: muestra "¿cuántas personas?"
+  const [meseroId, setMeseroId] = useState('') // a nombre de quién queda la mesa ('' = quien la abre)
   const [otras, setOtras] = useState(5)
   const [busy, setBusy] = useState(false)
   const [modal, setModal] = useState(null) // { ordenId, modo: 'pedir' | 'cuenta' }
@@ -74,7 +76,7 @@ export default function MisMesas() {
   async function abrir(mesa, personas) {
     setBusy(true)
     try {
-      const r = await openOrder({ mesaId: mesa.id, numeroComensales: personas })
+      const r = await openOrder({ mesaId: mesa.id, numeroComensales: personas, meseroId: meseroId || undefined })
       setAbriendo(null)
       setModal({ ordenId: r.data.data.id, modo: 'pedir' })
       load()
@@ -174,6 +176,7 @@ export default function MisMesas() {
                 </div>
                 {elegida && (
                   <div className="mt-2 space-y-2">
+                    <SelectorMesero value={meseroId} onChange={setMeseroId} id={`mesero-rapido-${m.id}`} />
                     <p className="text-sm text-gray-600">¿Cuántas personas? Toca y empieza a ordenar</p>
                     <div className={`grid gap-2 ${!m.capacidad || m.capacidad > 4 ? 'grid-cols-5' : 'grid-cols-4'}`}>
                       {PERSONAS.filter((n) => !m.capacidad || n <= m.capacidad).map((n) => (

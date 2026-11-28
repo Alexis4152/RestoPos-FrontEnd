@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import SelectorMesero from '../components/SelectorMesero'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getTables, createTable, updateTable, deleteTable, deactivateTables } from '../api/mesas'
 import { getZonas, createZona, updateZona, deleteZona } from '../api/zonas'
@@ -113,6 +114,7 @@ function TablesDetallado() {
   const [selId, setSelId] = useState(null)
   const [selOrden, setSelOrden] = useState(null)
   const [comensales, setComensales] = useState(2)
+  const [meseroId, setMeseroId] = useState('') // a nombre de quién queda la mesa ('' = quien la abre)
   const [loading, setLoading] = useState(false)
   // Abrir mesa temporal (todas ocupadas): zona donde se pone, o null si el modal está cerrado.
   const [temporalEn, setTemporalEn] = useState(null)
@@ -178,7 +180,7 @@ function TablesDetallado() {
   async function abrirMesa(mesa) {
     setLoading(true)
     try {
-      const res = await openOrder({ mesaId: mesa.id, numeroComensales: Number(comensales) })
+      const res = await openOrder({ mesaId: mesa.id, numeroComensales: Number(comensales), meseroId: meseroId || undefined })
       navigate(`/orders/${res.data.data.id}`)
     } catch (err) {
       notify(err.response?.data?.message ?? 'Error al abrir la mesa', 'error')
@@ -574,7 +576,7 @@ function TablesDetallado() {
                 <p className="text-sm text-gray-600 py-6 text-center">Toca una mesa para ver su detalle.</p>
               ) : (
                 <PanelMesa mesa={sel} orden={selOrden} reservas={reservasPorMesa[sel.id] ?? []} isAdmin={isAdmin}
-                  comensales={comensales} setComensales={setComensales} loading={loading}
+                  comensales={comensales} setComensales={setComensales} loading={loading} meseroId={meseroId} setMeseroId={setMeseroId}
                   onAbrir={() => abrirMesa(sel)} onVer={() => navigate(`/orders/${sel.ordenActiva.id}`)}
                   onMover={() => setMoverDe(sel)} onUnir={() => setUnirA(sel)} onSeparar={() => separar(sel)}
                   unidas={tables.filter((t) => t.unidaA && t.ordenActiva?.id === sel.ordenActiva?.id && !sel.unidaA)}
@@ -715,7 +717,7 @@ function TablesDetallado() {
 }
 
 /** Panel lateral de la mesa elegida: detalle y acciones según su estado. */
-function PanelMesa({ mesa, orden, reservas, isAdmin, comensales, setComensales, loading, onAbrir, onVer, onMover, onUnir, onSeparar, unidas = [], onEditar, onDesactivar }) {
+function PanelMesa({ mesa, orden, reservas, isAdmin, comensales, setComensales, loading, meseroId, setMeseroId, onAbrir, onVer, onMover, onUnir, onSeparar, unidas = [], onEditar, onDesactivar }) {
   const e = est(mesa.estado)
   const { cap, sentados } = lugares(mesa)
   const activos = (orden?.items ?? []).filter((i) => i.estado !== 'CANCELADO' && !i.cargoExtra)
@@ -787,6 +789,7 @@ function PanelMesa({ mesa, orden, reservas, isAdmin, comensales, setComensales, 
             </div>
             {mesa.capacidad && comensales >= mesa.capacidad && <p className="text-xs text-gray-600 mt-1.5">Es el máximo de la mesa. Para más personas, ábrela y une otra mesa.</p>}
           </div>
+          <SelectorMesero value={meseroId} onChange={setMeseroId} id={`mesero-mesa-${mesa.id}`} />
           <button type="button" className="btn-primary w-full min-h-[44px]" disabled={loading} onClick={onAbrir}>
             {loading ? '...' : `Abrir mesa ${mesa.numero}`}
           </button>

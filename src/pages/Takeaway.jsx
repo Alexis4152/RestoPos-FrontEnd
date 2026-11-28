@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import SelectorMesero from '../components/SelectorMesero'
 import { etiquetaEntrega, etiquetaCobro } from '../components/EntregaSeguimiento'
 import { useNavigate } from 'react-router-dom'
 import { getTakeawayOrders, openOrder, getDeliveryFee, acceptWebOrder, rejectWebOrder, cancelOrder } from '../api/ordenes'
@@ -67,6 +68,7 @@ export default function Takeaway() {
   const [showNewModal, setShowNewModal] = useState(false)
   const [direccion, setDireccion] = useState({ calle: '', colonia: '', codigoPostal: '' })
   const [clienteNombre, setClienteNombre] = useState('')
+  const [meseroId, setMeseroId] = useState('') // a nombre de quién queda el pedido ('' = quien lo abre)
   const [clienteTelefono, setClienteTelefono] = useState('')
   // "Comer aquí": el cliente pide en caja y se le asigna una mesa (zona → mesa).
   const [mesas, setMesas] = useState([])
@@ -171,6 +173,7 @@ export default function Takeaway() {
         tipoEntrega: t.key,
         clienteNombre: clienteNombre.trim(),
         clienteTelefono: t.telefono ? clienteTelefono.trim() : undefined,
+        meseroId: meseroId || undefined,
         ...(t.direccion ? direccionPayload(direccion) : {}),
       })
       navigate(`/orders/${res.data.data.id}`)
@@ -314,6 +317,7 @@ export default function Takeaway() {
                   onChange={(e) => { setClienteNombre(e.target.value); setFieldErrors((f) => ({ ...f, clienteNombre: '' })) }} />
                 {fieldErrors.clienteNombre && <p className="text-red-600 text-xs mt-1">{fieldErrors.clienteNombre}</p>}
               </div>
+              <SelectorMesero value={meseroId} onChange={setMeseroId} id="mesero-pedido" />
               {tipo === 'COMER_AQUI' && (
                 <ElegirMesa mesas={mesas} zonaSel={zonaSel} setZonaSel={setZonaSel} mesaId={mesaId}
                   onMesa={(id) => { setMesaId(id); setFieldErrors((f) => ({ ...f, mesa: '' })) }} error={fieldErrors.mesa} />

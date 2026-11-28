@@ -37,6 +37,8 @@ import SelectorModoToma from '../components/SelectorModoToma'
 import { recibirDineroEntrega } from '../api/deliveries'
 import IconButton from '../components/IconButton'
 import ReimprimirComanda from '../components/ReimprimirComanda'
+import { useMeseros } from '../components/SelectorMesero'
+import { setMeseroOrden } from '../api/ordenes'
 import EnvioGratisButton, { puedeCambiarEnvio } from '../components/EnvioGratisButton'
 
 import ModalCloseButton from '../components/ModalCloseButton'
@@ -78,6 +80,7 @@ export default function OrderDetail() {
 
   const [order, setOrder] = useState(null)
   const consumo = useConsumoLocal(order) // consumo local: +$ por pieza en platillos marcados
+  const meseros = useMeseros() // para cambiar el mesero de la orden (si quien la ve no es mesero)
   const [accounts, setAccounts] = useState([])
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(false)
@@ -1005,7 +1008,19 @@ export default function OrderDetail() {
             Orden #{order.id}
             {esMesa && order.mesa.zona?.nombre ? ` · ${order.mesa.zona.nombre}` : ''}
             {!esMesa ? ` · ${etiquetaTipoPedido(order)}` : ''}
-            {' · '}{order.mesero?.name ?? 'sin mesero'}
+            {' · '}
+            {!isClosed && !isMesero && meseros.length > 0 ? (
+              <select aria-label="Mesero de la orden" value={order.mesero?.id ?? ''}
+                onChange={async (e) => {
+                  if (!e.target.value) return
+                  try { await setMeseroOrden(order.id, Number(e.target.value)); notify('Mesero asignado', 'success'); load() }
+                  catch (err) { notify(err.response?.data?.message ?? 'No se pudo cambiar el mesero', 'error') }
+                }}
+                className="inline-block align-baseline bg-transparent border-b border-dashed border-gray-400 text-sm font-semibold text-gray-800 cursor-pointer">
+                {!meseros.some((m) => m.id === order.mesero?.id) && <option value={order.mesero?.id ?? ''}>{order.mesero?.name ?? 'sin mesero'}</option>}
+                {meseros.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            ) : (order.mesero?.name ?? 'sin mesero')}
             {order.openedAt ? ` · abierta ${new Date(order.openedAt).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}${!isClosed ? ` (${transcurrido})` : ''}` : ''}
           </p>
         </div>
