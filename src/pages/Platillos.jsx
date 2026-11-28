@@ -9,6 +9,7 @@ import { resolveMediaUrl } from '../utils/media'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { filaClick, FILA_CLICK } from '../utils/filaClick'
 import IconButton from '../components/IconButton'
+import EstrellaFavorito from '../components/EstrellaFavorito'
 import Pagination from '../components/Pagination'
 
 import ModalCloseButton from '../components/ModalCloseButton'
@@ -527,6 +528,8 @@ export default function Platillos() {
               <tr key={p.id} {...filaClick(isAdmin ? () => openEdit(p) : null)} className={`${isAdmin ? FILA_CLICK : ''} hover:bg-gray-50`}>
                 <td className="px-4 py-3 font-medium text-gray-900">
                   <div className="flex items-center gap-2">
+                    <EstrellaFavorito producto={p} className="shrink-0"
+                      onCambio={(fav) => setProducts((ps) => ps.map((x) => (x.id === p.id ? { ...x, favorito: fav } : x)))} />
                     {p.imageUrl && <img src={resolveMediaUrl(p.imageUrl)} alt="" className="w-8 h-8 rounded object-cover" />}
                     {p.name}
                     {p.controlaInventario && (
