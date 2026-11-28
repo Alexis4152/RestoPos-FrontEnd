@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { addOrderItem, addDiner } from '../../api/ordenes'
 import { getCategories } from '../../api/categories'
-import { searchProducts, getTopSellingProducts } from '../../api/products'
+import { searchProducts, getTopSellingProducts, getFavoriteProducts } from '../../api/products'
+import EstrellaFavorito from '../../components/EstrellaFavorito'
 import { useNotify } from '../../context/NotifyContext'
 import { useAuth } from '../../context/AuthContext'
 import { crearComanda } from '../../api/comandas'
@@ -62,12 +63,22 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
   useEffect(() => { getCategories().then((r) => setCategorias(r.data.data ?? [])).catch(() => {}) }, [])
   useEffect(() => { guardarBorrador(id, comanda) }, [id, comanda])
 
+  // Si la tienda tiene favoritos, se abre en "Favoritos" (mientras no se haya elegido otra pestaña).
+  useEffect(() => {
+    getFavoriteProducts({ paraOrdenar: true })
+      .then((r) => { if ((r.data.data ?? []).length > 0) setCat((c) => (c === '' ? 'fav' : c)) })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     const t = setTimeout(() => {
+      const categoria = cat && cat !== 'fav' ? cat : undefined
       const pedir = q.trim()
         // paraOrdenar: solo lo del menú de hoy (si la tienda tiene uno).
-        ? searchProducts({ q: q.trim(), categoryId: cat || undefined, size: 60, paraOrdenar: true })
-        : getTopSellingProducts({ categoryId: cat || undefined, limit: cat ? 60 : 24, paraOrdenar: true })
+        ? searchProducts({ q: q.trim(), categoryId: categoria, size: 60, paraOrdenar: true })
+        : cat === 'fav'
+          ? getFavoriteProducts({ paraOrdenar: true })
+          : getTopSellingProducts({ categoryId: categoria, limit: cat ? 60 : 24, paraOrdenar: true })
       pedir.then((r) => setProductos((r.data.data ?? []).filter((p) => p.disponible !== false && p.isActive !== false && p.category?.availableNow !== false)))
         .catch(() => setProductos([]))
     }, q ? 250 : 0)
@@ -252,6 +263,10 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
 
           {/* Categorías en su propia fila (se recorren completas) y debajo, a la derecha, cómo ver los platillos. */}
           <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" aria-label="Categorías">
+            <button type="button" aria-pressed={cat === 'fav'} onClick={() => setCat('fav')}
+              className={`shrink-0 min-h-[36px] px-3 rounded-full text-[13px] font-bold border ${cat === 'fav' ? 'border-[#C77700] bg-[#FBF0DC] text-[#6B4100]' : 'border-[#D9D5CC] bg-white text-gray-700'}`}>
+              ★ Favoritos
+            </button>
             <button type="button" aria-pressed={!cat} onClick={() => setCat('')}
               className={`shrink-0 min-h-[36px] px-3 rounded-full text-[13px] font-bold border ${!cat ? 'border-purple-600 bg-purple-50 text-purple-800' : 'border-[#D9D5CC] bg-white text-gray-700'}`}>
               Lo más pedido
@@ -282,9 +297,17 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
               const contador = n > 0 && (
                 <span className="absolute top-2 right-2 min-w-[26px] h-[26px] px-1 rounded-full bg-purple-600 text-white text-[13px] font-extrabold flex items-center justify-center">{n}</span>
               )
+              // Estrella de favorito: fuera del botón de la tarjeta (no se anida un botón en otro).
+              const estrella = (pos) => (
+                <EstrellaFavorito producto={p} className={`absolute ${pos}`}
+                  onCambio={(fav) => setProductos((ps) => (cat === 'fav' && !fav
+                    ? ps.filter((x) => x.id !== p.id)
+                    : ps.map((x) => (x.id === p.id ? { ...x, favorito: fav } : x))))} />
+              )
               if (vistaProd === 'images') {
                 return (
-                  <button key={p.id} type="button" onClick={() => tocarProducto(p)} disabled={p.sinInventario}
+                  <div key={p.id} className="relative">
+                  <button type="button" onClick={() => tocarProducto(p)} disabled={p.sinInventario}
                     className={`relative text-left rounded-2xl bg-white overflow-hidden flex flex-col disabled:opacity-60 disabled:cursor-not-allowed ${n ? 'border-2 border-purple-600' : 'border border-[#E4E1DA] hover:border-purple-300'}`}>
                     <span className="aspect-square bg-[#F1EFEA] flex items-center justify-center overflow-hidden">
                       {p.imageUrl
@@ -299,19 +322,28 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
                     </span>
                     {contador}
                   </button>
+                  {estrella('top-2 left-2')}
+                  </div>
                 )
               }
               return (
-                <button key={p.id} type="button" onClick={() => tocarProducto(p)} disabled={p.sinInventario}
-                  className={`relative min-h-[84px] text-left p-3 rounded-2xl bg-white flex flex-col justify-between gap-1 disabled:opacity-60 disabled:cursor-not-allowed ${n ? 'border-2 border-purple-600' : 'border border-[#E4E1DA] hover:border-purple-300'}`}>
+                <div key={p.id} className="relative">
+                <button type="button" onClick={() => tocarProducto(p)} disabled={p.sinInventario}
+                  className={`relative w-full h-full min-h-[84px] text-left p-3 pb-10 rounded-2xl bg-white flex flex-col justify-between gap-1 disabled:opacity-60 disabled:cursor-not-allowed ${n ? 'border-2 border-purple-600' : 'border border-[#E4E1DA] hover:border-purple-300'}`}>
                   <span className="text-[15px] font-extrabold leading-tight pr-7">{p.name}</span>
                   <span className="text-[13px] font-bold text-gray-600">{fmt(p.price)}{conOpciones ? ' · opciones' : ''}</span>
                   {etiqueta}
                   {contador}
                 </button>
+                {estrella('bottom-2 right-2')}
+                </div>
               )
             })}
-            {productos.length === 0 && <p className="col-span-full text-center text-sm text-gray-600 py-8">Sin platillos {q ? `para “${q}”` : 'en esta categoría'}.</p>}
+            {productos.length === 0 && (
+              <p className="col-span-full text-center text-sm text-gray-600 py-8">
+                {q ? `Sin platillos para “${q}”.` : cat === 'fav' ? 'Todavía no hay favoritos: toca la ☆ de un platillo para agregarlo aquí.' : 'Sin platillos en esta categoría.'}
+              </p>
+            )}
           </div>
         </div>
 

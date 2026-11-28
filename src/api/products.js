@@ -24,6 +24,12 @@ export const searchProducts = (params) => api.get('/products/search', { params }
  */
 export const getProductsPage = (params) => api.get('/products/page', { params })
 
+/** Favoritos de la tienda (zona "Favoritos" al tomar la orden). `paraOrdenar`: solo los del menú de hoy. */
+export const getFavoriteProducts = (params) => api.get('/products/favoritos', { params })
+
+/** Marca o quita un platillo de los favoritos de la tienda. */
+export const setProductFavorito = (id, favorito) => api.patch(`/products/${id}/favorito`, { favorito })
+
 /** Platillos por páginas para la pantalla de Platillos (`q`, `categoryId`, `page`, `size`), por nombre. */
 export const getProductsMenuPage = (params) => api.get('/products/menu-page', { params })
 

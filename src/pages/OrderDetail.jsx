@@ -10,7 +10,8 @@ import { createPayment, nuevaLlavePago } from '../api/pagos'
 import PagosCuenta from '../components/PagosCuenta'
 import { cobroAnticipado as admiteCobroAnticipado } from '../utils/tipoPedido'
 import { getCategories, updateCategoryAvailabilityMode } from '../api/categories'
-import { searchProducts, getTopSellingProducts } from '../api/products'
+import { searchProducts, getTopSellingProducts, getFavoriteProducts } from '../api/products'
+import EstrellaFavorito from '../components/EstrellaFavorito'
 import { getOpenCashCut } from '../api/cashCuts'
 import { abrirCajon, imprimirRecibo } from '../utils/printer'
 import BotonesRecibo from '../components/BotonesRecibo'
@@ -212,10 +213,13 @@ export default function OrderDetail() {
   useEffect(() => { if (puedeCobrar) getOpenCashCut().then((r) => setCashCut(r.data.data)).catch(() => {}) }, [puedeCobrar])
   useEffect(() => {
     if (!showAddItem) return
+    const categoria = productCat && productCat !== 'fav' ? productCat : undefined
     const loadProducts = productQuery
       // paraOrdenar: solo lo del menú de hoy (si la tienda tiene uno).
-      ? searchProducts({ q: productQuery, categoryId: productCat || undefined, size: 60, paraOrdenar: true })
-      : getTopSellingProducts({ categoryId: productCat || undefined, limit: 24, paraOrdenar: true })
+      ? searchProducts({ q: productQuery, categoryId: categoria, size: 60, paraOrdenar: true })
+      : productCat === 'fav'
+        ? getFavoriteProducts({ paraOrdenar: true })
+        : getTopSellingProducts({ categoryId: categoria, limit: 24, paraOrdenar: true })
     // Además del 86'd manual (disponible), se excluyen los productos cuya categoría no esté
     // disponible EN ESTE MOMENTO (ver Category#isAvailableNow en el backend, ya viene
     // calculado en cada producto como category.availableNow) — ej. items de "Desayuno" fuera
@@ -1540,6 +1544,11 @@ export default function OrderDetail() {
                 filtrar, un botón ⏱ para cambiar su modo de disponibilidad al momento — ej. el
                 mesero se da cuenta de que se acabó el insumo del desayuno antes de tiempo. */}
             <div className="flex flex-wrap gap-2 mb-1">
+              <button type="button" onClick={() => setProductCat('fav')}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  productCat === 'fav' ? 'bg-[#C77700] text-white border-[#C77700]' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                ★ Favoritos
+              </button>
               <button type="button" onClick={() => setProductCat('')}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
                   !productCat ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
@@ -1565,7 +1574,7 @@ export default function OrderDetail() {
               })}
             </div>
             <p className="text-xs text-gray-400 mb-3">
-              {productQuery ? 'Resultados de tu búsqueda' : productCat ? 'Más pedidos de esta categoría' : 'Más pedidos en general'}
+              {productQuery ? 'Resultados de tu búsqueda' : productCat === 'fav' ? 'Favoritos de la tienda (toca la ☆ de un platillo para agregarlo)' : productCat ? 'Más pedidos de esta categoría' : 'Más pedidos en general'}
             </p>
 
             {/* Grilla de productos: tarjeta horizontal compacta (miniatura + nombre + descripción/precio
@@ -1590,7 +1599,7 @@ export default function OrderDetail() {
                       if (personalizable) openModPicker(p)
                       else incrementCartItem(p)
                     }}
-                    className={`border rounded-lg overflow-hidden flex shadow-sm transition-colors ${p.sinInventario ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-purple-300 hover:bg-purple-50/40'} ${
+                    className={`relative border rounded-lg overflow-hidden flex shadow-sm transition-colors ${p.sinInventario ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-purple-300 hover:bg-purple-50/40'} ${
                       qty > 0 ? 'min-h-24 border-purple-300' : 'h-24 border-gray-100'}`}>
                     {p.imageUrl ? (
                       // Si la foto no carga se deja el recuadro gris (sin el texto roto del navegador).
@@ -1599,6 +1608,10 @@ export default function OrderDetail() {
                     ) : (
                       <div className="w-24 h-24 bg-gray-100 flex items-center justify-center text-2xl text-gray-300 shrink-0 self-start">🍽️</div>
                     )}
+                    <EstrellaFavorito producto={p} className="absolute top-1 left-1 !w-7 !h-7 !text-base"
+                      onCambio={(fav) => setProducts((ps) => (productCat === 'fav' && !fav
+                        ? ps.filter((x) => x.id !== p.id)
+                        : ps.map((x) => (x.id === p.id ? { ...x, favorito: fav } : x))))} />
                     <div className="p-2 flex-1 min-w-0 flex flex-col justify-between">
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-gray-800 leading-snug line-clamp-2">{p.name}</p>
