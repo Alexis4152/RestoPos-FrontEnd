@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { openTemporalOrder } from '../api/ordenes'
+import SelectorMesero from './SelectorMesero'
 import { useNotify } from '../context/NotifyContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import ModalCloseButton from './ModalCloseButton'
@@ -35,13 +36,14 @@ export function BotonMesaTemporal({ onClick, className = '' }) {
 export default function MesaTemporalModal({ zonaId, onClose, onAbierta }) {
   const { notify } = useNotify()
   const [personas, setPersonas] = useState(2)
+  const [meseroId, setMeseroId] = useState('') // a nombre de quien queda ('' = quien la abre)
   const [abriendo, setAbriendo] = useState(false)
   useEscapeKey(() => { if (!abriendo) onClose() }, true)
 
   async function abrir() {
     setAbriendo(true)
     try {
-      const r = await openTemporalOrder({ zonaId: zonaId ?? undefined, numeroComensales: personas })
+      const r = await openTemporalOrder({ zonaId: zonaId ?? undefined, numeroComensales: personas, meseroId: meseroId || undefined })
       notify(`${r.data.data.mesa?.numero ?? 'Mesa temporal'} abierta`, 'success')
       onAbierta(r.data.data)
     } catch (err) {
@@ -70,6 +72,7 @@ export default function MesaTemporalModal({ zonaId, onClose, onAbierta }) {
               disabled={personas >= 50} onClick={() => setPersonas((p) => Math.min(50, p + 1))}>+</button>
           </div>
         </div>
+        <SelectorMesero value={meseroId} onChange={setMeseroId} id="mesero-mesa-temporal" />
         <div className="flex gap-2 justify-end">
           <button type="button" className="btn-secondary" onClick={onClose} disabled={abriendo}>Cancelar</button>
           <button type="button" className="btn-primary" onClick={abrir} disabled={abriendo}>{abriendo ? 'Abriendo…' : 'Abrir mesa temporal'}</button>
