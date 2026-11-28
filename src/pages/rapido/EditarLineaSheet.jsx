@@ -5,7 +5,7 @@ import { useNotify } from '../../context/NotifyContext'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { gruposActivos } from './OpcionesSheet'
 import { GruposModificadoresAbiertos, cambiarSel, selDesdeModificadores } from '../../components/GruposModificadores'
-import ExtrasLibres, { libresDeItem } from '../../components/ExtrasLibres'
+import { conAjustes, useExtrasEditables } from '../../utils/extrasEditables'
 
 import ModalCloseButton from '../../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
@@ -30,8 +30,7 @@ export default function EditarLineaSheet({ ordenId, item, comensales, onCerrar, 
   const [cantidad, setCantidad] = useState(Number(item.cantidad))
   const [persona, setPersona] = useState(item.comensal?.id ?? null)
   const [nota, setNota] = useState(item.observaciones ?? '')
-  const [libres, setLibres] = useState(() => libresDeItem(item.modificadores))
-  const [libresTocados, setLibresTocados] = useState(false)
+  useExtrasEditables()
   const [busy, setBusy] = useState(false)
   useEscapeKey(onCerrar)
 
@@ -63,7 +62,6 @@ export default function EditarLineaSheet({ ordenId, item, comensales, onCerrar, 
         cantidad,
         observaciones: entregado ? item.observaciones : (nota.trim() || null),
         modificadorOpcionIds: modsTocados ? Object.values(sel).flat() : undefined,
-        extrasLibres: libresTocados ? libres : undefined,
         motivo: 'Cambio desde modo rápido',
       })
       notify('Cambio guardado', 'success')
@@ -90,7 +88,6 @@ export default function EditarLineaSheet({ ordenId, item, comensales, onCerrar, 
       await addOrderItem(ordenId, {
         productoId: item.producto.id, comensalId: item.comensal?.id ?? null, cantidad: 1,
         observaciones: item.observaciones || undefined, modificadorOpcionIds: ids.length ? ids : undefined,
-        extrasLibres: libres.length ? libres : undefined,
       })
       notify('Otra pieza enviada a cocina', 'success')
       onGuardado()
@@ -126,8 +123,7 @@ export default function EditarLineaSheet({ ordenId, item, comensales, onCerrar, 
           </div>
         </div>
 
-        <GruposModificadoresAbiertos grupos={grupos} sel={sel} onToggle={tocar} disabled={!puedeOpciones} />
-        <ExtrasLibres value={libres} disabled={!puedeOpciones} onChange={(v) => { setLibres(v); setLibresTocados(true) }} />
+        <GruposModificadoresAbiertos grupos={conAjustes(grupos)} sel={sel} onToggle={tocar} disabled={!puedeOpciones} editable />
 
         {!entregado && (
           <div>

@@ -17,8 +17,7 @@ const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency:
 // de Mis mesas y la pantalla completa: pasar de uno a otro no pierde lo armado.
 const leerBorrador = (id) => leerPorEnviar(id)
 const guardarBorrador = (id, lineas) => guardarPorEnviar(id, lineas, 'nota')
-const claveLinea = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ?? [])].sort().join('.'), l.nota ?? '',
-  JSON.stringify(l.extrasLibres ?? [])].join('|')
+const claveLinea = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ?? [])].sort().join('.'), l.nota ?? ''].join('|')
 
 /**
  * Modo rápido · "Pedir": menú directo ("Lo más pedido" primero), tocar un platillo suma uno a la
@@ -31,7 +30,7 @@ const claveLinea = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ??
  */
 export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviado, enModal = false }) {
   const id = String(order.id)
-  const { notify } = useNotify()
+  const { notify, confirmDialog } = useNotify()
   const { user } = useAuth()
   // "Enviar a cocina" (impresora de cocina) o "Crear orden" (impresora de tickets): por tienda.
   const aCocina = user?.tienda?.enviarACocina !== false
@@ -99,8 +98,8 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
       if (i >= 0) return c.map((x, j) => (j === i ? { ...x, cantidad: x.cantidad + l.cantidad } : x))
       return [...c, l]
     })
-    if (linea.opcionIds?.length || linea.nota || linea.extrasLibres?.length) {
-      setAnteriores((a) => ({ ...a, [linea.productoId]: { unitario: linea.precio, ids: linea.opcionIds, libres: linea.extrasLibres, resumen: linea.resumen, nota: linea.nota } }))
+    if (linea.opcionIds?.length || linea.nota) {
+      setAnteriores((a) => ({ ...a, [linea.productoId]: { unitario: linea.precio, ids: linea.opcionIds, resumen: linea.resumen, nota: linea.nota } }))
     }
   }
 
@@ -134,7 +133,6 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
           cantidad: l.cantidad,
           observaciones: l.nota || undefined,
           modificadorOpcionIds: l.opcionIds?.length ? l.opcionIds : undefined,
-          extrasLibres: l.extrasLibres?.length ? l.extrasLibres : undefined,
         })
         if (r.data.data?.id) enviados.push(r.data.data.id)
         pendientes = pendientes.slice(1)
@@ -178,6 +176,20 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
   const piezasComanda = comanda.reduce((s, l) => s + l.cantidad, 0)
   const totalComanda = comanda.reduce((s, l) => s + l.precio * l.cantidad, 0)
 
+  /** Descartar lo que aún no se envía a cocina (igual que en la vista detallada). */
+  async function descartar() {
+    if (await confirmDialog('¿Descartar lo que no se ha enviado a cocina?', { confirmText: 'Descartar' })) {
+      setComanda([])
+      setVerComanda(false)
+    }
+  }
+  const botonDescartar = (
+    <button type="button" disabled={enviando || comanda.length === 0} onClick={descartar}
+      className="min-h-[54px] px-4 rounded-2xl border border-[#D9D5CC] bg-white text-gray-800 text-sm font-extrabold disabled:opacity-50">
+      Descartar
+    </button>
+  )
+
   const barraEnviar = piezasComanda > 0 && (
     <div className={enModal
       ? 'sticky bottom-0 -mx-4 sm:-mx-5 -mb-4 sm:-mb-5 mt-3 bg-white border-t border-[#E4E1DA] px-4 sm:px-5 pt-3 pb-4 space-y-2'
@@ -189,10 +201,13 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
           {verComanda ? 'Ocultar' : 'Ver / editar'}
         </button>
       </div>
-      <button type="button" disabled={enviando} onClick={enviar}
-        className="w-full min-h-[54px] rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-base font-extrabold flex items-center justify-between px-5 disabled:opacity-50">
-        <span>{enviando ? 'Enviando…' : textoEnviar}</span><span>{fmt(totalComanda)}</span>
-      </button>
+      <div className="flex gap-2">
+        {botonDescartar}
+        <button type="button" disabled={enviando} onClick={enviar}
+          className="flex-1 min-h-[54px] rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-base font-extrabold flex items-center justify-between px-5 disabled:opacity-50">
+          <span>{enviando ? 'Enviando…' : textoEnviar}</span><span>{fmt(totalComanda)}</span>
+        </button>
+      </div>
     </div>
   )
 
@@ -293,10 +308,13 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
             {comanda.length === 0
               ? <p className="text-sm text-gray-600 py-4">Toca los platillos para armarla. Se envía todo junto a cocina.</p>
               : listaComanda('max-h-[55vh]')}
-            <button type="button" disabled={enviando || comanda.length === 0} onClick={enviar}
-              className="w-full min-h-[54px] rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-base font-extrabold flex items-center justify-between px-5 disabled:opacity-50">
-              <span>{enviando ? 'Enviando…' : textoEnviar}</span><span>{fmt(totalComanda)}</span>
-            </button>
+            <div className="flex gap-2">
+              {botonDescartar}
+              <button type="button" disabled={enviando || comanda.length === 0} onClick={enviar}
+                className="flex-1 min-h-[54px] rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-base font-extrabold flex items-center justify-between px-5 disabled:opacity-50">
+                <span>{enviando ? 'Enviando…' : textoEnviar}</span><span>{fmt(totalComanda)}</span>
+              </button>
+            </div>
           </aside>
         )}
       </div>

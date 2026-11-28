@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { useNotify } from '../context/NotifyContext'
+import { guardarNuevoExtra, guardarPrecioExtra } from '../utils/extrasEditables'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
@@ -127,6 +129,141 @@ function FilaRepetible({ g, o, sel, onToggle, nota, disabled, grande }) {
   )
 }
 
+/** Precio de un extra; en un grupo de Extras se toca para cambiarlo y se guarda al salir (sin confirmar). */
+function PrecioExtra({ o, editable }) {
+  const { notify } = useNotify()
+  const [editando, setEditando] = useState(false)
+  const [valor, setValor] = useState('')
+  const cancelado = useRef(false)
+  const precio = Number(o.precioExtra || 0)
+  if (!editable) return precio > 0 ? <span className="text-sm font-semibold text-gray-600">+{fmt(precio)}</span> : null
+
+  async function guardar() {
+    setEditando(false)
+    if (cancelado.current) { cancelado.current = false; return }
+    const n = valor === '' ? NaN : Number(valor)
+    if (!Number.isFinite(n) || n < 0 || n > 9999) { notify('Pon un precio válido, de $0 a $9,999', 'error'); return }
+    if (Math.round(n * 100) === Math.round(precio * 100)) return
+    try {
+      await guardarPrecioExtra(o.id, Math.round(n * 100) / 100)
+    } catch (err) {
+      notify(err.response?.data?.message ?? 'No se pudo guardar el precio', 'error')
+    }
+  }
+
+  if (editando) {
+    return (
+      <input type="number" inputMode="decimal" autoFocus className="input !w-24 py-1 text-sm" aria-label={`Precio de ${o.nombre}`}
+        value={valor} onChange={(e) => setValor(e.target.value)} onBlur={guardar}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
+          if (e.key === 'Escape') { e.stopPropagation(); cancelado.current = true; e.currentTarget.blur() }
+        }} />
+    )
+  }
+  return (
+    <button type="button" title="Cambiar el precio (se guarda para este platillo)" aria-label={`Cambiar precio de ${o.nombre}`}
+      onClick={() => { setValor(String(precio)); setEditando(true) }}
+      className="min-h-[36px] px-2 rounded-lg text-sm font-semibold text-gray-700 hover:bg-white border border-dashed border-[#D9D5CC] whitespace-nowrap">
+      {precio > 0 ? `+${fmt(precio)}` : '$0'} ✎
+    </button>
+  )
+}
+
+/** Opción de un grupo de Extras: elegirla (casilla o − n +) y su precio editable. */
+function FilaExtra({ g, o, sel, onToggle, disabled, grande }) {
+  const repite = puedeRepetir(g)
+  const on = (sel[g.id] ?? []).includes(o.id)
+  const bloqueada = !on && lleno(g, sel)
+  return (
+    <div className={`flex items-center gap-2 rounded-lg border px-3 py-1 ${on ? 'border-purple-600 bg-purple-50' : 'border-[#E4E1DA]'}`}>
+      {repite ? (
+        <span className="flex-1 min-w-0 text-sm font-semibold text-gray-800">{o.nombre}</span>
+      ) : (
+        <button type="button" aria-pressed={on} disabled={disabled || bloqueada} onClick={() => onToggle(g, o.id, 'toggle')}
+          title={bloqueada ? `Máximo ${maxDe(g)}: quita una para elegir otra` : undefined}
+          className="flex-1 min-w-0 min-h-[40px] flex items-center gap-3 text-left disabled:opacity-60">
+          <span aria-hidden="true" className={`w-5 h-5 shrink-0 flex items-center justify-center text-xs font-bold ${g.tipo === 'UNICO' ? 'rounded-full' : 'rounded'} ${on ? 'bg-purple-600 text-white' : 'border border-gray-400'}`}>{on ? '✓' : ''}</span>
+          <span className="text-sm font-semibold text-gray-800">{o.nombre}</span>
+        </button>
+      )}
+      <PrecioExtra o={o} editable={!disabled} />
+      {repite && <Contador g={g} o={o} sel={sel} onToggle={onToggle} disabled={disabled} grande={grande} />}
+    </div>
+  )
+}
+
+/** "+ Agregar extra": nombre y precio; se guarda en el grupo del platillo y queda elegido. */
+function AgregarExtra({ g, sel, onToggle }) {
+  const { notify } = useNotify()
+  const [abierto, setAbierto] = useState(false)
+  const [nombre, setNombre] = useState('')
+  const [precio, setPrecio] = useState('')
+  const [error, setError] = useState('')
+  const [guardando, setGuardando] = useState(false)
+
+  function cerrar() { setAbierto(false); setNombre(''); setPrecio(''); setError('') }
+  async function agregar() {
+    const n = nombre.trim()
+    const p = precio === '' ? NaN : Number(precio)
+    if (!n) { setError('Escribe el nombre del extra'); return }
+    if (n.length > 100) { setError('Máximo 100 caracteres'); return }
+    if (!Number.isFinite(p) || p < 0 || p > 9999) { setError('Pon el precio, de $0 a $9,999'); return }
+    setGuardando(true)
+    try {
+      const op = await guardarNuevoExtra(g.id, n, Math.round(p * 100) / 100)
+      if (!lleno(g, sel)) onToggle(g, op.id, puedeRepetir(g) ? 'mas' : 'toggle')
+      notify(`${op.nombre} agregado a ${g.nombre}`, 'success')
+      cerrar()
+    } catch (err) {
+      setError(err.response?.data?.message ?? 'No se pudo agregar el extra')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  if (!abierto) {
+    return (
+      <button type="button" onClick={() => setAbierto(true)}
+        className="min-h-[40px] px-3.5 rounded-full text-[13px] font-bold border border-dashed border-[#A8A398] bg-white text-gray-700">
+        + Agregar extra
+      </button>
+    )
+  }
+  return (
+    <div className="rounded-xl border border-[#E4E1DA] p-3 space-y-2">
+      <div className="grid grid-cols-[1fr_auto] gap-2">
+        <div>
+          <label htmlFor={`extra-nombre-${g.id}`} className="text-xs font-medium text-gray-600">Extra nuevo</label>
+          <input id={`extra-nombre-${g.id}`} className="input mt-0.5" maxLength={100} autoFocus placeholder="Ej. Aguacate"
+            value={nombre} onChange={(e) => { setNombre(e.target.value); setError('') }} />
+        </div>
+        <div>
+          <label htmlFor={`extra-precio-${g.id}`} className="text-xs font-medium text-gray-600">Precio</label>
+          <input id={`extra-precio-${g.id}`} className="input mt-0.5 !w-24" type="number" inputMode="decimal" placeholder="$0"
+            value={precio} onChange={(e) => { setPrecio(e.target.value); setError('') }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); agregar() } }} />
+        </div>
+      </div>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <button type="button" className="btn-secondary py-1.5" onClick={cerrar}>Cancelar</button>
+        <button type="button" className="btn-primary py-1.5" disabled={guardando} onClick={agregar}>{guardando ? 'Guardando…' : 'Agregar extra'}</button>
+      </div>
+    </div>
+  )
+}
+
+/** Opciones de un grupo de Extras en la toma de orden: precio editable y "+ Agregar extra". */
+function OpcionesExtras({ g, sel, onToggle, disabled, grande }) {
+  return (
+    <div className="space-y-1.5">
+      {g.opciones.map((o) => <FilaExtra key={o.id} g={g} o={o} sel={sel} onToggle={onToggle} disabled={disabled} grande={grande} />)}
+      {!disabled && <AgregarExtra g={g} sel={sel} onToggle={onToggle} />}
+    </div>
+  )
+}
+
 /**
  * Grupos de modificadores en acordeón — el mismo comportamiento en la página web, el punto
  * de venta detallado. El modo rápido usa GruposModificadoresAbiertos (todo a la vista):
@@ -139,9 +276,10 @@ function FilaRepetible({ g, o, sel, onToggle, nota, disabled, grande }) {
  * Props: `grupos` [{id, nombre, tipo: 'UNICO'|'MULTIPLE', obligatorio, maxSelecciones, permiteRepetir, opciones: [{id, nombre, precioExtra}]}],
  * `sel` {grupoId: [opcionId]} (un id repetido = otra pieza), `onToggle(grupo, opcionId, accion)`
  * (accion: 'toggle' | 'mas' | 'menos'; quien lo usa aplica `cambiarSel`), `nota(grupo, opcion)`
- * texto chico opcional junto a la opción (ej. "lo más pedido"), `disabled` (solo lectura).
+ * texto chico opcional junto a la opción (ej. "lo más pedido"), `disabled` (solo lectura),
+ * `editable` (punto de venta: en los grupos de Extras el precio se cambia y se agregan extras).
  */
-export default function GruposModificadores({ grupos, sel, onToggle, nota, disabled = false }) {
+export default function GruposModificadores({ grupos, sel, onToggle, nota, disabled = false, editable = false }) {
   const [abierto, setAbierto] = useState(null)
 
   function elegir(g, opId) {
@@ -182,7 +320,7 @@ export default function GruposModificadores({ grupos, sel, onToggle, nota, disab
             </button>
             {open && (
               <div id={panelId} className="px-3 pb-3 pt-1 space-y-1.5 border-t border-[#ECE9E2]">
-                {g.opciones.map((o) => {
+                {editable && g.esExtras ? <OpcionesExtras g={g} sel={sel} onToggle={onToggle} disabled={disabled} /> : g.opciones.map((o) => {
                   if (repite) return <FilaRepetible key={o.id} g={g} o={o} sel={sel} onToggle={onToggle} nota={nota} disabled={disabled} />
                   const on = (sel[g.id] ?? []).includes(o.id)
                   const extra = nota?.(g, o)
@@ -214,7 +352,7 @@ export default function GruposModificadores({ grupos, sel, onToggle, nota, disab
  * opciones como botones grandes de un toque — el mesero elige sin abrir ni cerrar nada.
  * Mismas props que GruposModificadores.
  */
-export function GruposModificadoresAbiertos({ grupos, sel, onToggle, nota, disabled = false }) {
+export function GruposModificadoresAbiertos({ grupos, sel, onToggle, nota, disabled = false, editable = false }) {
   return (
     <div className="space-y-4">
       {grupos.map((g) => {
@@ -232,7 +370,9 @@ export function GruposModificadoresAbiertos({ grupos, sel, onToggle, nota, disab
                   : lleno(g, sel) && <span className="ml-1 text-purple-700">· listo</span>}
               </span>
             </legend>
-            {repite ? (
+            {editable && g.esExtras ? (
+              <OpcionesExtras g={g} sel={sel} onToggle={onToggle} disabled={disabled} grande />
+            ) : repite ? (
               <div className="space-y-1.5">
                 {g.opciones.map((o) => <FilaRepetible key={o.id} g={g} o={o} sel={sel} onToggle={onToggle} nota={nota} disabled={disabled} grande />)}
               </div>

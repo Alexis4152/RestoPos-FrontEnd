@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { getTiendaInfo, updateTiendaInfo, uploadTiendaLogo, removeTiendaLogo, updateImprimeCuenta, updateEnviarACocina, updateSeguimientoRepartidor, updateExtraLibre } from '../api/tiendas'
+import { getTiendaInfo, updateTiendaInfo, uploadTiendaLogo, removeTiendaLogo, updateImprimeCuenta, updateEnviarACocina, updateSeguimientoRepartidor } from '../api/tiendas'
 import { MODOS_IMPRIME_CUENTA } from '../utils/imprimeCuenta'
 import { useNotify } from '../context/NotifyContext'
 import defaultLogo from '../assets/logo.png'
@@ -324,7 +324,6 @@ export default function StoreInfo() {
       {isSuperAdmin && <ImprimeCuentaCard />}
       {isSuperAdmin && <EnviarCocinaCard />}
       {isSuperAdmin && <SeguimientoRepartidorCard />}
-      {isSuperAdmin && <ExtraLibreCard />}
     </div>
   )
 }
@@ -438,58 +437,6 @@ function SeguimientoRepartidorCard() {
       </div>
       <button type="button" className="btn-primary" disabled={saving || valor === actual} onClick={guardar}>
         {saving ? 'Guardando...' : 'Guardar seguimiento'}
-      </button>
-    </section>
-  )
-}
-
-/**
- * Extras libres al tomar la orden (solo SUPER_ADMIN, por tienda). Activo: cualquiera que tome
- * órdenes ve "+ Extra libre" y escribe qué es y su precio (queda en la auditoría).
- */
-function ExtraLibreCard() {
-  const { user, patchTienda } = useAuth()
-  const { notify } = useNotify()
-  const actual = !!user?.tienda?.extraLibre
-  const [valor, setValor] = useState(actual)
-  const [saving, setSaving] = useState(false)
-
-  async function guardar() {
-    setSaving(true)
-    try {
-      const r = await updateExtraLibre(user.tienda.id, valor)
-      patchTienda({ extraLibre: r.data.data.extraLibre })
-      notify('Extras libres guardados', 'success')
-    } catch (err) {
-      notify(err.response?.data?.message ?? 'No se pudo guardar', 'error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const opciones = [
-    [false, 'Solo lo del menú', 'Los extras se eligen de las opciones de cada platillo.'],
-    [true, 'Permitir extras libres', 'Al tomar la orden aparece "+ Extra libre": se escribe qué es y su precio (ej. Aguacate $12). Sale en la cuenta y en cocina; queda registrado quién lo agregó.'],
-  ]
-  return (
-    <section className="card space-y-3 mt-6 border-l-4 border-l-purple-600">
-      <div>
-        <h2 className="text-base font-extrabold text-gray-900">Extras libres</h2>
-        <p className="text-xs text-gray-600 mt-0.5">Extras que no están en el menú, con nombre y precio escritos al tomar la orden.</p>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {opciones.map(([key, label, desc]) => (
-          <label key={label} className={`flex items-start gap-3 rounded-xl border p-3 cursor-pointer ${valor === key ? 'border-purple-600 bg-purple-50' : 'border-gray-200'}`}>
-            <input type="radio" name="extraLibre" className="mt-1 w-4 h-4" checked={valor === key} onChange={() => setValor(key)} />
-            <span>
-              <span className="block text-sm font-semibold text-gray-800">{label}</span>
-              <span className="block text-xs text-gray-600 mt-0.5">{desc}</span>
-            </span>
-          </label>
-        ))}
-      </div>
-      <button type="button" className="btn-primary" disabled={saving || valor === actual} onClick={guardar}>
-        {saving ? 'Guardando...' : 'Guardar extras libres'}
       </button>
     </section>
   )

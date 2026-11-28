@@ -17,3 +17,9 @@ export const updateModificadorGrupo = (id, data) => api.put(`/modificador-grupos
 
 /** Elimina (borrado suave) un grupo de modificadores. */
 export const deleteModificadorGrupo = (id) => api.delete(`/modificador-grupos/${id}`)
+
+/** Grupo de Extras: cambiar el precio de un extra desde la toma de orden (se guarda en el platillo). */
+export const cambiarPrecioExtra = (opcionId, precioExtra) => api.patch(`/modificador-opciones/${opcionId}/precio`, { precioExtra })
+
+/** Grupo de Extras: agregar un extra nuevo ({ nombre, precioExtra }) desde la toma de orden. */
+export const agregarExtra = (grupoId, data) => api.post(`/modificador-grupos/${grupoId}/extras`, data)

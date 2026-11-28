@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { getProductsMenuPage, createProduct, updateProduct, adjustStock, deleteProduct, uploadProductImage, removeProductImage } from '../api/products'
+import { getProductsMenuPage, createProduct, updateProduct, deleteProduct, uploadProductImage, removeProductImage } from '../api/products'
 import { getCategories } from '../api/categories'
 import { getModificadorGrupos, getModificadorGruposCopiables, createModificadorGrupo, updateModificadorGrupo, deleteModificadorGrupo, reorderModificadorGrupos } from '../api/modificadores'
 import { useAuth } from '../context/AuthContext'
@@ -19,9 +19,8 @@ const emptyForm = { name: '', description: '', price: '', disponible: true, cate
 /**
  * Página "Platillos": el catálogo completo de la tienda (categorías, platillos, fotos,
  * modificadores). Qué se vende cada día se elige aparte en "Menú" (MenuDelDia.jsx), a partir
- * de este catálogo. El control de stock (opcional, pensado para un futuro módulo de insumos)
- * sigue disponible vía "Ajustar stock", pero no es obligatorio para operar un menú normal
- * (por eso "Disponible" — 86'd temporal — es el campo relevante del día a día, no el stock).
+ * de este catálogo. Las entradas y salidas de stock se hacen en Inventario (solo para los
+ * platillos con "Lleva inventario"); aquí lo del día a día es "Disponible" (86'd temporal).
  */
 export default function Platillos() {
   const { isAdmin } = useAuth()
@@ -38,9 +37,6 @@ export default function Platillos() {
   const [showModal, setShowModal] = useState(false)
   const [editProduct, setEditProduct] = useState(null)
   const [form, setForm] = useState(emptyForm)
-  const [adjustModal, setAdjustModal] = useState(null)
-  const [adjustQty, setAdjustQty] = useState('')
-  const [adjustReason, setAdjustReason] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   // { campo: mensaje } — igual formato que GlobalExceptionHandler manda para @Valid (ver
@@ -102,7 +98,7 @@ export default function Platillos() {
   }, [search])
   useEffect(() => { loadProducts() }, [debouncedSearch, filterCat, page, size]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Cierra con ESC el modal que esté abierto (platillo, ajuste de stock, o modificadores),
+  // Cierra con ESC el modal que esté abierto (platillo o modificadores),
   // descartando lo capturado — mismo efecto que "Cancelar"/"Cerrar". El formulario de grupo
   // (modGrupoForm) va primero: está apilado encima de la lista de grupos (modModal).
   useEscapeKey(() => {
@@ -110,8 +106,7 @@ export default function Platillos() {
     else if (modCopyModal) { if (modCopyProduct) setModCopyProduct(null); else closeCopyModal() }
     else if (modModal) closeModModal()
     else if (showModal) closeProductModal()
-    else if (adjustModal) setAdjustModal(null)
-  }, !!(showModal || adjustModal || modModal || modGrupoForm || modCopyModal))
+  }, !!(showModal || modModal || modGrupoForm || modCopyModal))
 
   // Ya vienen filtrados (búsqueda y categoría) y paginados desde el servidor.
   const filtered = products
@@ -256,25 +251,6 @@ export default function Platillos() {
   }
 
 
-  const adjustQtyNum = Math.abs(Number(adjustQty) || 0)
-
-  async function handleAdjust(e, direction) {
-    e.preventDefault()
-    if (adjustQtyNum === 0) return
-    setLoading(true)
-    try {
-      await adjustStock(adjustModal.id, { quantity: direction === 'OUT' ? -adjustQtyNum : adjustQtyNum, reason: adjustReason })
-      setAdjustModal(null)
-      setAdjustQty('')
-      setAdjustReason('')
-      load()
-    } catch (err) {
-      notify(err.response?.data?.message ?? 'Error')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   async function handleDelete(p) {
     if (!(await confirmDialog(`¿Desactivar "${p.name}"?`, { confirmText: 'Desactivar' }))) return
     await deleteProduct(p.id)
@@ -362,6 +338,7 @@ export default function Platillos() {
           obligatorio: g.obligatorio,
           maxSelecciones: g.tipo === 'MULTIPLE' ? (g.maxSelecciones ?? null) : null,
           permiteRepetir: g.tipo === 'MULTIPLE' && !!g.permiteRepetir,
+          esExtras: !!g.esExtras,
           opciones: (g.opciones ?? []).filter((o) => o.isActive !== false)
             .map((o) => ({ nombre: o.nombre, precioExtra: o.precioExtra })),
         }
@@ -384,7 +361,7 @@ export default function Platillos() {
     setModOpcionErrors([])
     setModMaxError('')
     setModGrupoForm({
-      id: null, nombre: '', tipo: 'UNICO', obligatorio: false, maxSelecciones: '', permiteRepetir: false,
+      id: null, nombre: '', tipo: 'UNICO', obligatorio: false, maxSelecciones: '', permiteRepetir: false, esExtras: false,
       opciones: [{ id: null, nombre: '', precioExtra: '' }],
     })
   }
@@ -395,7 +372,7 @@ export default function Platillos() {
     setModMaxError('')
     setModGrupoForm({
       id: g.id, nombre: g.nombre, tipo: g.tipo, obligatorio: g.obligatorio, maxSelecciones: g.maxSelecciones ?? '',
-      permiteRepetir: !!g.permiteRepetir,
+      permiteRepetir: !!g.permiteRepetir, esExtras: !!g.esExtras,
       opciones: (g.opciones ?? []).filter((o) => o.isActive !== false)
         .map((o) => ({ id: o.id, nombre: o.nombre, precioExtra: o.precioExtra })),
     })
@@ -456,8 +433,7 @@ export default function Platillos() {
       const m = Number(modGrupoForm.maxSelecciones)
       if (!Number.isInteger(m) || m < 1) maxError = 'Pon un número entero desde 1, o déjalo vacío para sin límite'
       else if (m > 50) maxError = 'Máximo 50'
-      // Si se pueden repetir, el máximo cuenta piezas y puede pasar del número de opciones.
-      else if (!modGrupoForm.permiteRepetir && m > modGrupoForm.opciones.length) maxError = `No puede ser mayor que las opciones (${modGrupoForm.opciones.length})`
+      // Un máximo igual o mayor que las opciones no es error: se pueden marcar todas (como sin límite).
     }
     return { nombreError, opcionErrors, maxError }
   }
@@ -482,6 +458,7 @@ export default function Platillos() {
         obligatorio: modGrupoForm.obligatorio,
         maxSelecciones: modGrupoForm.tipo === 'MULTIPLE' && modGrupoForm.maxSelecciones !== '' ? Number(modGrupoForm.maxSelecciones) : null,
         permiteRepetir: modGrupoForm.tipo === 'MULTIPLE' && !!modGrupoForm.permiteRepetir,
+        esExtras: !!modGrupoForm.esExtras,
         opciones: modGrupoForm.opciones.map((o) => ({
           id: o.id ?? undefined,
           nombre: o.nombre.trim(),
@@ -572,8 +549,6 @@ export default function Platillos() {
                   <div className="flex gap-1.5 justify-end">
                     {isAdmin && <IconButton icon="lapiz" label="Editar" variant="primary" onClick={() => openEdit(p)} />}
                     {isAdmin && <IconButton icon="opciones" label="Modificadores (opciones)" variant="purple" onClick={() => openModModal(p)} />}
-                    <IconButton icon="ajustar" label="Ajustar stock" variant="purple"
-                      onClick={() => { setAdjustModal(p); setAdjustQty(''); setAdjustReason('') }} />
                     {isAdmin && <IconButton icon="archivar" label="Desactivar" variant="danger" onClick={() => handleDelete(p)} />}
                   </div>
                 </td>
@@ -667,32 +642,6 @@ export default function Platillos() {
         </div>
       )}
 
-      {/* Adjust stock modal (opcional, futuro control de insumos) */}
-      {adjustModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
-            <ModalCloseButton onClick={() => setAdjustModal(null)} />
-            <h3 className="text-lg font-bold mb-1 pr-10">Ajustar stock</h3>
-            <p className="text-sm text-gray-500 mb-4">{adjustModal.name} — actual: {adjustModal.stock} {adjustModal.unit}</p>
-            <form noValidate className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-gray-600">Cantidad</label>
-                <input className="input" type="number" inputMode="numeric" value={adjustQty} onChange={(e) => setAdjustQty(e.target.value)} />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600">Motivo</label>
-                <input className="input" value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)} />
-              </div>
-              <div className="flex gap-2 justify-end pt-2">
-                <button type="button" className="btn-secondary" onClick={() => setAdjustModal(null)}>Cerrar</button>
-                <button type="button" className="btn-secondary" disabled={loading || adjustQtyNum === 0} onClick={(e) => handleAdjust(e, 'OUT')}>− Salida</button>
-                <button type="button" className="btn-primary" disabled={loading || adjustQtyNum === 0} onClick={(e) => handleAdjust(e, 'IN')}>+ Entrada</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Modificadores del producto: grupos (ej. "Término de cocción", "Extras") — ver
           ModificadorGrupoController en el backend. */}
       {modModal && (
@@ -720,7 +669,7 @@ export default function Platillos() {
                       <p className="font-semibold text-gray-800">{g.nombre}</p>
                       <div className="flex gap-1.5 mt-1.5">
                         <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700">
-                          {g.tipo === 'UNICO' ? 'Selección única' : g.maxSelecciones ? `Hasta ${g.maxSelecciones}` : 'Selección múltiple'}{g.permiteRepetir ? ' · se repite' : ''}
+                          {g.tipo === 'UNICO' ? 'Selección única' : g.maxSelecciones ? `Hasta ${g.maxSelecciones}` : 'Selección múltiple'}{g.permiteRepetir ? ' · se repite' : ''}{g.esExtras ? ' · extras (precio editable)' : ''}
                         </span>
                         <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${g.obligatorio ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
                           {g.obligatorio ? 'Obligatorio' : 'Opcional'}
@@ -787,6 +736,15 @@ export default function Platillos() {
                 <input type="checkbox" checked={modGrupoForm.obligatorio}
                   onChange={(e) => setModGrupoForm((f) => ({ ...f, obligatorio: e.target.checked }))} />
                 Obligatorio elegir algo de este grupo
+              </label>
+
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input type="checkbox" className="mt-0.5" checked={!!modGrupoForm.esExtras}
+                  onChange={(e) => setModGrupoForm((f) => ({ ...f, esExtras: e.target.checked }))} />
+                <span>
+                  Grupo de extras (precio editable al vender)
+                  <span className="block text-xs text-gray-500">Al tomar la orden se puede cambiar el precio de un extra o agregar uno nuevo; se guarda en este platillo.</span>
+                </span>
               </label>
 
               {modGrupoForm.tipo === 'MULTIPLE' && (
@@ -917,7 +875,7 @@ export default function Platillos() {
                         <label className="flex-1 min-w-0 cursor-pointer" onClick={() => toggleCopySelected(g.id)}>
                           <p className="font-semibold text-gray-800 text-sm">{g.nombre}</p>
                           <p className="text-xs text-gray-500 mt-0.5">
-                            {g.tipo === 'UNICO' ? 'Selección única' : g.maxSelecciones ? `Hasta ${g.maxSelecciones}` : 'Selección múltiple'}{g.permiteRepetir ? ' · se repite' : ''}
+                            {g.tipo === 'UNICO' ? 'Selección única' : g.maxSelecciones ? `Hasta ${g.maxSelecciones}` : 'Selección múltiple'}{g.permiteRepetir ? ' · se repite' : ''}{g.esExtras ? ' · extras (precio editable)' : ''}
                             {g.obligatorio ? ' · Obligatorio' : ''}
                             {' · '}{opciones.length} opciones
                           </p>
