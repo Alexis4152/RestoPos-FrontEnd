@@ -35,6 +35,7 @@ import { leerPorEnviar, guardarPorEnviar } from '../utils/porEnviar'
 import SelectorModoToma from '../components/SelectorModoToma'
 import { recibirDineroEntrega } from '../api/deliveries'
 import IconButton from '../components/IconButton'
+import ReimprimirComanda from '../components/ReimprimirComanda'
 import EnvioGratisButton, { puedeCambiarEnvio } from '../components/EnvioGratisButton'
 
 import ModalCloseButton from '../components/ModalCloseButton'
@@ -1090,6 +1091,7 @@ export default function OrderDetail() {
         <section aria-label="Productos de la orden" className="flex-[999_1_560px] min-w-0 bg-white border border-[#E4E1DA] rounded-2xl p-5 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-base font-extrabold mr-2">Productos</h2>
+            {(order.items ?? []).some((i) => !i.cargoExtra && i.estado !== 'CANCELADO') && <ReimprimirComanda ordenId={order.id} />}
             {!isClosed && (order.items ?? []).some((i) => i.estado !== 'ENTREGADO' && i.estado !== 'CANCELADO') && (
               <button type="button" disabled={marcandoTodo} onClick={handleMarcarTodoEntregado}
                 className="ml-auto min-h-[36px] px-3 rounded-xl border border-[#A9BEE3] bg-[#E6EDF8] text-[#1E4585] text-sm font-bold hover:bg-[#dbe5f5] disabled:opacity-40">

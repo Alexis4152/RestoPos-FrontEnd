@@ -17,6 +17,7 @@ import { nombreMesa } from './MisMesas'
 import EditarLineaSheet from './EditarLineaSheet'
 import { textoMods } from '../../components/GruposModificadores'
 import OpcionesMesa from './OpcionesMesa'
+import ReimprimirComanda from '../../components/ReimprimirComanda'
 import EnvioGratisButton, { esEnvioGratis, puedeCambiarEnvio } from '../../components/EnvioGratisButton'
 // Personas sentadas: los comensales que de verdad tiene la orden (al instante al agregar,
 // quitar o unir mesas); el contador guardado solo es respaldo.
@@ -189,6 +190,7 @@ export default function OrdenRapida() {
               {puedeCambiarEnvio(order, envio) && <EnvioGratisButton ordenId={order.id} item={envio} onCambio={load} />}
             </section>
           )}
+          {items.length > 0 && <div className="flex justify-center"><ReimprimirComanda ordenId={order.id} /></div>}
           {items.length > 0 && <p className="text-xs text-gray-600 text-center">Toca un platillo para cambiarlo o quitarlo. Si cocina ya lo está preparando, avísales.</p>}
         </div>
       )}
