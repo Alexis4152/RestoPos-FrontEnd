@@ -14,7 +14,7 @@ import Pagination from '../components/Pagination'
 import ModalCloseButton from '../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
-const emptyForm = { name: '', description: '', price: '', disponible: true, categoryId: '', controlaInventario: false }
+const emptyForm = { name: '', description: '', price: '', disponible: true, categoryId: '', controlaInventario: false, aplicaConsumoLocal: false }
 
 /**
  * Página "Platillos": el catálogo completo de la tienda (categorías, platillos, fotos,
@@ -128,6 +128,7 @@ export default function Platillos() {
       name: p.name, description: p.description ?? '', price: p.price,
       disponible: p.disponible !== false, categoryId: p.category?.id ?? '',
       controlaInventario: !!p.controlaInventario,
+      aplicaConsumoLocal: !!p.aplicaConsumoLocal,
     })
     setError('')
     setFieldErrors({})
@@ -603,6 +604,13 @@ export default function Platillos() {
                 <span>
                   <span className="block text-sm text-gray-700">Lleva inventario</span>
                   <span className="block text-xs text-gray-500">Para lo que se compra y se cuenta (refrescos, cervezas). Solo estos aparecen en Inventario y en las alertas de stock bajo.</span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" className="mt-1" checked={!!form.aplicaConsumoLocal} onChange={(e) => setForm({ ...form, aplicaConsumoLocal: e.target.checked })} />
+                <span>
+                  <span className="block text-sm text-gray-700">Cobra consumo local</span>
+                  <span className="block text-xs text-gray-500">Si la tienda tiene activo el consumo local (Datos de la tienda), se suma por pieza cuando se consume en el restaurante. El cliente lo ve incluido en el precio.</span>
                 </span>
               </label>
 

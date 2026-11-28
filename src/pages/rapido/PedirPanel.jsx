@@ -9,6 +9,7 @@ import Icon from '../../components/Icon'
 import { resolveMediaUrl } from '../../utils/media'
 import { leerPorEnviar, guardarPorEnviar } from '../../utils/porEnviar'
 import OpcionesSheet, { gruposActivos } from './OpcionesSheet'
+import { BotonLocal, alternarLocal, useConsumoLocal } from '../../utils/consumoLocal'
 
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
 
@@ -17,7 +18,8 @@ const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency:
 // de Mis mesas y la pantalla completa: pasar de uno a otro no pierde lo armado.
 const leerBorrador = (id) => leerPorEnviar(id)
 const guardarBorrador = (id, lineas) => guardarPorEnviar(id, lineas, 'nota')
-const claveLinea = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ?? [])].sort().join('.'), l.nota ?? ''].join('|')
+const claveLinea = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ?? [])].sort().join('.'), l.nota ?? '',
+  l.consumoLocal ? 'L' : ''].join('|')
 
 /**
  * Modo rápido · "Pedir": menú directo ("Lo más pedido" primero), tocar un platillo suma uno a la
@@ -31,6 +33,7 @@ const claveLinea = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ??
 export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviado, enModal = false }) {
   const id = String(order.id)
   const { notify, confirmDialog } = useNotify()
+  const consumo = useConsumoLocal(order) // consumo local: +$ por pieza en platillos marcados
   const { user } = useAuth()
   // "Enviar a cocina" (impresora de cocina) o "Crear orden" (impresora de tickets): por tienda.
   const aCocina = user?.tienda?.enviarACocina !== false
@@ -99,13 +102,16 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
       return [...c, l]
     })
     if (linea.opcionIds?.length || linea.nota) {
-      setAnteriores((a) => ({ ...a, [linea.productoId]: { unitario: linea.precio, ids: linea.opcionIds, resumen: linea.resumen, nota: linea.nota } }))
+      setAnteriores((a) => ({ ...a, [linea.productoId]: { unitario: linea.precio, ids: linea.opcionIds, resumen: linea.resumen, nota: linea.nota,
+        consumoLocal: linea.consumoLocal } }))
     }
   }
 
   function tocarProducto(p) {
     if (gruposActivos(p).length > 0) { setOpciones(p); return }
-    agregarLinea({ productoId: p.id, nombre: p.name, precio: Number(p.price), cantidad: 1, opcionIds: [], resumen: '', nota: '' })
+    const local = consumo.porDefecto(p)
+    agregarLinea({ productoId: p.id, nombre: p.name, precio: Number(p.price) + (local ? consumo.monto : 0), cantidad: 1, opcionIds: [],
+      resumen: '', nota: '', consumoLocal: local, aplicaLocal: consumo.aplica(p) })
   }
 
   const cambiarCantidad = (k, delta) => setComanda((c) => c
@@ -133,6 +139,7 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
           cantidad: l.cantidad,
           observaciones: l.nota || undefined,
           modificadorOpcionIds: l.opcionIds?.length ? l.opcionIds : undefined,
+          consumoLocal: !!l.consumoLocal,
         })
         if (r.data.data?.id) enviados.push(r.data.data.id)
         pendientes = pendientes.slice(1)
@@ -162,6 +169,10 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
               <p className="text-sm font-bold truncate">{l.nombre}</p>
               <p className="text-xs text-gray-600 truncate">{[nombreComensal(l.comensalId), l.resumen, l.nota].filter(Boolean).join(' · ')}</p>
             </div>
+            {l.aplicaLocal && consumo.activo && (
+              <BotonLocal on={!!l.consumoLocal} monto={consumo.monto}
+                onClick={() => setComanda((c) => alternarLocal(c, k, claveLinea, consumo.monto))} />
+            )}
             <div className="flex items-center rounded-xl border border-[#D9D5CC]">
               <button type="button" aria-label={`Quitar uno de ${l.nombre}`} onClick={() => cambiarCantidad(k, -1)} className="w-10 h-10 text-lg font-extrabold">−</button>
               <span className="w-6 text-center text-sm font-extrabold">{l.cantidad}</span>
@@ -322,7 +333,7 @@ export default function PedirPanel({ order, mesasUnidas = [], onCambio, onEnviad
       {barraEnviar}
 
       {opciones && (
-        <OpcionesSheet producto={opciones} anterior={anteriores[opciones.id]} onCerrar={() => setOpciones(null)}
+        <OpcionesSheet producto={opciones} anterior={anteriores[opciones.id]} consumo={consumo} onCerrar={() => setOpciones(null)}
           onAgregar={(l) => { agregarLinea(l); setOpciones(null) }} />
       )}
     </>

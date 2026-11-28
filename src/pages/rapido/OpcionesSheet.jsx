@@ -3,6 +3,7 @@ import { getProductSuggestions } from '../../api/products'
 import { useEscapeKey } from '../../hooks/useEscapeKey'
 import { GruposModificadoresAbiertos, cambiarSel, elegidasDe, resumenElegidas } from '../../components/GruposModificadores'
 import { conAjustes, useExtrasEditables } from '../../utils/extrasEditables'
+import { BotonLocal } from '../../utils/consumoLocal'
 
 import ModalCloseButton from '../../components/ModalCloseButton'
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n ?? 0)
@@ -24,7 +25,7 @@ export function gruposActivos(p) {
  * escriben para este platillo) NUNCA vienen marcadas. `anterior` = lo elegido la última vez
  * para este platillo en esta mesa ("Igual que la anterior").
  */
-export default function OpcionesSheet({ producto, anterior, onAgregar, onCerrar }) {
+export default function OpcionesSheet({ producto, anterior, consumo, onAgregar, onCerrar }) {
   useExtrasEditables()
   const grupos = conAjustes(gruposActivos(producto))
   const [sel, setSel] = useState(() => Object.fromEntries(grupos.map((g) => [g.id, []])))
@@ -34,6 +35,8 @@ export default function OpcionesSheet({ producto, anterior, onAgregar, onCerrar 
   const [notaLibre, setNotaLibre] = useState('')
   const [verNotaLibre, setVerNotaLibre] = useState(false)
   const [cantidad, setCantidad] = useState(1)
+  const aplicaLocal = !!consumo?.aplica(producto)
+  const [local, setLocal] = useState(() => !!consumo?.porDefecto(producto))
   useEscapeKey(onCerrar)
 
   useEffect(() => {
@@ -67,6 +70,7 @@ export default function OpcionesSheet({ producto, anterior, onAgregar, onCerrar 
   const ids = Object.values(sel).flat()
   const elegidas = elegidasDe(grupos, sel)
   const unitario = Number(producto.price) + elegidas.reduce((s, o) => s + Number(o.precioExtra), 0)
+    + (aplicaLocal && local ? consumo.monto : 0)
   const faltan = grupos.filter((g) => g.obligatorio && (sel[g.id] ?? []).length === 0)
   const nota = [...notas, notaLibre.trim()].filter(Boolean).join(', ')
 
@@ -74,6 +78,7 @@ export default function OpcionesSheet({ producto, anterior, onAgregar, onCerrar 
     onAgregar({
       productoId: producto.id, nombre: producto.name, precio: datos.unitario, cantidad: datos.cantidad,
       opcionIds: datos.ids, resumen: datos.resumen, nota: datos.nota,
+      consumoLocal: aplicaLocal && !!datos.consumoLocal, aplicaLocal,
     })
   }
   const resumen = resumenElegidas(elegidas)
@@ -94,6 +99,8 @@ export default function OpcionesSheet({ producto, anterior, onAgregar, onCerrar 
 
         <GruposModificadoresAbiertos grupos={grupos} sel={sel} onToggle={tocar} editable
           nota={(g, o) => (sugeridas[g.id] === o.id ? 'lo más pedido' : null)} />
+
+        {aplicaLocal && <BotonLocal on={local} monto={consumo.monto} grande onClick={() => setLocal((v) => !v)} />}
 
         <div className="space-y-1.5">
           <p className="text-sm font-extrabold">Notas {notasFrecuentes.length > 0 && <span className="font-semibold text-gray-600">· las más usadas</span>}</p>
@@ -127,7 +134,7 @@ export default function OpcionesSheet({ producto, anterior, onAgregar, onCerrar 
               className="w-12 h-[52px] text-2xl font-extrabold">+</button>
           </div>
           <button type="button" disabled={faltan.length > 0}
-            onClick={() => agregar({ unitario, cantidad, ids, resumen, nota })}
+            onClick={() => agregar({ unitario, cantidad, ids, resumen, nota, consumoLocal: local })}
             className="flex-1 min-h-[54px] rounded-2xl bg-purple-600 hover:bg-purple-700 text-white text-base font-extrabold disabled:opacity-50 disabled:cursor-not-allowed">
             {faltan.length > 0 ? `Elige ${faltan.map((g) => g.nombre.toLowerCase()).join(' y ')}` : `Agregar ${cantidad} · ${fmt(unitario * cantidad)}`}
           </button>

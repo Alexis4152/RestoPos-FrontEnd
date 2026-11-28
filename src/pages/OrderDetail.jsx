@@ -28,6 +28,7 @@ import { etiquetaTipoPedido } from '../utils/tipoPedido'
 import AgotadosModal from '../components/AgotadosModal'
 import GruposModificadores, { cambiarSel, elegidasDe, resumenElegidas, selDesdeModificadores, textoMods } from '../components/GruposModificadores'
 import { conAjustes, useExtrasEditables } from '../utils/extrasEditables'
+import { BotonLocal, alternarLocal, useConsumoLocal } from '../utils/consumoLocal'
 import { useModoToma, admiteModoRapido } from '../utils/modoToma'
 import { useVolver } from '../utils/navegacion'
 import { leerPorEnviar, guardarPorEnviar } from '../utils/porEnviar'
@@ -61,7 +62,8 @@ const toDisplayTime = (t) => (t ? t.slice(0, 5) : '')
  * órdenes para llevar / consultadas desde el historial de Órdenes.
  */
 // "Por enviar a cocina" de cada orden, guardado en este dispositivo (ver OrderDetail#porEnviar).
-const clavePorEnviar = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ?? [])].sort().join('.'), l.observaciones ?? ''].join('|')
+const clavePorEnviar = (l) => [l.productoId, l.comensalId ?? '', [...(l.opcionIds ?? [])].sort().join('.'), l.observaciones ?? '',
+  l.consumoLocal ? 'L' : ''].join('|')
 
 export default function OrderDetail() {
   const { id } = useParams()
@@ -73,6 +75,7 @@ export default function OrderDetail() {
   useExtrasEditables() // precios de extras cambiados al vender
 
   const [order, setOrder] = useState(null)
+  const consumo = useConsumoLocal(order) // consumo local: +$ por pieza en platillos marcados
   const [accounts, setAccounts] = useState([])
   const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(false)
@@ -105,6 +108,7 @@ export default function OrderDetail() {
   const [modPicker, setModPicker] = useState(null) // producto en personalización, o null
   const [modSelections, setModSelections] = useState({}) // { [grupoId]: [opcionId, ...] }
   const [modNota, setModNota] = useState('')
+  const [modLocal, setModLocal] = useState(false) // cobra consumo local el platillo que se personaliza
   const [modCantidad, setModCantidad] = useState(1) // piezas iguales con esa personalización
 
   // Filtro de la tabla de "Productos": 'ALL' (todos), 'SHARED' (solo lo Compartido, sin
@@ -127,6 +131,7 @@ export default function OrderDetail() {
   const [editGrupos, setEditGrupos] = useState([])
   const [editSelections, setEditSelections] = useState({})
   const [editModsTouched, setEditModsTouched] = useState(false)
+  const [editLocal, setEditLocal] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
   const [editMotivo, setEditMotivo] = useState('')
 
@@ -389,7 +394,7 @@ export default function OrderDetail() {
   // producto para la persona elegida en el selector.
   const comensalElegido = () => (pickerComensalId ? Number(pickerComensalId) : null)
   const esLineaSimple = (x, productId) => x.productoId === Number(productId) && (x.opcionIds ?? []).length === 0
-    && (x.comensalId ?? null) === comensalElegido()
+    && (x.comensalId ?? null) === comensalElegido() && !!x.consumoLocal === (!!x.aplicaLocal && consumo.porDefecto({ aplicaConsumoLocal: true }))
 
   function cartQty(productId) {
     return porEnviar.filter((x) => esLineaSimple(x, productId)).reduce((n, x) => n + x.cantidad, 0)
@@ -399,8 +404,10 @@ export default function OrderDetail() {
     setPorEnviar((c) => {
       const i = c.findIndex((x) => esLineaSimple(x, p.id))
       if (i >= 0) return c.map((x, j) => (j === i ? { ...x, cantidad: x.cantidad + 1 } : x))
-      return [...c, { productoId: p.id, nombre: p.name, precio: Number(p.price ?? 0), cantidad: 1,
-        comensalId: comensalElegido(), observaciones: '', opcionIds: [], resumen: '' }]
+      const local = consumo.porDefecto(p)
+      return [...c, { productoId: p.id, nombre: p.name, precio: Number(p.price ?? 0) + (local ? consumo.monto : 0), cantidad: 1,
+        comensalId: comensalElegido(), observaciones: '', opcionIds: [], resumen: '',
+        consumoLocal: local, aplicaLocal: consumo.aplica(p) }]
     })
   }
 
@@ -436,6 +443,7 @@ export default function OrderDetail() {
     grupos.forEach((g) => { initial[g.id] = [] })
     setModSelections(initial)
     setModNota('')
+    setModLocal(consumo.porDefecto(p))
     setModCantidad(1)
     setModPicker(p)
   }
@@ -448,7 +456,7 @@ export default function OrderDetail() {
   const modOpcionIds = Object.values(modSelections).flat()
   const modElegidas = elegidasDe(modGrupos, modSelections)
   const modExtrasTotal = modElegidas.reduce((sum, o) => sum + Number(o.precioExtra), 0)
-  const modTotal = modPicker ? Number(modPicker.price) + modExtrasTotal : 0
+  const modTotal = modPicker ? Number(modPicker.price) + modExtrasTotal + (modLocal && consumo.aplica(modPicker) ? consumo.monto : 0) : 0
   const modFaltaObligatorio = modGrupos.some((g) => g.obligatorio && (modSelections[g.id]?.length ?? 0) === 0)
 
   /** Suma una línea a "Por enviar a cocina" (la junta con una igual: mismo producto, persona, opciones y nota). */
@@ -467,6 +475,7 @@ export default function OrderDetail() {
       productoId: modPicker.id, nombre: modPicker.name, precio: modTotal, cantidad: modCantidad,
       comensalId: pickerComensalId ? Number(pickerComensalId) : null,
       observaciones: modNota.trim(), opcionIds: modOpcionIds,
+      consumoLocal: modLocal && consumo.aplica(modPicker), aplicaLocal: consumo.aplica(modPicker),
       resumen: resumenElegidas(modElegidas),
     })
     setModPicker(null)
@@ -489,6 +498,7 @@ export default function OrderDetail() {
           productoId: l.productoId, comensalId: l.comensalId ?? null, cantidad: l.cantidad,
           observaciones: l.observaciones || undefined,
           modificadorOpcionIds: l.opcionIds?.length ? l.opcionIds : undefined,
+          consumoLocal: !!l.consumoLocal,
         })
         if (r.data.data?.id) enviados.push(r.data.data.id)
         pendientes = pendientes.slice(1)
@@ -520,6 +530,7 @@ export default function OrderDetail() {
     setEditComensalId(item.comensal?.id ? String(item.comensal.id) : '')
     setEditNota(item.observaciones ?? '')
     setEditModsTouched(false)
+    setEditLocal(Number(item.consumoLocal ?? 0) > 0)
     setEditMotivo('')
     setEditGrupos([])
     setEditSelections({})
@@ -542,8 +553,11 @@ export default function OrderDetail() {
   const editExtras = (editModsTouched
     ? elegidasDe(conAjustes(editGrupos), editSelections).reduce((s, o) => s + Number(o.precioExtra), 0)
     : (editItem?.modificadores ?? []).reduce((s, m) => s + Number(m.precioExtra), 0))
+  // Consumo local de la línea en edición: lo que ya cobra, o el monto de la tienda si se lo ponen.
+  const editLocalMonto = editItem ? (Number(editItem.consumoLocal ?? 0) > 0 ? Number(editItem.consumoLocal) : consumo.monto) : 0
+  const editPuedeLocal = !!editItem && (consumo.aplica(editItem.producto) || Number(editItem.consumoLocal ?? 0) > 0)
   const editTotal = editItem
-    ? (Number(editItem.precioUnitario) + editExtras) * editCantidad - Number(editItem.descuento || 0)
+    ? (Number(editItem.precioUnitario) + editExtras + (editLocal ? editLocalMonto : 0)) * editCantidad - Number(editItem.descuento || 0)
     : 0
 
   async function handleSaveEditItem() {
@@ -556,6 +570,7 @@ export default function OrderDetail() {
         observaciones: editNota.trim() || null,
         motivo: editMotivo.trim() || null,
         ...(editModsTouched ? { modificadorOpcionIds: editOpcionIds } : {}),
+        ...(editLocal !== (Number(editItem.consumoLocal ?? 0) > 0) ? { consumoLocal: editLocal } : {}),
       })
       setEditItem(null)
       load()
@@ -1042,6 +1057,10 @@ export default function OrderDetail() {
                       {[c ? `Comensal ${c.numero}${c.nombre ? ` (${c.nombre})` : ''}` : conPersonas ? 'Compartido' : null, l.resumen, l.observaciones].filter(Boolean).join(' · ')}
                     </p>
                   </div>
+                  {l.aplicaLocal && consumo.activo && (
+                    <BotonLocal on={!!l.consumoLocal} monto={consumo.monto}
+                      onClick={() => setPorEnviar((c) => alternarLocal(c, k, clavePorEnviar, consumo.monto))} />
+                  )}
                   <span className="text-sm font-bold">{fmt(l.precio * l.cantidad)}</span>
                   <div className="flex items-center rounded-xl border border-[#D9D5CC]">
                     <button type="button" aria-label={`Quitar uno de ${l.nombre}`} onClick={() => cambiarPorEnviar(k, -1)} className="w-10 h-10 text-lg font-extrabold">−</button>
@@ -1130,6 +1149,9 @@ export default function OrderDetail() {
                         </p>
                       )}
                       {item.observaciones && <p className="text-[13px] text-gray-600 italic">{item.observaciones}</p>}
+                      {Number(item.consumoLocal ?? 0) > 0 && (
+                        <p className="text-xs font-semibold text-[#22603C]">Consumo local +{fmt(item.consumoLocal)} c/u</p>
+                      )}
                       {item.estado !== 'CANCELADO' && paymentLabel(item) && <p className="text-xs text-gray-600">{paymentLabel(item).replace(/^ · /, '')}</p>}
                     </div>
                     {conPersonas && (
@@ -1716,6 +1738,10 @@ export default function OrderDetail() {
                 </div>
               )}
 
+              {editPuedeLocal && (
+                <BotonLocal on={editLocal} monto={editLocalMonto} disabled={editFacturada > 0} onClick={() => setEditLocal((v) => !v)} />
+              )}
+
               {editCantidad < Number(editItem.cantidad) && (
                 <div>
                   <label className="text-xs font-medium text-gray-600">Motivo de la reducción (opcional)</label>
@@ -1767,6 +1793,9 @@ export default function OrderDetail() {
               <GruposModificadores grupos={modGrupos} sel={modSelections} onToggle={toggleModOpcion} editable />
 
               <div>
+                {consumo.aplica(modPicker) && (
+                  <div className="mb-3"><BotonLocal on={modLocal} monto={consumo.monto} onClick={() => setModLocal((v) => !v)} /></div>
+                )}
                 <label className="text-xs font-medium text-gray-600">Notas para cocina (opcional)</label>
                 <input className="input mt-1" placeholder="Ej. sin cebolla, servilletas extra..." value={modNota} onChange={(e) => setModNota(e.target.value)} />
               </div>

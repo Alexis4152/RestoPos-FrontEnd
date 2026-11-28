@@ -78,6 +78,8 @@ export default function StoreInfo() {
         blindCashCount: info.tienda?.blindCashCount ?? false,
         modoToma: info.tienda?.modoToma ?? 'DETALLADO',
         propinaMaxPorcentaje: String(info.tienda?.propinaMaxPorcentaje ?? 50),
+        consumoLocalActivo: !!info.tienda?.consumoLocalActivo,
+        consumoLocalMonto: String(info.tienda?.consumoLocalMonto ?? 10),
       })
     }).finally(() => setLoading(false))
   }, [tiendaId])
@@ -109,6 +111,10 @@ export default function StoreInfo() {
     if (envio && (isNaN(Number(envio)) || Number(envio) < 0)) {
       errors.costoEnvioDomicilio = 'Debe ser un monto válido (0 o mayor)'
     }
+    const montoLocal = Number(String(form.consumoLocalMonto ?? '').trim())
+    if (!Number.isFinite(montoLocal) || montoLocal < 0 || montoLocal > 9999) {
+      errors.consumoLocalMonto = 'Pon un monto válido, de $0 a $9,999'
+    }
     const tope = Number(String(form.propinaMaxPorcentaje ?? '').trim())
     if (!Number.isInteger(tope) || tope < 1 || tope > 100) {
       errors.propinaMaxPorcentaje = 'Debe ser un número entero entre 1 y 100'
@@ -124,8 +130,10 @@ export default function StoreInfo() {
     setError('')
     setMessage('')
     try {
-      await updateTiendaInfo(tiendaId, { ...form, costoEnvioDomicilio: envio ? Number(envio) : null, propinaMaxPorcentaje: tope })
-      patchTienda({ name: form.name, blindCashCount: !!form.blindCashCount, modoToma: form.modoToma, propinaMaxPorcentaje: tope })
+      await updateTiendaInfo(tiendaId, { ...form, costoEnvioDomicilio: envio ? Number(envio) : null, propinaMaxPorcentaje: tope,
+        consumoLocalActivo: !!form.consumoLocalActivo, consumoLocalMonto: montoLocal })
+      patchTienda({ name: form.name, blindCashCount: !!form.blindCashCount, modoToma: form.modoToma, propinaMaxPorcentaje: tope,
+        consumoLocalActivo: !!form.consumoLocalActivo, consumoLocalMonto: montoLocal })
       setMessage('Datos guardados')
     } catch (err) {
       const data = err.response?.data?.data
@@ -253,6 +261,33 @@ export default function StoreInfo() {
             Se suma a las órdenes para llevar marcadas como "Envío a domicilio". Déjalo vacío o en 0 si no cobras envío.
           </p>
           {fieldErrors.costoEnvioDomicilio && <p className="text-red-600 text-xs mt-1">{fieldErrors.costoEnvioDomicilio}</p>}
+        </div>
+
+        <div className="border-t border-gray-100 pt-4">
+          <p className="text-sm font-semibold text-gray-800 mb-2">Consumo local</p>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" className="mt-1 w-4 h-4" checked={!!form.consumoLocalActivo}
+              onChange={(e) => setForm({ ...form, consumoLocalActivo: e.target.checked })} />
+            <span className="text-sm text-gray-700">
+              Cobrar consumo local
+              <span className="block text-xs text-gray-500 mt-0.5">
+                Se suma por pieza a los platillos marcados con "Cobra consumo local" cuando se consumen en el restaurante
+                (por defecto en mesa y comer aquí; se puede quitar al agregar el platillo). El cliente no ve la leyenda: le sale
+                incluido en el precio del platillo.
+              </span>
+            </span>
+          </label>
+          {form.consumoLocalActivo && (
+            <div className="mt-3">
+              <label htmlFor="consumo-local-monto" className="block text-xs font-medium text-gray-600 mb-1">Monto por pieza</label>
+              <div className="relative max-w-[8rem]">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                <input id="consumo-local-monto" type="number" inputMode="decimal" className="input !pl-7"
+                  value={form.consumoLocalMonto} onChange={(e) => setForm({ ...form, consumoLocalMonto: e.target.value })} />
+              </div>
+              {fieldErrors.consumoLocalMonto && <p className="text-red-600 text-xs mt-1">{fieldErrors.consumoLocalMonto}</p>}
+            </div>
+          )}
         </div>
 
         <fieldset className="border-t border-gray-100 pt-4">
